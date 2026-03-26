@@ -293,8 +293,107 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .tab-page.active>*:nth-child(4){animation-delay:.15s}
 
 /* ── RESPONSIVE ── */
-@media(max-width:1100px){.kpi-row{grid-template-columns:repeat(2,1fr)}.grid-2,.grid-65{grid-template-columns:1fr}.rep-hero{grid-template-columns:1fr}}
-@media(max-width:768px){.shell{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}aside{display:none}}
+@media(max-width:1100px){
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .grid-2,.grid-65{grid-template-columns:1fr}
+  .rep-hero{grid-template-columns:1fr}
+}
+
+/* ── MOBILE (iPhone) ── */
+@media(max-width:768px){
+  html,body{overflow:hidden;height:100%;height:100dvh}
+  .shell{
+    display:flex;flex-direction:column;
+    height:100dvh;
+    grid-template-columns:unset;
+    grid-template-rows:unset;
+  }
+  aside{display:none}
+  header{
+    flex-shrink:0;
+    padding:0 14px;
+    height:52px;
+    flex-direction:row;
+    justify-content:space-between;
+  }
+  .header-right{display:none}
+  .content{
+    flex:1;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:14px;
+    padding-bottom:80px;
+  }
+  /* Bottom nav bar */
+  .mobile-nav{
+    display:flex;
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--s1);
+    border-top:1px solid var(--border);
+    z-index:200;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .mobile-nav-item{
+    flex:1;display:flex;flex-direction:column;align-items:center;
+    padding:10px 4px 8px;
+    font-family:var(--mono);font-size:9px;letter-spacing:.06em;
+    color:var(--muted2);cursor:pointer;gap:4px;
+    transition:color .15s;
+    text-transform:uppercase;
+  }
+  .mobile-nav-item.active{color:var(--g)}
+  .mobile-nav-item .mn-icon{font-size:16px;line-height:1}
+  .mobile-nav-snap{
+    flex:1;display:flex;flex-direction:column;align-items:center;
+    padding:6px 4px 8px;cursor:pointer;gap:3px;
+    font-family:var(--mono);font-size:9px;color:var(--g);
+  }
+  .mobile-nav-snap .mn-icon{
+    background:var(--g);color:var(--bg);
+    width:36px;height:36px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:700;line-height:1;
+  }
+  /* KPI tiles 2 col on mobile */
+  .kpi-row{grid-template-columns:1fr 1fr;gap:10px}
+  .kpi{padding:14px}
+  .kpi-val{font-size:22px}
+  /* Grids single col */
+  .grid-2,.grid-65,.grid-3,.rep-hero{grid-template-columns:1fr}
+  /* Header compact */
+  .page-title{font-size:12px}
+  /* Cards */
+  .card{padding:14px}
+  .card-title{font-size:11px}
+  /* Insight box */
+  .insight-box{padding:14px}
+  .insight-text{font-size:12px}
+  /* Ageing */
+  .ag-row{grid-template-columns:60px 1fr 36px 36px;gap:6px}
+  .ag-lbl{font-size:9px}
+  /* Chart */
+  .chart-wrap{height:160px}
+  .chart-wrap.tall{height:200px}
+  /* Modal */
+  .overlay{padding:0;align-items:flex-end}
+  .modal{max-height:92dvh;border-radius:0;border-bottom:none}
+  .form-grid{grid-template-columns:1fr}
+  .fg.full{grid-column:1}
+  .form-section{grid-column:1}
+  /* History table scroll */
+  .history-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .history-controls{gap:8px}
+  .range-presets{display:none}
+  /* Competitor table */
+  .comp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* Date header hide on mobile */
+  .date-range-wrap{display:none}
+}
+
+/* Desktop — hide mobile nav */
+@media(min-width:769px){
+  .mobile-nav{display:none}
+}
 </style>
 </head>
 <body>
@@ -515,6 +614,26 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 </div><!-- end content -->
 </div><!-- end shell -->
 
+<!-- MOBILE BOTTOM NAV -->
+<div class="mobile-nav" id="mobileNav">
+  <div class="mobile-nav-item active" id="mn-overview" onclick="switchTabMobile('overview')">
+    <span class="mn-icon">◈</span>Overview
+  </div>
+  <div class="mobile-nav-item" id="mn-repricer" onclick="switchTabMobile('repricer')">
+    <span class="mn-icon">⟳</span>Repricer
+  </div>
+  <div class="mobile-nav-snap" onclick="openSnap()">
+    <div class="mn-icon">+</div>
+    <span style="font-family:var(--mono);font-size:9px;color:var(--g)">Snapshot</span>
+  </div>
+  <div class="mobile-nav-item" id="mn-competitors" onclick="switchTabMobile('competitors')">
+    <span class="mn-icon">◉</span>Competitors
+  </div>
+  <div class="mobile-nav-item" id="mn-history" onclick="switchTabMobile('history')">
+    <span class="mn-icon">▤</span>History
+  </div>
+</div>
+
 <!-- SNAPSHOT MODAL -->
 <div class="overlay" id="snapModal">
 <div class="modal">
@@ -650,6 +769,19 @@ function switchTab(id, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('tab-' + id).classList.add('active');
   el.classList.add('active');
+  document.getElementById('pageTitle').textContent = TITLES[id];
+  if (id === 'competitors') renderCompTab();
+  if (id === 'history') renderHistory();
+}
+
+function switchTabMobile(id) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.mobile-nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  const mn = document.getElementById('mn-' + id);
+  if (mn) mn.classList.add('active');
+  // also sync sidebar nav
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('pageTitle').textContent = TITLES[id];
   if (id === 'competitors') renderCompTab();
   if (id === 'history') renderHistory();
