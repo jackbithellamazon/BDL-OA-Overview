@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BDL OA Overview</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Clash+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #07090c;
+  --s1: #0e1117;
+  --s2: #141920;
+  --s3: #1c2330;
+  --border: #1f2836;
+  --border2: #2a3545;
+  --g: #00f5a0;
+  --g2: rgba(0,245,160,0.12);
+  --r: #ff4d6d;
+  --r2: rgba(255,77,109,0.12);
+  --b: #3d9eff;
+  --b2: rgba(61,158,255,0.12);
+  --y: #ffd166;
+  --y2: rgba(255,209,102,0.12);
+  --o: #ff8c42;
+  --p: #c084fc;
+  --text: #dce6f0;
+  --muted: #4a5568;
+  --muted2: #6b7a8d;
+  --mono: 'DM Mono', monospace;
+  --display: 'Clash Display', sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--display);overflow:hidden}
+
+/* ── NOISE OVERLAY ── */
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");opacity:.4;pointer-events:none;z-index:9999}
+
+/* ── LAYOUT ── */
+.shell{display:grid;grid-template-rows:56px 1fr;grid-template-columns:220px 1fr;height:100vh}
+
+/* ── SIDEBAR ── */
+aside{grid-row:1/3;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.brand{padding:18px 20px;border-bottom:1px solid var(--border)}
+.brand-name{font-size:15px;font-weight:700;letter-spacing:.02em;line-height:1.1}
+.brand-sub{font-family:var(--mono);font-size:9px;color:var(--muted2);letter-spacing:.12em;text-transform:uppercase;margin-top:3px}
+.brand-accent{color:var(--g)}
+
+nav{flex:1;padding:12px 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:13px;font-weight:500;color:var(--muted2);cursor:pointer;transition:all .15s;position:relative;border-left:2px solid transparent}
+.nav-item:hover{color:var(--text);background:var(--s2)}
+.nav-item.active{color:var(--text);background:var(--s2);border-left-color:var(--g)}
+.nav-item .nav-icon{font-size:15px;width:20px;text-align:center}
+.nav-item .nav-badge{margin-left:auto;font-family:var(--mono);font-size:9px;background:var(--s3);color:var(--muted2);padding:2px 6px;border-radius:2px}
+
+.sidebar-footer{padding:14px 20px;border-top:1px solid var(--border)}
+.snap-btn{width:100%;padding:10px;background:var(--g);color:var(--bg);font-family:var(--display);font-size:12px;font-weight:700;border:none;cursor:pointer;letter-spacing:.05em;transition:opacity .15s}
+.snap-btn:hover{opacity:.85}
+
+/* ── TOPBAR ── */
+header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px}
+.page-title{font-size:13px;font-weight:600;letter-spacing:.03em}
+.header-right{display:flex;align-items:center;gap:16px}
+.date-range-wrap{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--muted2)}
+.date-input{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;outline:none;transition:border-color .15s}
+.date-input:focus{border-color:var(--g)}
+.range-sep{color:var(--muted)}
+.range-presets{display:flex;gap:4px}
+.range-preset{font-family:var(--mono);font-size:10px;padding:4px 8px;background:var(--s2);border:1px solid var(--border);color:var(--muted2);cursor:pointer;transition:all .15s}
+.range-preset:hover,.range-preset.active{border-color:var(--g);color:var(--g)}
+
+/* ── CONTENT ── */
+.content{grid-column:2;overflow-y:auto;padding:24px 28px}
+
+/* ── TAB PAGES ── */
+.tab-page{display:none}.tab-page.active{display:block}
+
+/* ── KPI TILES ── */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.kpi{background:var(--s1);border:1px solid var(--border);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
+.kpi:hover{border-color:var(--border2);transform:translateY(-1px)}
+.kpi-stripe{position:absolute;top:0;left:0;right:0;height:3px}
+.kpi-label{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px}
+.kpi-val{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.kpi-footer{display:flex;align-items:center;gap:6px;margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--muted2)}
+.pill{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;font-family:var(--mono);font-size:10px;font-weight:500}
+.pill.up{background:var(--g2);color:var(--g)}
+.pill.down{background:var(--r2);color:var(--r)}
+.pill.flat{background:var(--s3);color:var(--muted2)}
+.pill.warn{background:var(--y2);color:var(--y)}
+
+/* ── GRID LAYOUTS ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.grid-65{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:16px}
+.full{grid-column:1/-1}
+
+/* ── CARD ── */
+.card{background:var(--s1);border:1px solid var(--border);padding:20px}
+.card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.card-tag{font-family:var(--mono);font-size:9px;color:var(--muted2);background:var(--s2);padding:3px 8px;border:1px solid var(--border)}
+.chart-wrap{position:relative;height:200px}
+.chart-wrap.tall{height:260px}
+.chart-wrap.sm{height:120px}
+
+/* ── AGEING BARS ── */
+.ageing-list{display:flex;flex-direction:column;gap:11px}
+.ag-row{display:grid;grid-template-columns:72px 1fr 48px 44px;align-items:center;gap:10px}
+.ag-lbl{font-family:var(--mono);font-size:10px;color:var(--muted2)}
+.ag-track{height:5px;background:var(--s3);overflow:hidden}
+.ag-fill{height:100%;transition:width 1.2s cubic-bezier(.16,1,.3,1)}
+.ag-cnt{font-family:var(--mono);font-size:11px;font-weight:500;text-align:right}
+.ag-pct{font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:right}
+
+/* ── AI INSIGHTS ── */
+.insight-box{background:linear-gradient(135deg,rgba(0,245,160,.04),rgba(61,158,255,.04));border:1px solid rgba(0,245,160,.15);padding:20px;margin-bottom:16px}
+.insight-hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.insight-badge{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;background:var(--g2);color:var(--g);padding:3px 8px}
+.insight-text{font-size:13px;line-height:1.75;color:var(--text)}
+.insight-text strong{color:var(--g);font-weight:600}
+.insight-text .warn{color:var(--y)}
+.insight-text .danger{color:var(--r)}
+.insight-bullets{margin-top:12px;display:flex;flex-direction:column;gap:7px}
+.insight-bullet{display:flex;gap:10px;font-size:12px;line-height:1.5;color:var(--muted2)}
+.insight-bullet::before{content:'→';color:var(--g);flex-shrink:0;font-family:var(--mono)}
+
+/* ── REPRICER PAGE ── */
+.rep-hero{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.rep-stat{background:var(--s1);border:1px solid var(--border);padding:22px 24px;position:relative;overflow:hidden}
+.rep-stat-lbl{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px}
+.rep-stat-val{font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:1}
+.rep-stat-sub{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:6px}
+.rep-stat-bg{position:absolute;right:-10px;top:-10px;font-size:80px;opacity:.04;pointer-events:none}
+
+/* ── COMPETITORS PAGE ── */
+.comp-controls{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.comp-search{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;width:240px;transition:border-color .15s}
+.comp-search:focus{border-color:var(--g)}
+.comp-table-wrap{background:var(--s1);border:1px solid var(--border);overflow:hidden}
+.comp-table{width:100%;border-collapse:collapse}
+.comp-table th{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);background:var(--s2)}
+.comp-table td{padding:12px 16px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(31,40,54,.5);vertical-align:middle}
+.comp-table tr:last-child td{border-bottom:none}
+.comp-table tr.me-row td{background:rgba(0,245,160,.03)}
+.comp-table tr:hover td{background:var(--s2)}
+.me-tag{font-size:9px;background:var(--g2);color:var(--g);padding:2px 6px;margin-left:6px;font-family:var(--mono)}
+.seller-id{color:var(--muted2);font-size:10px}
+.pct-val{font-size:14px;font-weight:600}
+.sparkline-cell canvas{display:block}
+.rank-badge{display:inline-block;font-family:var(--mono);font-size:10px;background:var(--s3);padding:2px 7px;color:var(--muted2)}
+.rank-badge.me{background:var(--g2);color:var(--g)}
+
+/* ── HISTORY PAGE ── */
+.history-controls{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.history-search{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;transition:border-color .15s}
+.history-search:focus{border-color:var(--g)}
+.history-table-wrap{background:var(--s1);border:1px solid var(--border)}
+.history-table{width:100%;border-collapse:collapse}
+.history-table th{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);background:var(--s2)}
+.history-table td{padding:11px 16px;font-family:var(--mono);font-size:11px;border-bottom:1px solid rgba(31,40,54,.5);vertical-align:middle}
+.history-table tr:last-child td{border-bottom:none}
+.history-table tr:hover td{background:var(--s2)}
+.tbl-actions{display:flex;gap:6px}
+.tbl-btn{background:none;border:1px solid var(--border);color:var(--muted2);font-family:var(--mono);font-size:10px;padding:4px 8px;cursor:pointer;transition:all .15s}
+.tbl-btn:hover{border-color:var(--g);color:var(--g)}
+.tbl-btn.del:hover{border-color:var(--r);color:var(--r)}
+.notes-cell{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted2)}
+.empty-row td{text-align:center;padding:48px;color:var(--muted);font-size:12px}
+
+/* ── MODAL ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--s1);border:1px solid var(--border);width:100%;max-width:700px;max-height:90vh;overflow-y:auto;transform:translateY(16px);transition:transform .2s}
+.overlay.open .modal{transform:translateY(0)}
+.modal-hd{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--s1);z-index:10}
+.modal-title{font-size:15px;font-weight:700}
+.modal-x{background:none;border:none;color:var(--muted2);font-size:22px;cursor:pointer;line-height:1;padding:2px 6px}
+.modal-x:hover{color:var(--text)}
+.modal-body{padding:24px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fg{display:flex;flex-direction:column;gap:5px}
+.fg.full{grid-column:1/-1}
+.fg label{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2)}
+.fg input,.fg select,.fg textarea{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:9px 11px;outline:none;transition:border-color .15s;width:100%}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--g)}
+.form-section{grid-column:1/-1;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-top:1px solid var(--border);margin-top:4px}
+.form-actions{display:flex;justify-content:flex-end;gap:10px;padding-top:20px;border-top:1px solid var(--border);margin-top:20px}
+.btn{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:9px 18px;border:1px solid var(--border);background:none;color:var(--muted2);cursor:pointer;transition:all .15s}
+.btn:hover{color:var(--text);border-color:var(--border2)}
+.btn-g{background:var(--g);border-color:var(--g);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:9px 22px;cursor:pointer;transition:opacity .15s}
+.btn-g:hover{opacity:.85}
+
+/* ── COMP FORM ROWS ── */
+.comp-form-row{display:grid;grid-template-columns:1fr 120px 80px 30px;gap:8px;align-items:end;margin-bottom:8px}
+.comp-add-btn{background:none;border:1px dashed var(--border2);color:var(--muted2);font-family:var(--mono);font-size:10px;padding:8px;width:100%;cursor:pointer;transition:all .15s;margin-top:4px}
+.comp-add-btn:hover{border-color:var(--b);color:var(--b)}
+.comp-rm{background:none;border:1px solid var(--border);color:var(--muted);font-size:13px;height:37px;cursor:pointer;transition:all .15s}
+.comp-rm:hover{border-color:var(--r);color:var(--r)}
+
+/* ── STATUS DOT ── */
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.dot.g{background:var(--g);box-shadow:0 0 6px var(--g)}
+.dot.r{background:var(--r)}
+.dot.y{background:var(--y)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--s1)}
+::-webkit-scrollbar-thumb{background:var(--s3)}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.tab-page.active>*{animation:fadeUp .3s ease both}
+.tab-page.active>*:nth-child(2){animation-delay:.05s}
+.tab-page.active>*:nth-child(3){animation-delay:.1s}
+.tab-page.active>*:nth-child(4){animation-delay:.15s}
+
+/* ── RESPONSIVE ── */
+@media(max-width:1100px){.kpi-row{grid-template-columns:repeat(2,1fr)}.grid-2,.grid-65{grid-template-columns:1fr}.rep-hero{grid-template-columns:1fr}}
+@media(max-width:768px){.shell{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}aside{display:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- SIDEBAR -->
+<aside>
+  <div class="brand">
+    <div class="brand-name">BDL <span class="brand-accent">OA</span></div>
+    <div class="brand-sub">Overview Dashboard</div>
+  </div>
+  <nav>
+    <div class="nav-item active" onclick="switchTab('overview',this)">
+      <span class="nav-icon">◈</span> Overview
+    </div>
+    <div class="nav-item" onclick="switchTab('repricer',this)">
+      <span class="nav-icon">⟳</span> Repricer
+    </div>
+    <div class="nav-item" onclick="switchTab('competitors',this)">
+      <span class="nav-icon">◉</span> Competitors
+      <span class="nav-badge" id="compNavBadge">0</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('history',this)">
+      <span class="nav-icon">▤</span> History
+      <span class="nav-badge" id="histNavBadge">0</span>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="snap-btn" onclick="openSnap()">+ Add Snapshot</button>
+  </div>
+</aside>
+
+<!-- TOPBAR -->
+<header>
+  <div class="page-title" id="pageTitle">Overview</div>
+  <div class="header-right">
+    <div class="date-range-wrap">
+      <span>From</span>
+      <input type="date" class="date-input" id="rangeFrom" onchange="applyRange()">
+      <span class="range-sep">→</span>
+      <input type="date" class="date-input" id="rangeTo" onchange="applyRange()">
+    </div>
+    <div class="range-presets">
+      <button class="range-preset" onclick="setPreset('last2')">Last 2</button>
+      <button class="range-preset" onclick="setPreset('last5')">Last 5</button>
+      <button class="range-preset" onclick="setPreset('all')">All</button>
+    </div>
+  </div>
+</header>
+
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- ══ OVERVIEW TAB ══ -->
+  <div class="tab-page active" id="tab-overview">
+
+    <!-- KPI TILES -->
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-label">Total ASINs</div>
+        <div class="kpi-val" id="kAsins">—</div>
+        <div class="kpi-footer"><span id="kAsinsPill"></span><span id="kAsinsSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--b)"></div>
+        <div class="kpi-label">Total SKUs</div>
+        <div class="kpi-val" id="kSkus">—</div>
+        <div class="kpi-footer"><span id="kSkusPill"></span><span id="kSkusSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--o)"></div>
+        <div class="kpi-label">Avg Unit Cost</div>
+        <div class="kpi-val" id="kCost">—</div>
+        <div class="kpi-footer"><span id="kCostPill"></span><span id="kCostSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--y)"></div>
+        <div class="kpi-label">Total Stock Units</div>
+        <div class="kpi-val" id="kUnits">—</div>
+        <div class="kpi-footer"><span id="kUnitsPill"></span><span id="kUnitsSub">No data</span></div>
+      </div>
+    </div>
+
+    <!-- AI INSIGHT BOX -->
+    <div class="insight-box" id="insightBox">
+      <div class="insight-hd">
+        <span class="insight-badge">✦ AI Analysis</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="insightDate"></span>
+      </div>
+      <div class="insight-text" id="insightText">Add your first snapshot to unlock AI-powered trend analysis and business insights.</div>
+      <div class="insight-bullets" id="insightBullets"></div>
+    </div>
+
+    <!-- LINE CHART + AGEING -->
+    <div class="grid-65">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title">Key Metrics Over Time</div>
+          <div class="card-tag" id="chartRangeTag">—</div>
+        </div>
+        <div class="chart-wrap tall"><canvas id="overviewChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title">Stock Ageing</div>
+          <div class="card-tag" id="ageingTotalTag">—</div>
+        </div>
+        <div class="ageing-list" id="ageingList">
+          <div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:20px 0">No data yet</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ REPRICER TAB ══ -->
+  <div class="tab-page" id="tab-repricer">
+    <div class="rep-hero">
+      <div class="rep-stat">
+        <div class="rep-stat-bg">⊟</div>
+        <div class="rep-stat-lbl">Matching Buy Box</div>
+        <div class="rep-stat-val" id="rMatchVal" style="color:var(--y)">—</div>
+        <div class="rep-stat-sub" id="rMatchSub">— SKUs</div>
+        <div style="margin-top:10px" id="rMatchPill"></div>
+      </div>
+      <div class="rep-stat">
+        <div class="rep-stat-bg">🏆</div>
+        <div class="rep-stat-lbl">Winning Buy Box</div>
+        <div class="rep-stat-val" id="rWinVal" style="color:var(--g)">—</div>
+        <div class="rep-stat-sub" id="rWinSub">— SKUs</div>
+        <div style="margin-top:10px" id="rWinPill"></div>
+      </div>
+    </div>
+
+    <div class="insight-box" id="repInsightBox">
+      <div class="insight-hd"><span class="insight-badge">✦ Repricer Analysis</span></div>
+      <div class="insight-text" id="repInsightText">Add snapshots to see repricer analysis.</div>
+      <div class="insight-bullets" id="repInsightBullets"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-title">Buy Box Performance Over Time</div>
+        <div class="card-tag">SKU %</div>
+      </div>
+      <div class="chart-wrap tall"><canvas id="repricerChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ══ COMPETITORS TAB ══ -->
+  <div class="tab-page" id="tab-competitors">
+    <div class="insight-box" id="compInsightBox">
+      <div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>
+      <div class="insight-text" id="compInsightText">Add competitors via snapshots to see analysis.</div>
+      <div class="insight-bullets" id="compInsightBullets"></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-g" onclick="openBulkUpdate()" style="font-size:11px;padding:9px 18px">⚡ Update Overlaps</button>
+        <button class="btn" onclick="openManageSellers()" style="font-size:11px;padding:9px 18px">⚙ Manage Sellers</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="text" class="comp-search" id="compSearch" placeholder="Search..." oninput="renderCompTab()" style="width:180px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="compMeta"></div>
+      </div>
+    </div>
+    <div class="comp-table-wrap">
+      <table class="comp-table">
+        <thead><tr>
+          <th>Rank</th>
+          <th>Seller</th>
+          <th>Seller ID</th>
+          <th>Latest Overlap %</th>
+          <th>vs Last</th>
+          <th>Last 5 Snapshots</th>
+        </tr></thead>
+        <tbody id="compTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ HISTORY TAB ══ -->
+  <div class="tab-page" id="tab-history">
+    <div class="history-controls">
+      <input type="text" class="history-search" id="histSearch" placeholder="Search notes..." oninput="renderHistory()">
+      <input type="date" class="date-input" id="histFrom" onchange="renderHistory()" placeholder="From">
+      <span style="color:var(--muted);font-family:var(--mono);font-size:11px">→</span>
+      <input type="date" class="date-input" id="histTo" onchange="renderHistory()" placeholder="To">
+      <div class="range-presets">
+        <button class="range-preset" onclick="setHistPreset('7d',this)">Last 7d</button>
+        <button class="range-preset" onclick="setHistPreset('month',this)">This Month</button>
+        <button class="range-preset" onclick="setHistPreset('lastmonth',this)">Last Month</button>
+        <button class="range-preset" onclick="setHistPreset('90d',this)">90 Days</button>
+        <button class="range-preset" onclick="setHistPreset('all',this)">All</button>
+      </div>
+      <button class="btn" onclick="clearHistFilters()">Clear</button>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-left:auto" id="histCount"></span>
+    </div>
+    <div class="history-table-wrap">
+      <table class="history-table">
+        <thead><tr>
+          <th>Date</th>
+          <th>ASINs</th>
+          <th>SKUs</th>
+          <th>Avg Cost</th>
+          <th>Units</th>
+          <th>180d+ Units</th>
+          <th>Win BB%</th>
+          <th>Notes</th>
+          <th>Actions</th>
+        </tr></thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- end content -->
+</div><!-- end shell -->
+
+<!-- SNAPSHOT MODAL -->
+<div class="overlay" id="snapModal">
+<div class="modal">
+  <div class="modal-hd">
+    <div class="modal-title" id="snapModalTitle">Add Snapshot</div>
+    <button class="modal-x" onclick="closeOverlay('snapModal')">×</button>
+  </div>
+  <div class="modal-body">
+    <div class="form-grid">
+      <div class="fg full"><label>Date</label><input type="date" id="fDate"></div>
+
+      <div class="form-section">Inventory</div>
+      <div class="fg"><label>Total ASINs</label><input type="number" id="fAsins" placeholder="e.g. 320"></div>
+      <div class="fg"><label>Total SKUs</label><input type="number" id="fSkus" placeholder="e.g. 450"></div>
+      <div class="fg"><label>Total Stock Units</label><input type="number" id="fUnits" placeholder="e.g. 669" oninput="calcAvgCost()"></div>
+      <div class="fg"><label>Total Stock Value (£)</label><input type="number" step="0.01" id="fStockValue" placeholder="e.g. 9700.00" oninput="calcAvgCost()"></div>
+      <div class="fg full" style="display:flex;align-items:center;gap:16px;background:var(--s2);border:1px solid var(--border);padding:12px 14px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em">Avg Unit Cost</div>
+        <div id="fCostDisplay" style="font-size:22px;font-weight:700;color:var(--g);letter-spacing:-.02em">—</div>
+        <div id="fCostCalc" style="font-family:var(--mono);font-size:10px;color:var(--muted2)"></div>
+      </div>
+      <input type="hidden" id="fCost">
+
+      <div class="form-section">Ageing (units in each bucket)</div>
+      <div class="fg"><label>0–30 days</label><input type="number" id="fA0" placeholder="304"></div>
+      <div class="fg"><label>31–60 days</label><input type="number" id="fA31" placeholder="152"></div>
+      <div class="fg"><label>61–90 days</label><input type="number" id="fA61" placeholder="75"></div>
+      <div class="fg"><label>91–180 days</label><input type="number" id="fA91" placeholder="124"></div>
+      <div class="fg"><label>181–270 days</label><input type="number" id="fA181" placeholder="28"></div>
+      <div class="fg"><label>271–365 days</label><input type="number" id="fA271" placeholder="6"></div>
+      <div class="fg"><label>365+ days</label><input type="number" id="fA365" placeholder="2"></div>
+
+      <div class="form-section">Repricer</div>
+      <div class="fg"><label>Total SKUs in Repricer</label><input type="number" id="fRepTotal" placeholder="450"></div>
+      <div class="fg"><label>Matching BB (SKUs)</label><input type="number" id="fRepMatch" placeholder="180"></div>
+      <div class="fg"><label>Winning BB (SKUs)</label><input type="number" id="fRepWin" placeholder="90"></div>
+
+      <div class="form-section">Notes</div>
+      <div class="fg full"><label>Notes (optional)</label><input type="text" id="fNotes" placeholder="e.g. Post-Prime Day, lots of repricing..."></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeOverlay('snapModal')">Cancel</button>
+      <button class="btn-g" onclick="saveSnap()">Save Snapshot</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- BULK UPDATE MODAL -->
+<div class="overlay" id="bulkUpdateModal">
+<div class="modal" style="max-width:540px">
+  <div class="modal-hd">
+    <div class="modal-title">⚡ Update Overlap %s</div>
+    <button class="modal-x" onclick="closeOverlay('bulkUpdateModal')">×</button>
+  </div>
+  <div class="modal-body">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="bulkDateLabel"></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Today's date — auto applied</div>
+    </div>
+    <div id="bulkRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px"></div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:16px">
+      Leave blank to skip a seller. Only filled-in sellers will be saved.
+    </div>
+    <div class="form-actions" style="margin-top:0">
+      <button class="btn" onclick="closeOverlay('bulkUpdateModal')">Cancel</button>
+      <button class="btn-g" onclick="saveBulkUpdate()">Save All</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- MANAGE SELLERS MODAL -->
+<div class="overlay" id="manageModal">
+<div class="modal" style="max-width:560px">
+  <div class="modal-hd">
+    <div class="modal-title">⚙ Manage Sellers</div>
+    <button class="modal-x" onclick="closeOverlay('manageModal')">×</button>
+  </div>
+  <div class="modal-body">
+    <p style="font-family:var(--mono);font-size:11px;color:var(--muted2);margin-bottom:16px;line-height:1.6">
+      Add your competitors here with their Keepa seller name and ID. Once added they'll appear in the bulk update screen every time.
+    </p>
+    <div id="manageRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+    <button class="comp-add-btn" onclick="addManageRow()">+ Add Seller</button>
+    <div class="form-actions">
+      <button class="btn" onclick="closeOverlay('manageModal')">Cancel</button>
+      <button class="btn-g" onclick="saveSellerList()">Save List</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ══ DATA ══════════════════════════════════════════════════════════════════════
+const KEY = 'bdl_oa_v3';
+let DB = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } })();
+let editIdx = null;
+let rangeFrom = null, rangeTo = null;
+let chartInstances = {};
+let compFieldCount = 0;
+
+function persist() { localStorage.setItem(KEY, JSON.stringify(DB)); }
+
+// ══ TABS ══════════════════════════════════════════════════════════════════════
+const TITLES = { overview:'Overview', repricer:'Repricer', competitors:'Competitors', history:'History' };
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  el.classList.add('active');
+  document.getElementById('pageTitle').textContent = TITLES[id];
+  if (id === 'competitors') renderCompTab();
+  if (id === 'history') renderHistory();
+}
+
+// ══ DATE RANGE ═══════════════════════════════════════════════════════════════
+function setPreset(p) {
+  document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  const sorted = [...DB].sort((a,b) => a.date.localeCompare(b.date));
+  if (!sorted.length) return;
+  if (p === 'all') { rangeFrom = null; rangeTo = null; }
+  else if (p === 'last2') {
+    const last = sorted.slice(-2);
+    rangeFrom = last[0].date; rangeTo = last[last.length-1].date;
+  } else if (p === 'last5') {
+    const last = sorted.slice(-5);
+    rangeFrom = last[0].date; rangeTo = last[last.length-1].date;
+  }
+  document.getElementById('rangeFrom').value = rangeFrom || '';
+  document.getElementById('rangeTo').value = rangeTo || '';
+  renderAll();
+}
+
+function applyRange() {
+  rangeFrom = document.getElementById('rangeFrom').value || null;
+  rangeTo = document.getElementById('rangeTo').value || null;
+  document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
+  renderAll();
+}
+
+function filteredSnaps() {
+  let d = [...DB].sort((a,b) => a.date.localeCompare(b.date));
+  if (rangeFrom) d = d.filter(s => s.date >= rangeFrom);
+  if (rangeTo) d = d.filter(s => s.date <= rangeTo);
+  return d;
+}
+
+// ══ RENDER ALL ════════════════════════════════════════════════════════════════
+function renderAll() {
+  const snaps = filteredSnaps();
+  renderKpis(snaps);
+  renderInsights(snaps);
+  renderOverviewChart(snaps);
+  renderAgeing(snaps);
+  renderRepricerTab(snaps);
+  renderCompInsights(snaps);
+  renderBadges();
+}
+
+// ══ KPI TILES ════════════════════════════════════════════════════════════════
+function renderKpis(snaps) {
+  if (!snaps.length) { ['kAsins','kSkus','kCost','kUnits'].forEach(id => document.getElementById(id).textContent = '—'); return; }
+  const latest = snaps[snaps.length-1];
+  const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
+
+  setKpi('kAsins','kAsinsPill','kAsinsSub', latest.asins, prev?.asins, '', true);
+  setKpi('kSkus','kSkusPill','kSkusSub', latest.skus, prev?.skus, '', true);
+  setKpi('kCost','kCostPill','kCostSub', latest.avgCost, prev?.avgCost, '£', false);
+  setKpi('kUnits','kUnitsPill','kUnitsSub', latest.totalUnits, prev?.totalUnits, '', true);
+}
+
+function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true) {
+  const el = document.getElementById(valId);
+  const pill = document.getElementById(pillId);
+  const sub = document.getElementById(subId);
+  el.textContent = curr ? (prefix + (Number.isInteger(curr) ? curr.toLocaleString() : '£'+curr.toFixed(2))) : '—';
+  if (prev && prev !== 0) {
+    const diff = curr - prev;
+    const pct = ((diff/prev)*100).toFixed(1);
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    pill.innerHTML = `<span class="pill ${cls}">${arrow} ${Math.abs(pct)}%</span>`;
+    sub.textContent = 'vs prev snapshot';
+  } else {
+    pill.innerHTML = '';
+    sub.textContent = 'First snapshot';
+  }
+}
+
+// ══ AGEING ════════════════════════════════════════════════════════════════════
+const AG_BUCKETS = [
+  {key:'a0',  label:'0–30d',    color:'#00f5a0'},
+  {key:'a31', label:'31–60d',   color:'#3d9eff'},
+  {key:'a61', label:'61–90d',   color:'#c084fc'},
+  {key:'a91', label:'91–180d',  color:'#ffd166'},
+  {key:'a181',label:'181–270d', color:'#ff8c42'},
+  {key:'a271',label:'271–365d', color:'#ff6b35'},
+  {key:'a365',label:'365d+',    color:'#ff4d6d'},
+];
+
+function renderAgeing(snaps) {
+  const list = document.getElementById('ageingList');
+  const tag = document.getElementById('ageingTotalTag');
+  if (!snaps.length) { list.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:20px 0">No data</div>'; return; }
+  const ag = snaps[snaps.length-1].ageing || {};
+  const total = AG_BUCKETS.reduce((s,b) => s + (ag[b.key]||0), 0) || 1;
+  tag.textContent = total + ' units';
+  list.innerHTML = AG_BUCKETS.map(b => {
+    const cnt = ag[b.key]||0;
+    const pct = ((cnt/total)*100).toFixed(1);
+    return `<div class="ag-row">
+      <div class="ag-lbl">${b.label}</div>
+      <div class="ag-track"><div class="ag-fill" style="width:${pct}%;background:${b.color}"></div></div>
+      <div class="ag-cnt" style="color:${b.color}">${cnt}</div>
+      <div class="ag-pct">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+// ══ AI INSIGHTS ═══════════════════════════════════════════════════════════════
+function renderInsights(snaps) {
+  const box = document.getElementById('insightText');
+  const bulls = document.getElementById('insightBullets');
+  const dateEl = document.getElementById('insightDate');
+  if (!snaps.length) { box.innerHTML = 'Add your first snapshot to unlock AI-powered trend analysis.'; bulls.innerHTML = ''; return; }
+
+  const latest = snaps[snaps.length-1];
+  const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
+  const ag = latest.ageing || {};
+  const totalUnits = AG_BUCKETS.reduce((s,b) => s+(ag[b.key]||0),0) || 1;
+  const over180 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const over180pct = ((over180/totalUnits)*100).toFixed(1);
+  const fresh = ag.a0||0;
+  const freshPct = ((fresh/totalUnits)*100).toFixed(1);
+  const r = latest.repricer || {};
+  const winPct = r.total ? ((r.winning/r.total)*100).toFixed(1) : 0;
+  const matchPct = r.total ? ((r.matching/r.total)*100).toFixed(1) : 0;
+
+  dateEl.textContent = 'Based on snapshot: ' + fmt(latest.date);
+
+  // Main paragraph
+  let main = '';
+  if (snaps.length === 1) {
+    main = `This is your first snapshot — <strong>baseline established</strong>. You currently hold <strong>${latest.asins} ASINs</strong> across <strong>${latest.skus} SKUs</strong> with <strong>${totalUnits} units</strong> in stock. `;
+    if (over180 > 0) main += `<span class="danger">${over180} units (${over180pct}%)</span> are already aged over 180 days — worth reviewing these for repricing or clearance. `;
+    if (freshPct > 40) main += `<strong class="good">${freshPct}% of your stock is under 30 days old</strong>, which is a healthy sign of active buying.`;
+  } else {
+    const asinDiff = latest.asins - prev.asins;
+    const skuDiff = latest.skus - prev.skus;
+    const prevAg = prev.ageing || {};
+    const prevOver180 = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+    const prevTotal = AG_BUCKETS.reduce((s,b) => s+(prevAg[b.key]||0),0)||1;
+    const prevOver180pct = ((prevOver180/prevTotal)*100).toFixed(1);
+    const over180change = parseFloat(over180pct) - parseFloat(prevOver180pct);
+
+    main = `Since your last snapshot on <strong>${fmt(prev.date)}</strong>, your catalogue has `;
+    if (asinDiff > 0) main += `<strong style="color:var(--g)">grown by ${asinDiff} ASINs</strong>`;
+    else if (asinDiff < 0) main += `<strong style="color:var(--r)">shrunk by ${Math.abs(asinDiff)} ASINs</strong>`;
+    else main += `held steady on ASINs`;
+    main += ` and `;
+    if (skuDiff > 0) main += `<strong style="color:var(--g)">added ${skuDiff} SKUs</strong>. `;
+    else if (skuDiff < 0) main += `<strong style="color:var(--r)">dropped ${Math.abs(skuDiff)} SKUs</strong>. `;
+    else main += `held the same SKU count. `;
+
+    if (over180change > 2) {
+      main += `<span class="danger">Your 180d+ stock has increased from ${prevOver180pct}% to ${over180pct}%</span> — this stock is costing you cash flow. `;
+    } else if (over180change < -2) {
+      main += `<strong style="color:var(--g)">You've reduced 180d+ stock from ${prevOver180pct}% down to ${over180pct}%</strong> — good clearance work. `;
+    } else {
+      main += `Your 180d+ ageing stock is holding steady at <strong>${over180pct}%</strong>. `;
+    }
+
+    if (snaps.length >= 3) {
+      const trend3 = snaps.slice(-3).map(s => {
+        const a = s.ageing||{}; const t = AG_BUCKETS.reduce((x,b)=>x+(a[b.key]||0),0)||1;
+        return ((((a.a181||0)+(a.a271||0)+(a.a365||0))/t)*100);
+      });
+      if (trend3[2] > trend3[1] && trend3[1] > trend3[0]) {
+        main += `<span class="danger">⚠ Ageing stock has increased 3 snapshots in a row — consider a clearance push before more crosses into 180d+.</span>`;
+      }
+    }
+  }
+  box.innerHTML = main;
+
+  // Bullet points
+  const bullets = [];
+  if (over180 > 0 && parseFloat(over180pct) > 5) {
+    bullets.push(`<span class="danger">${over180} units are 181d+ old (${over180pct}% of stock)</span> — brick them to recover cash, even at lower ROI`);
+  }
+  if (r.total > 0) {
+    const combined = ((r.winning+r.matching)/r.total*100).toFixed(1);
+    bullets.push(`Repricer has you <strong>matching or winning BB on ${combined}% of SKUs</strong> — winning on ${winPct}%, matching on ${matchPct}%`);
+    if (winPct < 15) bullets.push(`<span class="warn">Win rate below 15%</span> — worth reviewing your repricer floor prices or checking if competitors have undercut heavily`);
+  }
+  if (latest.avgCost > 0 && prev?.avgCost > 0) {
+    const costDiff = latest.avgCost - prev.avgCost;
+    if (Math.abs(costDiff) > 0.5) bullets.push(`Average unit cost ${costDiff > 0 ? `<span class="warn">up £${costDiff.toFixed(2)}</span>` : `<strong style="color:var(--g)">down £${Math.abs(costDiff).toFixed(2)}</strong>`} since last snapshot — ${costDiff > 0 ? 'check your sourcing margins' : 'margin improvement noted'}`);
+  }
+  if (snaps.length >= 3) {
+    const asinTrend = snaps.slice(-3).map(s=>s.asins);
+    if (asinTrend[2] > asinTrend[1] && asinTrend[1] > asinTrend[0]) bullets.push(`<strong style="color:var(--g)">ASIN catalogue growing 3 snapshots running</strong> — positive sourcing momentum`);
+  }
+
+  bulls.innerHTML = bullets.map(b => `<div class="insight-bullet">${b}</div>`).join('');
+}
+
+// ══ OVERVIEW CHART ════════════════════════════════════════════════════════════
+function renderOverviewChart(snaps) {
+  destroyChart('overviewChart');
+  const ctx = document.getElementById('overviewChart').getContext('2d');
+  const tag = document.getElementById('chartRangeTag');
+
+  if (snaps.length < 2) {
+    tag.textContent = 'Need 2+ snapshots';
+    ctx.fillStyle = '#4a5568'; ctx.font = "11px 'DM Mono'"; ctx.textAlign='center';
+    ctx.fillText('Add 2+ snapshots to see trend', ctx.canvas.width/2, ctx.canvas.height/2);
+    return;
+  }
+  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
+
+  chartInstances.overviewChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: snaps.map(s => fmtShort(s.date)),
+      datasets:[
+        { label:'ASINs', data:snaps.map(s=>s.asins), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'SKUs',  data:snaps.map(s=>s.skus),  borderColor:'#3d9eff', backgroundColor:'rgba(61,158,255,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#3d9eff', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'Units', data:snaps.map(s=>s.totalUnits), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.04)', tension:.35, fill:false, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2, borderDash:[4,3] },
+      ]
+    },
+    options: chartOpts()
+  });
+}
+
+// ══ REPRICER TAB ══════════════════════════════════════════════════════════════
+function renderRepricerTab(snaps) {
+  if (!snaps.length) return;
+  const latest = snaps[snaps.length-1];
+  const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
+  const r = latest.repricer||{};
+  const tot = r.total||1;
+  const mPct = ((r.matching/tot)*100).toFixed(1);
+  const wPct = ((r.winning/tot)*100).toFixed(1);
+
+  document.getElementById('rMatchVal').textContent = mPct + '%';
+  document.getElementById('rMatchSub').textContent = `${r.matching||0} of ${r.total||0} SKUs`;
+  document.getElementById('rWinVal').textContent = wPct + '%';
+  document.getElementById('rWinSub').textContent = `${r.winning||0} of ${r.total||0} SKUs`;
+
+  if (prev) {
+    const pr = prev.repricer||{};
+    const pt = pr.total||1;
+    setMiniPill('rMatchPill', (r.matching/tot)*100, (pr.matching/pt)*100, true);
+    setMiniPill('rWinPill', (r.winning/tot)*100, (pr.winning/pt)*100, true);
+  }
+
+  // repricer insights
+  const ri = document.getElementById('repInsightText');
+  const rb = document.getElementById('repInsightBullets');
+  if (!snaps.length) return;
+
+  let rtxt = '';
+  if (snaps.length === 1) {
+    rtxt = `Baseline: <strong>${wPct}% winning</strong> and <strong>${mPct}% matching</strong> the buy box across ${r.total||0} SKUs. `;
+  } else {
+    const pr = prev?.repricer||{}; const pt = pr.total||1;
+    const pwPct = ((pr.winning/pt)*100).toFixed(1);
+    const pmPct = ((pr.matching/pt)*100).toFixed(1);
+    const wDiff = (parseFloat(wPct)-parseFloat(pwPct)).toFixed(1);
+    rtxt = `Win rate has <strong style="color:${wDiff>=0?'var(--g)':'var(--r)'}">${wDiff>=0?'improved':'dropped'} ${Math.abs(wDiff)}pp</strong> since ${fmt(prev.date)} (${pwPct}% → ${wPct}%). `;
+    if (wDiff < -5) rtxt += `<span class="danger">A drop of this size often signals competitor price aggression or your floors being too high.</span> `;
+    if (wDiff > 5) rtxt += `<strong style="color:var(--g)">Strong improvement — your repricer is working well right now.</strong> `;
+  }
+  if (snaps.length >= 3) {
+    const wTrend = snaps.slice(-3).map(s => { const rr=s.repricer||{}; return rr.total ? (rr.winning/rr.total)*100 : 0; });
+    if (wTrend[2]<wTrend[1] && wTrend[1]<wTrend[0]) rtxt += `<span class="danger">⚠ Win rate declining 3 snapshots in a row.</span>`;
+    if (wTrend[2]>wTrend[1] && wTrend[1]>wTrend[0]) rtxt += `<strong style="color:var(--g)">✓ Win rate improving 3 snapshots in a row.</strong>`;
+  }
+  ri.innerHTML = rtxt;
+
+  const rBullets = [];
+  const combined = r.total ? ((r.winning+r.matching)/r.total*100).toFixed(1) : 0;
+  rBullets.push(`Combined BB presence (match + win): <strong>${combined}%</strong> of all repriced SKUs`);
+  if (parseFloat(wPct) > 25) rBullets.push(`<strong style="color:var(--g)">Winning over 25% — strong position. Monitor to ensure floors aren't eating margin.</strong>`);
+  if (parseFloat(wPct) < 10) rBullets.push(`<span class="warn">Under 10% win rate — consider if repricer floors are set too high vs current market prices</span>`);
+  rb.innerHTML = rBullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('');
+
+  // chart
+  destroyChart('repricerChart');
+  const ctx2 = document.getElementById('repricerChart').getContext('2d');
+  if (snaps.length < 2) {
+    ctx2.fillStyle='#4a5568'; ctx2.font="11px 'DM Mono'"; ctx2.textAlign='center';
+    ctx2.fillText('Add 2+ snapshots to see trend', ctx2.canvas.width/2, ctx2.canvas.height/2);
+    return;
+  }
+  chartInstances.repricerChart = new Chart(ctx2, {
+    type:'line',
+    data:{
+      labels: snaps.map(s=>fmtShort(s.date)),
+      datasets:[
+        { label:'Winning BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.winning/rr.total)*100).toFixed(1):0; }), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'Matching BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.matching/rr.total)*100).toFixed(1):0; }), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 },
+      ]
+    },
+    options: {...chartOpts(), ...{plugins:{...chartOpts().plugins}, scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}, min:0, max:100, ticks:{callback:v=>v+'%', color:'#4a5568'}}}}}
+  });
+}
+
+function setMiniPill(id, curr, prev, upGood) {
+  const el = document.getElementById(id); if(!el) return;
+  const diff = curr-prev;
+  const up = diff>0; const good = upGood?up:!up;
+  const cls = diff===0?'flat':(good?'up':'down');
+  const arrow = diff===0?'→':(up?'▲':'▼');
+  el.innerHTML = `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}pp vs prev</span>`;
+}
+
+// ══ COMPETITORS TAB ═══════════════════════════════════════════════════════════
+function renderCompTab() {
+  const snaps = filteredSnaps();
+  const search = document.getElementById('compSearch').value.toLowerCase();
+  const tbody = document.getElementById('compTableBody');
+  const meta = document.getElementById('compMeta');
+
+  // Build seller map: name → array of {date, pct}
+  const sellerMap = {};
+  snaps.forEach(s => {
+    (s.competitors||[]).forEach(c => {
+      const key = c.name.trim();
+      if (!sellerMap[key]) sellerMap[key] = { sellerId: c.sellerId||'', isMe: c.isMe, data: [] };
+      sellerMap[key].data.push({ date: s.date, pct: c.pct||0 });
+      if (c.sellerId) sellerMap[key].sellerId = c.sellerId;
+      if (c.isMe) sellerMap[key].isMe = true;
+    });
+  });
+
+  let sellers = Object.entries(sellerMap).map(([name, info]) => ({
+    name, sellerId: info.sellerId, isMe: info.isMe,
+    latest: info.data[info.data.length-1]?.pct||0,
+    prev: info.data.length>1 ? info.data[info.data.length-2]?.pct : null,
+    history: info.data.map(d=>d.pct),
+  }));
+
+  sellers.sort((a,b) => b.latest - a.latest);
+  sellers = sellers.map((s,i) => ({...s, rank: i+1}));
+
+  // filter me to show rank context
+  if (search) sellers = sellers.filter(s => s.name.toLowerCase().includes(search) || s.sellerId.toLowerCase().includes(search));
+
+  meta.textContent = `${sellers.length} seller${sellers.length!==1?'s':''} · ${snaps.length} snapshot${snaps.length!==1?'s':''}`;
+  document.getElementById('compNavBadge').textContent = Object.keys(sellerMap).length;
+
+  if (!sellers.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No competitor data yet. Use ⚙ Manage Sellers to add your list, then ⚡ Update Overlaps to log readings.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sellers.map(s => {
+    const diff = s.prev !== null ? (s.latest - s.prev).toFixed(1) : null;
+    const arrowHtml = diff !== null
+      ? `<span class="pill ${parseFloat(diff)>0?'up':(parseFloat(diff)<0?'down':'flat')}">${parseFloat(diff)>0?'▲':(parseFloat(diff)<0?'▼':'→')} ${Math.abs(diff)}%</span>`
+      : '<span style="color:var(--muted);font-size:10px">—</span>';
+
+    const sparkId = 'spark_' + s.name.replace(/\s+/g,'_');
+    return `<tr ${s.isMe?'':''}>
+      <td><span class="rank-badge ${s.isMe?'me':''}">#${s.rank}</span></td>
+      <td>${s.name}</td>
+      <td class="seller-id">${s.sellerId||'—'}</td>
+      <td><span class="pct-val" style="color:var(--text)">${s.latest.toFixed(1)}%</span></td>
+      <td>${arrowHtml}</td>
+      <td><canvas id="${sparkId}" width="120" height="36" class="sparkline-cell"></canvas></td>
+    </tr>`;
+  }).join('');
+
+  // draw sparklines
+  setTimeout(() => {
+    sellers.forEach(s => {
+      const sparkId = 'spark_' + s.name.replace(/\s+/g,'_');
+      const canvas = document.getElementById(sparkId);
+      if (!canvas) return;
+      const last5 = s.history.slice(-5);
+      destroyChart(sparkId);
+      chartInstances[sparkId] = new Chart(canvas.getContext('2d'), {
+        type:'line',
+        data:{ labels:last5.map((_,i)=>i), datasets:[{
+          data: last5,
+          borderColor: '#3d9eff',
+          borderWidth: 2,
+          pointRadius: 2,
+          pointBackgroundColor: '#3d9eff',
+          tension: .3,
+          fill: false,
+        }]},
+        options:{ responsive:false, plugins:{legend:{display:false},tooltip:{enabled:false}}, scales:{x:{display:false},y:{display:false}}, animation:{duration:400} }
+      });
+    });
+  }, 50);
+}
+
+function renderCompSummary(snaps) {
+  const sellerMap = {};
+  snaps.forEach(s => { (s.competitors||[]).forEach(c => { const k=c.name.trim(); if(!sellerMap[k]) sellerMap[k]={data:[]}; sellerMap[k].data.push(c.pct||0); }); });
+  const count = Object.keys(sellerMap).length;
+  if (!count) return 'Add competitor readings on this tab to start tracking their overlap % over time.';
+  const sorted = Object.entries(sellerMap).sort((a,b)=>b[1].data[b[1].data.length-1]-a[1].data[a[1].data.length-1]);
+  const top = sorted[0];
+  return `Tracking <strong>${count} competitor${count!==1?'s':''}</strong>. Highest overlap: <strong>${top[0]}</strong> at <strong>${top[1].data[top[1].data.length-1].toFixed(1)}%</strong>. The more readings you add, the clearer the trends become.`;
+}
+
+function renderCompInsights(snaps) {
+  const ci = document.getElementById('compInsightText');
+  const cb = document.getElementById('compInsightBullets');
+  if (!snaps.length) return;
+
+  const sellerMap = {};
+  snaps.forEach(s => { (s.competitors||[]).forEach(c => { const k=c.name.trim(); if(!sellerMap[k]) sellerMap[k]={sellerId:c.sellerId||'',data:[]}; sellerMap[k].data.push(c.pct||0); if(c.sellerId) sellerMap[k].sellerId=c.sellerId; }); });
+
+  const allLatest = Object.entries(sellerMap).map(([n,v])=>({name:n,pct:v.data[v.data.length-1]})).sort((a,b)=>b.pct-a.pct);
+  if (!allLatest.length) { ci.innerHTML = renderCompSummary(snaps); cb.innerHTML=''; return; }
+
+  const top = allLatest[0];
+  const growing = Object.entries(sellerMap).filter(([_,v])=>{ const d=v.data; return d.length>=2 && d[d.length-1]>d[d.length-2]; });
+  const shrinking = Object.entries(sellerMap).filter(([_,v])=>{ const d=v.data; return d.length>=2 && d[d.length-1]<d[d.length-2]; });
+
+  let txt = `Tracking <strong>${allLatest.length} competitor${allLatest.length!==1?'s':''}</strong>. `;
+  txt += `<strong>${top.name}</strong> has the highest overlap at <strong>${top.pct.toFixed(1)}%</strong> — `;
+  txt += `this is the seller whose catalogue you overlap with most. `;
+  if (growing.length) txt += `<strong style="color:var(--g)">${growing.map(g=>g[0]).join(', ')}</strong> ${growing.length===1?'is':'are'} growing in overlap — you're picking up more of their stock. `;
+  if (shrinking.length) txt += `<span style="color:var(--muted2)">${shrinking.map(s=>s[0]).join(', ')} ${shrinking.length===1?'is':'are'} shrinking</span> — overlap dropping may mean they've expanded into areas you're not buying. `;
+
+  ci.innerHTML = txt;
+
+  const bullets = [];
+  Object.entries(sellerMap).forEach(([name, info]) => {
+    const d = info.data;
+    if (d.length >= 3 && d[d.length-1]>d[d.length-2] && d[d.length-2]>d[d.length-3])
+      bullets.push(`<strong style="color:var(--g)">${name}</strong> overlap growing 3 readings in a row — strong catalogue alignment`);
+    if (d.length >= 2 && d[d.length-1]-d[d.length-2] > 5)
+      bullets.push(`<span class="warn">${name} jumped +${(d[d.length-1]-d[d.length-2]).toFixed(1)}pp</span> — big move, worth checking what they're buying`);
+    if (d.length >= 2 && d[d.length-2]-d[d.length-1] > 5)
+      bullets.push(`${name} dropped ${(d[d.length-2]-d[d.length-1]).toFixed(1)}pp — overlap shrinking, may have shifted catalogue`);
+  });
+  cb.innerHTML = bullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('');
+}
+
+// ══ HISTORY ═══════════════════════════════════════════════════════════════════
+function renderHistory() {
+  const search = document.getElementById('histSearch').value.toLowerCase();
+  const hFrom = document.getElementById('histFrom').value;
+  const hTo = document.getElementById('histTo').value;
+
+  let snaps = [...DB].sort((a,b)=>b.date.localeCompare(a.date));
+  if (search) snaps = snaps.filter(s=>(s.notes||'').toLowerCase().includes(search));
+  if (hFrom) snaps = snaps.filter(s=>s.date>=hFrom);
+  if (hTo) snaps = snaps.filter(s=>s.date<=hTo);
+
+  document.getElementById('histCount').textContent = `${snaps.length} of ${DB.length} snapshots`;
+  document.getElementById('histNavBadge').textContent = DB.length;
+
+  const tbody = document.getElementById('histBody');
+  if (!snaps.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="9">No snapshots match your filters.</td></tr>'; return; }
+
+  tbody.innerHTML = snaps.map(s => {
+    const ag = s.ageing||{}; const t = AG_BUCKETS.reduce((x,b)=>x+(ag[b.key]||0),0)||1;
+    const over180 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+    const winPct = s.repricer?.total ? ((s.repricer.winning/s.repricer.total)*100).toFixed(1)+'%' : '—';
+    const realIdx = DB.findIndex(d=>d.date===s.date && d.notes===s.notes);
+    return `<tr>
+      <td style="color:var(--g)">${fmt(s.date)}</td>
+      <td>${s.asins||'—'}</td>
+      <td>${s.skus||'—'}</td>
+      <td>${s.avgCost?'£'+s.avgCost.toFixed(2):'—'}</td>
+      <td>${s.totalUnits||'—'}</td>
+      <td style="color:${over180>0?'var(--r)':'var(--muted2)'}">${over180||0}</td>
+      <td>${winPct}</td>
+      <td class="notes-cell" title="${s.notes||''}">${s.notes||'—'}</td>
+      <td><div class="tbl-actions">
+        <button class="tbl-btn" onclick="editSnap(${realIdx})">Edit</button>
+        <button class="tbl-btn del" onclick="deleteSnap(${realIdx})">Delete</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function clearHistFilters() {
+  document.getElementById('histSearch').value='';
+  document.getElementById('histFrom').value='';
+  document.getElementById('histTo').value='';
+  document.querySelectorAll('.history-controls .range-preset').forEach(b=>b.classList.remove('active'));
+  renderHistory();
+}
+
+function setHistPreset(p, btn) {
+  document.querySelectorAll('.history-controls .range-preset').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const now = new Date();
+  let from='', to='';
+  if (p==='7d') {
+    const d = new Date(now); d.setDate(d.getDate()-7);
+    from = d.toISOString().split('T')[0]; to = now.toISOString().split('T')[0];
+  } else if (p==='month') {
+    from = new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0];
+    to = now.toISOString().split('T')[0];
+  } else if (p==='lastmonth') {
+    const d = new Date(now.getFullYear(),now.getMonth()-1,1);
+    const d2 = new Date(now.getFullYear(),now.getMonth(),0);
+    from = d.toISOString().split('T')[0]; to = d2.toISOString().split('T')[0];
+  } else if (p==='90d') {
+    const d = new Date(now); d.setDate(d.getDate()-90);
+    from = d.toISOString().split('T')[0]; to = now.toISOString().split('T')[0];
+  }
+  document.getElementById('histFrom').value=from;
+  document.getElementById('histTo').value=to;
+  renderHistory();
+}
+
+function calcAvgCost() {
+  const units = +document.getElementById('fUnits').value||0;
+  const val = +document.getElementById('fStockValue').value||0;
+  const disp = document.getElementById('fCostDisplay');
+  const calc = document.getElementById('fCostCalc');
+  const hidden = document.getElementById('fCost');
+  if (units > 0 && val > 0) {
+    const avg = (val/units).toFixed(2);
+    disp.textContent = '£' + avg;
+    calc.textContent = '£'+val.toLocaleString()+' ÷ '+units+' units';
+    hidden.value = avg;
+  } else {
+    disp.textContent = '—';
+    calc.textContent = units>0||val>0 ? 'Enter both fields' : '';
+    hidden.value = '';
+  }
+}
+
+// ══ SELLER LIST (stored separately from snapshots) ═══════════════════════════
+const SELLERS_KEY = 'bdl_sellers_v1';
+let SELLERS = (() => { try { return JSON.parse(localStorage.getItem(SELLERS_KEY)) || []; } catch { return []; } })();
+function persistSellers() { localStorage.setItem(SELLERS_KEY, JSON.stringify(SELLERS)); }
+
+// ── BULK UPDATE ──────────────────────────────────────────────────────────────
+function openBulkUpdate() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('bulkDateLabel').textContent = 'Date: ' + fmt(today);
+  const wrap = document.getElementById('bulkRows');
+  if (!SELLERS.length) {
+    wrap.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--muted2);padding:20px 0;text-align:center">No sellers yet — use ⚙ Manage Sellers to add your competitor list first.</div>';
+    document.getElementById('bulkUpdateModal').classList.add('open');
+    return;
+  }
+  // pre-fill with latest known % for each seller
+  wrap.innerHTML = SELLERS.map((s,i) => {
+    let latestPct = '';
+    [...DB].sort((a,b)=>a.date.localeCompare(b.date)).forEach(snap => {
+      (snap.competitors||[]).forEach(c => { if(c.name===s.name) latestPct=c.pct; });
+    });
+    return `<div style="display:grid;grid-template-columns:1fr 140px;gap:10px;align-items:center;padding:10px 12px;background:var(--s2);border:1px solid var(--border)">
+      <div>
+        <div style="font-size:13px;font-weight:600">${s.name}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:2px">${s.sellerId||'No ID set'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input type="number" step="0.1" id="bulk_${i}" placeholder="% e.g. 42.5"
+          value="${latestPct!==''?latestPct:''}"
+          style="background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;width:100%;transition:border-color .15s"
+          onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='var(--border)'">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">%</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('bulkUpdateModal').classList.add('open');
+}
+
+function saveBulkUpdate() {
+  const today = new Date().toISOString().split('T')[0];
+  let saved = 0;
+  SELLERS.forEach((s,i) => {
+    const val = document.getElementById('bulk_'+i)?.value;
+    if (val==='' || val===null || val===undefined) return;
+    const pct = parseFloat(val);
+    if (isNaN(pct)) return;
+    let snap = DB.find(sn=>sn.date===today);
+    if (!snap) {
+      snap = { date:today, asins:0, skus:0, avgCost:0, totalUnits:0, stockValue:0, ageing:{a0:0,a31:0,a61:0,a91:0,a181:0,a271:0,a365:0}, repricer:{total:0,matching:0,winning:0}, competitors:[], notes:'Competitor update' };
+      DB.push(snap); DB.sort((a,b)=>a.date.localeCompare(b.date));
+    }
+    if (!snap.competitors) snap.competitors=[];
+    const ex = snap.competitors.find(c=>c.name===s.name);
+    if (ex) ex.pct=pct; else snap.competitors.push({name:s.name, sellerId:s.sellerId||'', pct, isMe:false});
+    saved++;
+  });
+  persist();
+  closeOverlay('bulkUpdateModal');
+  renderCompTab();
+  renderCompInsights(filteredSnaps());
+  renderBadges();
+  if (saved) showToast(`✓ Saved ${saved} overlap reading${saved!==1?'s':''} for ${fmt(new Date().toISOString().split('T')[0])}`);
+}
+
+// ── MANAGE SELLERS ───────────────────────────────────────────────────────────
+let manageRowCount = 0;
+
+function openManageSellers() {
+  manageRowCount = 0;
+  const wrap = document.getElementById('manageRows');
+  wrap.innerHTML = '';
+  SELLERS.forEach(s => addManageRow(s.name, s.sellerId));
+  if (!SELLERS.length) addManageRow();
+  document.getElementById('manageModal').classList.add('open');
+}
+
+function addManageRow(name='', sellerId='') {
+  manageRowCount++;
+  const wrap = document.getElementById('manageRows');
+  const row = document.createElement('div');
+  row.id = 'mr_'+manageRowCount;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 32px;gap:8px;align-items:end';
+  row.innerHTML = `
+    <div class="fg"><label>Seller Nickname</label><input type="text" id="mn_${manageRowCount}" value="${name}" placeholder="e.g. BargainWorld" style="width:100%"></div>
+    <div class="fg"><label>Seller ID</label><input type="text" id="mid_${manageRowCount}" value="${sellerId}" placeholder="e.g. A1B2C3D4E5" style="width:100%"></div>
+    <button class="comp-rm" onclick="document.getElementById('mr_${manageRowCount}').remove()" style="margin-bottom:0">×</button>`;
+  wrap.appendChild(row);
+}
+
+function saveSellerList() {
+  const rows = document.querySelectorAll('[id^=mr_]');
+  SELLERS = [];
+  rows.forEach(row => {
+    const i = row.id.split('_')[1];
+    const name = document.getElementById('mn_'+i)?.value.trim();
+    const sellerId = document.getElementById('mid_'+i)?.value.trim()||''
+    if (name) SELLERS.push({name, sellerId});
+  });
+  persistSellers();
+  closeOverlay('manageModal');
+  renderCompTab();
+  renderBadges();
+  showToast(`✓ Seller list saved — ${SELLERS.length} seller${SELLERS.length!==1?'s':''}`);
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) { t=document.createElement('div'); t.id='toast'; t.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--g);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:700;padding:10px 18px;z-index:9000;opacity:0;transition:opacity .2s'; document.body.appendChild(t); }
+  t.textContent=msg; t.style.opacity='1';
+  setTimeout(()=>t.style.opacity='0', 2800);
+}
+
+// ══ SNAP MODAL ════════════════════════════════════════════════════════════════
+function openSnap(prefill=null) {
+  editIdx = null;
+  document.getElementById('snapModalTitle').textContent = 'Add Snapshot';
+  document.getElementById('fDate').value = new Date().toISOString().split('T')[0];
+  ['fAsins','fSkus','fUnits','fStockValue','fA0','fA31','fA61','fA91','fA181','fA271','fA365','fRepTotal','fRepMatch','fRepWin','fNotes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('fCost').value='';
+  document.getElementById('fCostDisplay').textContent='—';
+  document.getElementById('fCostCalc').textContent='';
+  if (prefill) fillForm(prefill);
+  document.getElementById('snapModal').classList.add('open');
+}
+
+function editSnap(idx) {
+  editIdx = idx;
+  const s = DB[idx];
+  document.getElementById('snapModalTitle').textContent = 'Edit Snapshot';
+  fillForm(s);
+  document.getElementById('snapModal').classList.add('open');
+}
+
+function fillForm(s) {
+  document.getElementById('fDate').value = s.date||'';
+  document.getElementById('fAsins').value = s.asins||'';
+  document.getElementById('fSkus').value = s.skus||'';
+  document.getElementById('fUnits').value = s.totalUnits||'';
+  document.getElementById('fStockValue').value = s.stockValue||'';
+  document.getElementById('fCost').value = s.avgCost||'';
+  if (s.avgCost) {
+    document.getElementById('fCostDisplay').textContent = '£' + parseFloat(s.avgCost).toFixed(2);
+    document.getElementById('fCostCalc').textContent = s.stockValue ? `£${s.stockValue} ÷ ${s.totalUnits} units` : '';
+  }
+  const ag = s.ageing||{};
+  document.getElementById('fA0').value=ag.a0||'';
+  document.getElementById('fA31').value=ag.a31||'';
+  document.getElementById('fA61').value=ag.a61||'';
+  document.getElementById('fA91').value=ag.a91||'';
+  document.getElementById('fA181').value=ag.a181||'';
+  document.getElementById('fA271').value=ag.a271||'';
+  document.getElementById('fA365').value=ag.a365||'';
+  const r = s.repricer||{};
+  document.getElementById('fRepTotal').value=r.total||'';
+  document.getElementById('fRepMatch').value=r.matching||'';
+  document.getElementById('fRepWin').value=r.winning||'';
+  document.getElementById('fNotes').value=s.notes||'';
+}
+
+function saveSnap() {
+  const date = document.getElementById('fDate').value;
+  if (!date) { alert('Please set a date'); return; }
+  const units = +document.getElementById('fUnits').value||0;
+  const stockValue = +document.getElementById('fStockValue').value||0;
+  const avgCost = units > 0 && stockValue > 0 ? +(stockValue/units).toFixed(2) : (+document.getElementById('fCost').value||0);
+  const s = {
+    date,
+    asins: +document.getElementById('fAsins').value||0,
+    skus: +document.getElementById('fSkus').value||0,
+    avgCost,
+    stockValue,
+    totalUnits: units,
+    ageing: { a0:+document.getElementById('fA0').value||0, a31:+document.getElementById('fA31').value||0, a61:+document.getElementById('fA61').value||0, a91:+document.getElementById('fA91').value||0, a181:+document.getElementById('fA181').value||0, a271:+document.getElementById('fA271').value||0, a365:+document.getElementById('fA365').value||0 },
+    repricer: { total:+document.getElementById('fRepTotal').value||0, matching:+document.getElementById('fRepMatch').value||0, winning:+document.getElementById('fRepWin').value||0 },
+    competitors: DB[editIdx]?.competitors || [],
+    notes: document.getElementById('fNotes').value,
+  };
+  if (editIdx !== null) DB[editIdx] = s;
+  else { DB.push(s); DB.sort((a,b)=>a.date.localeCompare(b.date)); }
+  persist();
+  closeOverlay('snapModal');
+  // default range = last snap to current
+  if (DB.length >= 2 && !rangeFrom) {
+    const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
+    rangeFrom = sorted[sorted.length-2].date;
+    rangeTo = sorted[sorted.length-1].date;
+    document.getElementById('rangeFrom').value = rangeFrom;
+    document.getElementById('rangeTo').value = rangeTo;
+  }
+  renderAll();
+  renderHistory();
+}
+
+function deleteSnap(idx) {
+  if (!confirm('Delete this snapshot?')) return;
+  DB.splice(idx,1); persist(); renderAll(); renderHistory();
+}
+
+// ══ COMPETITOR FORM FIELDS ════════════════════════════════════════════════════
+function addCompField(name='',sellerId='',pct='',isMe=false) {
+  compFieldCount++;
+  const wrap = document.getElementById('compFieldsWrap');
+  const row = document.createElement('div');
+  row.className='comp-form-row'; row.id=`cr_${compFieldCount}`;
+  row.innerHTML=`
+    <div class="fg"><label>Seller Name</label><input type="text" id="cn_${compFieldCount}" value="${name}" placeholder="e.g. BargainWorld"></div>
+    <div class="fg"><label>Seller ID</label><input type="text" id="cid_${compFieldCount}" value="${sellerId}" placeholder="A1B2C3..."></div>
+    <div class="fg"><label>Overlap %</label><input type="number" step="0.1" id="cp_${compFieldCount}" value="${pct}" placeholder="42.5"></div>
+    <div class="fg"><label>Me?</label><select id="cm_${compFieldCount}"><option value="0" ${!isMe?'selected':''}>No</option><option value="1" ${isMe?'selected':''}>Yes</option></select></div>
+    <button class="comp-rm" onclick="document.getElementById('cr_${compFieldCount}').remove()">×</button>`;
+  // adjust grid
+  row.style.gridTemplateColumns = '1fr 100px 70px 60px 30px';
+  wrap.appendChild(row);
+}
+
+function getCompFormData() {
+  const comps=[];
+  document.querySelectorAll('[id^=cn_]').forEach(el=>{
+    const i=el.id.split('_')[1];
+    const name=el.value.trim();
+    if(!name) return;
+    comps.push({ name, sellerId:document.getElementById(`cid_${i}`)?.value||'', pct:parseFloat(document.getElementById(`cp_${i}`)?.value)||0, isMe:document.getElementById(`cm_${i}`)?.value==='1' });
+  });
+  return comps;
+}
+
+// ══ UTILS ═════════════════════════════════════════════════════════════════════
+function destroyChart(id) { if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];} }
+
+function chartOpts() {
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ position:'top', labels:{ boxWidth:10, padding:16, color:'#6b7a8d', font:{family:'DM Mono',size:10} } }, tooltip:{ backgroundColor:'#1c2330', titleFont:{family:'DM Mono',size:11}, bodyFont:{family:'DM Mono',size:11}, borderColor:'#2a3545', borderWidth:1 } },
+    scales:{ x:{ grid:{color:'#1c2330'}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}} }, y:{ grid:{color:'#1c2330'}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}}, beginAtZero:false } }
+  };
+}
+
+function fmt(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
+function fmtShort(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${m}`; }
+
+function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
+
+function renderBadges() {
+  document.getElementById('histNavBadge').textContent = DB.length;
+  document.getElementById('compNavBadge').textContent = SELLERS.length||0;
+}
+
+// ══ INIT ══════════════════════════════════════════════════════════════════════
+Chart.defaults.color = '#4a5568';
+Chart.defaults.borderColor = '#1c2330';
+Chart.defaults.font.family = "'DM Mono', monospace";
+
+// Default range = last 2 snaps
+if (DB.length >= 2) {
+  const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
+  rangeFrom = sorted[sorted.length-2].date;
+  rangeTo = sorted[sorted.length-1].date;
+  document.getElementById('rangeFrom').value = rangeFrom;
+  document.getElementById('rangeTo').value = rangeTo;
+}
+
+renderAll();
+renderHistory();
+renderBadges();
+</script>
+</body>
+</html>
