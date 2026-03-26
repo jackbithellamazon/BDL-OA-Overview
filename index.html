@@ -5,6 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BDL OA Overview</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script type="module">
+// ══ FIREBASE CONFIG ══════════════════════════════════════════════════════════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCntSANP2j1a1Go4SWz6nOsJkEtX5kxXgo",
+  authDomain: "bdl-oa-overview.firebaseapp.com",
+  projectId: "bdl-oa-overview",
+  storageBucket: "bdl-oa-overview.firebasestorage.app",
+  messagingSenderId: "657106404188",
+  appId: "1:657106404188:web:13e836fd301af7c96cb799",
+  measurementId: "G-124VCGHF02"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const DOC_REF = doc(db, 'bdl', 'data');
+
+// Expose to global scope for use in non-module script
+window._fbSave = async function(data) {
+  try {
+    await setDoc(DOC_REF, data);
+    return true;
+  } catch(e) {
+    console.error('Firebase save error:', e);
+    // fallback to localStorage
+    localStorage.setItem('bdl_oa_v3', JSON.stringify(data.snapshots||[]));
+    localStorage.setItem('bdl_sellers_v1', JSON.stringify(data.sellers||[]));
+    return false;
+  }
+};
+
+window._fbLoad = async function() {
+  try {
+    const snap = await getDoc(DOC_REF);
+    if (snap.exists()) return snap.data();
+    return null;
+  } catch(e) {
+    console.error('Firebase load error:', e);
+    return null;
+  }
+};
+
+window._fbReady = true;
+
+// Load data from Firebase on startup
+(async () => {
+  showSyncStatus('loading');
+  const data = await window._fbLoad();
+  if (data) {
+    DB = data.snapshots || [];
+    SELLERS = data.sellers || [];
+  } else {
+    // First time — migrate from localStorage if anything exists
+    const lsSnaps = localStorage.getItem('bdl_oa_v3');
+    const lsSellers = localStorage.getItem('bdl_sellers_v1');
+    if (lsSnaps) DB = JSON.parse(lsSnaps);
+    if (lsSellers) SELLERS = JSON.parse(lsSellers);
+    // Save migrated data to Firebase
+    if (DB.length || SELLERS.length) await window._fbSave({snapshots:DB, sellers:SELLERS});
+  }
+  hideSyncStatus();
+  // Set default range
+  if (DB.length >= 2) {
+    const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
+    rangeFrom = sorted[sorted.length-2].date;
+    rangeTo = sorted[sorted.length-1].date;
+    document.getElementById('rangeFrom').value = rangeFrom;
+    document.getElementById('rangeTo').value = rangeTo;
+  }
+  renderAll();
+  renderHistory();
+  renderBadges();
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Clash+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -534,14 +610,38 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 
 <script>
 // ══ DATA ══════════════════════════════════════════════════════════════════════
-const KEY = 'bdl_oa_v3';
-let DB = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } })();
+let DB = [];
 let editIdx = null;
 let rangeFrom = null, rangeTo = null;
 let chartInstances = {};
 let compFieldCount = 0;
 
-function persist() { localStorage.setItem(KEY, JSON.stringify(DB)); }
+// Sync status UI
+function showSyncStatus(state) {
+  let el = document.getElementById('syncStatus');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'syncStatus';
+    el.style.cssText = 'position:fixed;top:14px;right:20px;font-family:var(--mono);font-size:10px;padding:5px 10px;z-index:8000;border-radius:2px;transition:all .3s';
+    document.body.appendChild(el);
+  }
+  if (state==='loading') { el.style.background='var(--s3)'; el.style.color='var(--muted2)'; el.textContent='⟳ Syncing...'; el.style.opacity='1'; }
+  else if (state==='saved') { el.style.background='var(--g2)'; el.style.color='var(--g)'; el.textContent='✓ Saved'; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0',2000); }
+  else if (state==='error') { el.style.background='var(--r2)'; el.style.color='var(--r)'; el.textContent='⚠ Sync failed — saved locally'; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0',4000); }
+}
+function hideSyncStatus() { showSyncStatus(''); const el=document.getElementById('syncStatus'); if(el) el.style.opacity='0'; }
+
+async function persist() {
+  // Always save to localStorage as backup
+  localStorage.setItem('bdl_oa_v3', JSON.stringify(DB));
+  localStorage.setItem('bdl_sellers_v1', JSON.stringify(SELLERS));
+  // Save to Firebase if ready
+  if (window._fbSave) {
+    showSyncStatus('loading');
+    const ok = await window._fbSave({snapshots:DB, sellers:SELLERS});
+    showSyncStatus(ok ? 'saved' : 'error');
+  }
+}
 
 // ══ TABS ══════════════════════════════════════════════════════════════════════
 const TITLES = { overview:'Overview', repricer:'Repricer', competitors:'Competitors', history:'History' };
@@ -1077,10 +1177,9 @@ function calcAvgCost() {
   }
 }
 
-// ══ SELLER LIST (stored separately from snapshots) ═══════════════════════════
-const SELLERS_KEY = 'bdl_sellers_v1';
-let SELLERS = (() => { try { return JSON.parse(localStorage.getItem(SELLERS_KEY)) || []; } catch { return []; } })();
-function persistSellers() { localStorage.setItem(SELLERS_KEY, JSON.stringify(SELLERS)); }
+// ══ SELLER LIST ══════════════════════════════════════════════════════════════
+let SELLERS = [];
+function persistSellers() { persist(); } // now just calls unified persist
 
 // ── BULK UPDATE ──────────────────────────────────────────────────────────────
 function openBulkUpdate() {
@@ -1115,7 +1214,7 @@ function openBulkUpdate() {
   document.getElementById('bulkUpdateModal').classList.add('open');
 }
 
-function saveBulkUpdate() {
+async function saveBulkUpdate() {
   const today = new Date().toISOString().split('T')[0];
   let saved = 0;
   SELLERS.forEach((s,i) => {
@@ -1133,7 +1232,7 @@ function saveBulkUpdate() {
     if (ex) ex.pct=pct; else snap.competitors.push({name:s.name, sellerId:s.sellerId||'', pct, isMe:false});
     saved++;
   });
-  persist();
+  await persist();
   closeOverlay('bulkUpdateModal');
   renderCompTab();
   renderCompInsights(filteredSnaps());
@@ -1166,7 +1265,7 @@ function addManageRow(name='', sellerId='') {
   wrap.appendChild(row);
 }
 
-function saveSellerList() {
+async function saveSellerList() {
   const rows = document.querySelectorAll('[id^=mr_]');
   SELLERS = [];
   rows.forEach(row => {
@@ -1175,7 +1274,7 @@ function saveSellerList() {
     const sellerId = document.getElementById('mid_'+i)?.value.trim()||''
     if (name) SELLERS.push({name, sellerId});
   });
-  persistSellers();
+  await persistSellers();
   closeOverlay('manageModal');
   renderCompTab();
   renderBadges();
@@ -1237,7 +1336,7 @@ function fillForm(s) {
   document.getElementById('fNotes').value=s.notes||'';
 }
 
-function saveSnap() {
+async function saveSnap() {
   const date = document.getElementById('fDate').value;
   if (!date) { alert('Please set a date'); return; }
   const units = +document.getElementById('fUnits').value||0;
@@ -1257,7 +1356,7 @@ function saveSnap() {
   };
   if (editIdx !== null) DB[editIdx] = s;
   else { DB.push(s); DB.sort((a,b)=>a.date.localeCompare(b.date)); }
-  persist();
+  await persist();
   closeOverlay('snapModal');
   // default range = last snap to current
   if (DB.length >= 2 && !rangeFrom) {
@@ -1271,9 +1370,9 @@ function saveSnap() {
   renderHistory();
 }
 
-function deleteSnap(idx) {
+async function deleteSnap(idx) {
   if (!confirm('Delete this snapshot?')) return;
-  DB.splice(idx,1); persist(); renderAll(); renderHistory();
+  DB.splice(idx,1); await persist(); renderAll(); renderHistory();
 }
 
 // ══ COMPETITOR FORM FIELDS ════════════════════════════════════════════════════
@@ -1330,18 +1429,9 @@ function renderBadges() {
 Chart.defaults.color = '#4a5568';
 Chart.defaults.borderColor = '#1c2330';
 Chart.defaults.font.family = "'DM Mono', monospace";
-
-// Default range = last 2 snaps
-if (DB.length >= 2) {
-  const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
-  rangeFrom = sorted[sorted.length-2].date;
-  rangeTo = sorted[sorted.length-1].date;
-  document.getElementById('rangeFrom').value = rangeFrom;
-  document.getElementById('rangeTo').value = rangeTo;
-}
-
+// Data loading and initial render is handled by the Firebase module above.
+// This renders a blank state while Firebase loads.
 renderAll();
-renderHistory();
 renderBadges();
 </script>
 </body>
