@@ -50,29 +50,41 @@ window._fbLoad = async function() {
 window._fbReady = true;
 
 (async () => {
-  showSyncStatus('loading');
+  // Wait for regular script to load
+  await new Promise(resolve => {
+    const check = setInterval(() => {
+      if (typeof window.showSyncStatus === 'function') {
+        clearInterval(check);
+        resolve();
+      }
+    }, 50);
+  });
+  
+  window.showSyncStatus('loading');
   const data = await window._fbLoad();
   if (data) {
-    DB = data.snapshots || [];
-    SELLERS = data.sellers || [];
+    window.DB = data.snapshots || [];
+    window.SELLERS = data.sellers || [];
   } else {
     const lsSnaps = localStorage.getItem('bdl_oa_v3');
     const lsSellers = localStorage.getItem('bdl_sellers_v1');
-    if (lsSnaps) DB = JSON.parse(lsSnaps);
-    if (lsSellers) SELLERS = JSON.parse(lsSellers);
-    if (DB.length || SELLERS.length) await window._fbSave({snapshots:DB, sellers:SELLERS});
+    if (lsSnaps) window.DB = JSON.parse(lsSnaps);
+    if (lsSellers) window.SELLERS = JSON.parse(lsSellers);
+    if ((window.DB && window.DB.length) || (window.SELLERS && window.SELLERS.length)) {
+      await window._fbSave({snapshots: window.DB || [], sellers: window.SELLERS || []});
+    }
   }
-  hideSyncStatus();
-  setDefaultDateRange();
-  renderAll();
-  renderHistory();
-  renderBadges();
+  window.hideSyncStatus();
+  window.setDefaultDateRange();
+  window.renderAll();
+  window.renderHistory();
+  window.renderBadges();
 })();
 </script>
 <script>
 // ══ DATA & GLOBALS ════════════════════════════════════════════════════════════
-let DB = [];
-let SELLERS = [];
+window.DB = [];
+window.SELLERS = [];
 let editIdx = null;
 let rangeFrom = null, rangeTo = null;
 let chartInstances = {};
@@ -94,7 +106,7 @@ function showSyncStatus(state) {
 function hideSyncStatus() { showSyncStatus(''); const el=document.getElementById('syncStatus'); if(el) el.style.opacity='0'; }
 
 async function persist() {
-  localStorage.setItem('bdl_oa_v3', JSON.stringify(DB));
+  localStorage.setItem("bdl_oa_v3", JSON.stringify(window.DB)));
   localStorage.setItem('bdl_sellers_v1', JSON.stringify(SELLERS));
   if (window._fbSave) {
     showSyncStatus('loading');
@@ -1537,7 +1549,7 @@ function showSyncStatus(state) {
 function hideSyncStatus() { showSyncStatus(''); const el=document.getElementById('syncStatus'); if(el) el.style.opacity='0'; }
 
 async function persist() {
-  localStorage.setItem('bdl_oa_v3', JSON.stringify(DB));
+  localStorage.setItem("bdl_oa_v3", JSON.stringify(window.DB)));
   localStorage.setItem('bdl_sellers_v1', JSON.stringify(SELLERS));
   if (window._fbSave) {
     showSyncStatus('loading');
