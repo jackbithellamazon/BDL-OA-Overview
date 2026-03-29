@@ -1,4 +1,4 @@
-/<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -371,13 +371,15 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 <header>
   <div class="page-title" id="pageTitle">Overview</div>
   <div class="header-right">
-    <div class="date-range-wrap">
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);padding-right:16px;border-right:1px solid var(--border)" id="lastUpdatedDisplay">Last updated: —</div>
+    <div class="date-range-wrap" id="dateRangeWrap" style="display:none">
       <span>From</span>
       <input type="date" class="date-input" id="rangeFrom" onchange="applyRange()">
       <span class="range-sep">→</span>
       <input type="date" class="date-input" id="rangeTo" onchange="applyRange()">
     </div>
     <div class="range-presets">
+      <button class="range-preset active" onclick="setDatePreset('last30',event)">Last 30d</button>
       <button class="range-preset" onclick="setDatePreset('mtd',event)">MTD</button>
       <button class="range-preset" onclick="setDatePreset('last7',event)">Last 7d</button>
       <button class="range-preset" onclick="setDatePreset('lastmonth',event)">Last Month</button>
@@ -454,20 +456,48 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   </div>
 
   <div class="tab-page" id="tab-repricer">
-    <div class="rep-hero">
-      <div class="rep-stat">
-        <div class="rep-stat-bg">⊟</div>
-        <div class="rep-stat-lbl">Matching Buy Box</div>
-        <div class="rep-stat-val" id="rMatchVal" style="color:var(--y)">—</div>
-        <div class="rep-stat-sub" id="rMatchSub">— SKUs</div>
-        <div style="margin-top:10px" id="rMatchPill"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--o)"></div>
+        <div class="kpi-label">Total SKUs</div>
+        <div class="kpi-val" id="repKpiSkus">—</div>
+        <div class="kpi-footer"><span id="repKpiSkusPill"></span><span id="repKpiSkusSub">No data</span></div>
       </div>
-      <div class="rep-stat">
-        <div class="rep-stat-bg">🏆</div>
-        <div class="rep-stat-lbl">Winning Buy Box</div>
-        <div class="rep-stat-val" id="rWinVal" style="color:var(--g)">—</div>
-        <div class="rep-stat-sub" id="rWinSub">— SKUs</div>
-        <div style="margin-top:10px" id="rWinPill"></div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-label">Total ASINs</div>
+        <div class="kpi-val" id="repKpiAsins">—</div>
+        <div class="kpi-footer"><span id="repKpiAsinsPill"></span><span id="repKpiAsinsSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-label">Win BB %</div>
+        <div class="kpi-val" id="repKpiWin">—</div>
+        <div class="kpi-footer"><span id="repKpiWinPill"></span><span id="repKpiWinSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--y)"></div>
+        <div class="kpi-label">Match BB %</div>
+        <div class="kpi-val" id="repKpiMatch">—</div>
+        <div class="kpi-footer"><span id="repKpiMatchPill"></span><span id="repKpiMatchSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-label">Win Coverage %</div>
+        <div class="kpi-val" id="repKpiWinCov">—</div>
+        <div class="kpi-footer"><span id="repKpiWinCovPill"></span><span id="repKpiWinCovSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-label">Combined Coverage %</div>
+        <div class="kpi-val" id="repKpiCombined">—</div>
+        <div class="kpi-footer"><span id="repKpiCombinedPill"></span><span id="repKpiCombinedSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--r)"></div>
+        <div class="kpi-label">Aged Risk %</div>
+        <div class="kpi-val" id="repKpiAgedRisk">—</div>
+        <div class="kpi-footer"><span id="repKpiAgedRiskPill"></span><span id="repKpiAgedRiskSub">No data</span></div>
       </div>
     </div>
     <div class="insight-box" id="repInsightBox">
@@ -477,14 +507,54 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     </div>
     <div class="card">
       <div class="card-hd">
-        <div class="card-title">Buy Box Performance Over Time</div>
-        <div class="card-tag">SKU %</div>
+        <div class="card-title">Buy Box % Trends</div>
+        <div class="card-tag" id="repChartTag">—</div>
       </div>
       <div class="chart-wrap tall"><canvas id="repricerChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-title">SKU & ASIN Count Trends</div>
+        <div class="card-tag" id="repCountChartTag">—</div>
+      </div>
+      <div class="chart-wrap tall"><canvas id="repCountChart"></canvas></div>
+    </div>
+    <div class="card" id="agingCardWrap" style="display:none">
+      <div class="card-hd">
+        <div class="card-title">Stock Ageing Breakdown</div>
+        <div class="card-tag" id="agingChartTag">—</div>
+      </div>
+      <div class="chart-wrap tall"><canvas id="agingChart"></canvas></div>
     </div>
   </div>
 
   <div class="tab-page" id="tab-competitors">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--r)"></div>
+        <div class="kpi-label">Highest Overlap</div>
+        <div class="kpi-val" id="compKpiHighest">—</div>
+        <div class="kpi-footer"><span id="compKpiHighestPill"></span><span id="compKpiHighestSub">—</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--y)"></div>
+        <div class="kpi-label">Average Overlap</div>
+        <div class="kpi-val" id="compKpiAvg">—</div>
+        <div class="kpi-footer"><span id="compKpiAvgPill"></span><span id="compKpiAvgSub">—</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--r)"></div>
+        <div class="kpi-label">Top Riser</div>
+        <div class="kpi-val" id="compKpiRiser" style="font-size:13px">—</div>
+        <div class="kpi-footer"><span id="compKpiRiserPill"></span><span id="compKpiRiserSub">—</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-label">Top Drop</div>
+        <div class="kpi-val" id="compKpiDropper" style="font-size:13px">—</div>
+        <div class="kpi-footer"><span id="compKpiDropperPill"></span><span id="compKpiDropperSub">—</span></div>
+      </div>
+    </div>
     <div class="insight-box" id="compInsightBox">
       <div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>
       <div class="insight-text" id="compInsightText">Add competitors via snapshots to see analysis.</div>
@@ -503,7 +573,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <div class="comp-table-wrap">
       <table class="comp-table">
         <thead><tr>
-          <th>Rank</th><th>Seller</th><th>Seller ID</th><th>Latest %</th><th>vs Last</th><th>vs Avg</th><th>Trend</th><th>Days Seen</th>
+          <th>Rank</th><th>Seller</th><th>Seller ID</th><th>Prev %</th><th>Latest %</th><th>vs Last</th><th>vs Avg</th><th>Trend</th>
         </tr></thead>
         <tbody id="compTableBody"></tbody>
       </table>
@@ -611,6 +681,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       <div class="fg"><label>271–365 days</label><input type="number" id="fA271" placeholder="6"></div>
       <div class="fg"><label>365+ days</label><input type="number" id="fA365" placeholder="2"></div>
       <div class="form-section">Repricer</div>
+      <div class="fg"><label>Total ASINs in Repricer</label><input type="number" id="fRepAsins" placeholder="250"></div>
       <div class="fg"><label>Total SKUs in Repricer</label><input type="number" id="fRepTotal" placeholder="450"></div>
       <div class="fg"><label>Win BB %</label><input type="number" step="0.1" id="fRepWinPct" placeholder="e.g. 9.5"></div>
       <div class="fg"><label>Match BB %</label><input type="number" step="0.1" id="fRepMatchPct" placeholder="e.g. 16.3"></div>
@@ -676,6 +747,7 @@ let rangeFrom = null, rangeTo = null;
 let chartInstances = {};
 let compFieldCount = 0;
 let chartMetric = 'units';
+let highlightedSeller = null;
 
 function showSyncStatus(state) {
   let el = document.getElementById('syncStatus');
@@ -726,22 +798,16 @@ function switchTabMobile(id) {
 
 function setDatePreset(p, e) {
   e.preventDefault();
-  const customWrap = document.getElementById('customDateWrap');
+  const dateWrap = document.getElementById('dateRangeWrap');
+  
   if (p === 'custom') {
-    if (!customWrap) {
-      const wrap = document.createElement('div');
-      wrap.id = 'customDateWrap';
-      wrap.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:16px';
-      wrap.innerHTML = `<input type="date" id="customFrom" onchange="applyRange()"><span>→</span><input type="date" id="customTo" onchange="applyRange()">`;
-      e.target.parentElement.appendChild(wrap);
-    } else {
-      customWrap.style.display = 'flex';
-    }
+    dateWrap.style.display = 'flex';
     document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
     return;
   }
-  const customWrap2 = document.getElementById('customDateWrap');
-  if (customWrap2) customWrap2.style.display = 'none';
+  
+  dateWrap.style.display = 'none';
   document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
   e.target.classList.add('active');
 
@@ -749,7 +815,12 @@ function setDatePreset(p, e) {
   const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
   if (!sorted.length) { rangeFrom=null; rangeTo=null; return; }
 
-  if (p === 'mtd') {
+  if (p === 'last30') {
+    const d = new Date(now);
+    d.setDate(d.getDate()-30);
+    rangeFrom = d.toISOString().split('T')[0];
+    rangeTo = now.toISOString().split('T')[0];
+  } else if (p === 'mtd') {
     const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
     rangeFrom = mtdStart.toISOString().split('T')[0];
     rangeTo = now.toISOString().split('T')[0];
@@ -803,6 +874,7 @@ function renderAll() {
   renderCompChart(snaps);
   renderCompInsights(snaps);
   renderBadges();
+  updateLastUpdated();
 }
 
 function renderKpis(snaps) {
@@ -942,6 +1014,21 @@ function renderInsights(snaps) {
     main = `This is your first snapshot — <strong>baseline established</strong>. You currently hold <strong>${latest.asins} ASINs</strong> across <strong>${latest.skus} SKUs</strong> with <strong>${totalUnits} units</strong> in stock. `;
     if (over180 > 0) main += `<span class="danger">${over180} units (${over180pct}%)</span> are already aged over 180 days — worth reviewing these for repricing or clearance. `;
     if (freshPct > 40) main += `<strong>${freshPct}% of your stock is under 30 days old</strong>, which is a healthy sign of active buying.`;
+    main += ` <span style="color:var(--muted2)"><em>Add more snapshots to see trends.</em></span>`;
+  } else if (snaps.length === 2) {
+    const asinDiff = latest.asins - prev.asins;
+    const skuDiff = latest.skus - prev.skus;
+    const prevAg = prev.ageing || {};
+    const prevOver180 = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+    const prevTotal = AG_BUCKETS.reduce((s,b) => s+(prevAg[b.key]||0),0)||1;
+    const prevOver180pct = ((prevOver180/prevTotal)*100).toFixed(1);
+    const over180change = parseFloat(over180pct) - parseFloat(prevOver180pct);
+
+    main = `Since your last snapshot on <strong>${fmt(prev.date)}</strong>, your catalogue has `;
+    if (asinDiff > 0) main += `<strong style="color:var(--g)">grown by ${asinDiff} ASINs</strong>`;
+    else if (asinDiff < 0) main += `<strong style="color:var(--r)">shrunk by ${Math.abs(asinDiff)} ASINs</strong>`;
+    else main += `held steady on ASINs`;
+    main += `. <span style="color:var(--muted2)"><em>You have 2 snapshots — add 1+ more to reveal trend patterns.</em></span>`;
   } else {
     const asinDiff = latest.asins - prev.asins;
     const skuDiff = latest.skus - prev.skus;
@@ -1057,110 +1144,235 @@ function renderOverviewChart(snaps) {
 }
 
 function renderRepricerTab(snaps) {
-  if (!snaps.length) return;
+  if (!snaps.length) {
+    ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch','repKpiWinCov','repKpiCombined','repKpiAgedRisk'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+  
   const latest = snaps[snaps.length-1];
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
   const r = latest.repricer||{};
-  const tot = r.total||1;
-  const mPct = ((r.matching/tot)*100).toFixed(1);
-  const wPct = ((r.winning/tot)*100).toFixed(1);
-
-  document.getElementById('rMatchVal').textContent = mPct + '%';
-  document.getElementById('rMatchSub').textContent = `${r.matching||0} of ${r.total||0} SKUs`;
-  document.getElementById('rWinVal').textContent = wPct + '%';
-  document.getElementById('rWinSub').textContent = `${r.winning||0} of ${r.total||0} SKUs`;
-
-  if (prev) {
-    const pr = prev.repricer||{};
-    const pt = pr.total||1;
-    setMiniPill('rMatchPill', (r.matching/tot)*100, (pr.matching/pt)*100, true);
-    setMiniPill('rWinPill', (r.winning/tot)*100, (pr.winning/pt)*100, true);
-  }
-
+  const avgSnaps = snaps.filter(s => s.repricer && s.repricer.total > 0);
+  
+  // Calculate avgs for each metric
+  const avgSkus = snaps.reduce((sum,s)=>sum+(s.skus||0),0) / snaps.length;
+  const avgAsins = snaps.reduce((sum,s)=>sum+(s.asins||0),0) / snaps.length;
+  const avgWin = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+((s.repricer.winning/s.repricer.total)*100),0) / avgSnaps.length : 0;
+  const avgMatch = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+((s.repricer.matching/s.repricer.total)*100),0) / avgSnaps.length : 0;
+  const avgWinCov = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+((s.repricer.winning/s.repricer.total)*100),0) / avgSnaps.length : 0;
+  const avgCombined = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+(((s.repricer.winning+s.repricer.matching)/s.repricer.total)*100),0) / avgSnaps.length : 0;
+  
+  // Aged risk calculation
+  const ag = latest.ageing||{};
+  const totalUnits = (ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const agedUnits = (ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const agedRiskPct = totalUnits > 0 ? ((agedUnits/totalUnits)*100).toFixed(1) : 0;
+  const avgAgedRisk = snaps.filter(s => {
+    const a = s.ageing||{}; 
+    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    return tot > 0;
+  }).reduce((sum,s) => {
+    const a = s.ageing||{};
+    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    const aged = (a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    return sum + (tot > 0 ? (aged/tot)*100 : 0);
+  }, 0);
+  const prevAgedRisk = prev ? (() => {
+    const a = prev.ageing||{};
+    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    const aged = (a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    return tot > 0 ? (aged/tot)*100 : null;
+  })() : null;
+  
+  const avgAgedRiskVal = snaps.length > 0 ? (avgAgedRisk / snaps.filter(s => {
+    const a = s.ageing||{};
+    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    return tot > 0;
+  }).length) : 0;
+  
+  // Set KPI values
+  const wPct = r.total ? ((r.winning/r.total)*100).toFixed(1) : 0;
+  const mPct = r.total ? ((r.matching/r.total)*100).toFixed(1) : 0;
+  const winCov = r.total ? ((r.winning/r.total)*100).toFixed(1) : 0;
+  const combinedCov = r.total ? (((r.winning+r.matching)/r.total)*100).toFixed(1) : 0;
+  
+  setRepKpi('repKpiSkus', r.total || latest.skus, prev?.repricer?.total || prev?.skus, avgSkus, true);
+  setRepKpi('repKpiAsins', r.asins || latest.asins, prev?.repricer?.asins || prev?.asins, avgAsins, true);
+  setRepKpi('repKpiWin', wPct, prev?.repricer?.total ? ((prev.repricer.winning/prev.repricer.total)*100).toFixed(1) : null, avgWin, true);
+  setRepKpi('repKpiMatch', mPct, prev?.repricer?.total ? ((prev.repricer.matching/prev.repricer.total)*100).toFixed(1) : null, avgMatch, true);
+  setRepKpi('repKpiWinCov', winCov, prev?.repricer?.total ? ((prev.repricer.winning/prev.repricer.total)*100).toFixed(1) : null, avgWinCov, true);
+  setRepKpi('repKpiCombined', combinedCov, prev?.repricer?.total ? (((prev.repricer.winning+prev.repricer.matching)/prev.repricer.total)*100).toFixed(1) : null, avgCombined, true);
+  setRepKpi('repKpiAgedRisk', agedRiskPct, prevAgedRisk, avgAgedRiskVal, false);
+  
+  // Insights
   const ri = document.getElementById('repInsightText');
   const rb = document.getElementById('repInsightBullets');
-  if (!snaps.length) return;
-
   let rtxt = '';
+  
   if (snaps.length === 1) {
-    rtxt = `Baseline: <strong>${wPct}% winning</strong> and <strong>${mPct}% matching</strong> the buy box across ${r.total||0} SKUs. Add more snapshots to see trends.`;
+    rtxt = `Baseline: <strong>${wPct}% winning</strong>, <strong>${mPct}% matching</strong> across ${r.total||0} SKUs. Aged risk: <strong>${agedRiskPct}%</strong>.`;
   } else {
-    const pr = prev?.repricer||{}; const pt = pr.total||1;
-    const pwPct = ((pr.winning/pt)*100).toFixed(1);
-    const pmPct = ((pr.matching/pt)*100).toFixed(1);
-    const wDiff = (parseFloat(wPct)-parseFloat(pwPct)).toFixed(1);
-    const wArrow = wDiff >= 0 ? '▲' : '▼';
-    const wColor = wDiff >= 0 ? 'var(--g)' : 'var(--r)';
-    rtxt = `Win rate has <strong style="color:${wColor}">${wArrow} ${Math.abs(wDiff)}pp</strong> since ${fmt(prev.date)} (${pwPct}% → ${wPct}%). `;
-    if (wDiff < -5) rtxt += `<span class="danger">⚠ Drop of this size signals competitor aggression or floors too high.</span> `;
-    if (wDiff > 5) rtxt += `<strong style="color:var(--g)">✓ Strong improvement — repricer floors working well.</strong> `;
-    if (snaps.length >= 3) {
-      const wTrend = snaps.slice(-3).map(s => { const rr=s.repricer||{}; return rr.total ? (rr.winning/rr.total)*100 : 0; });
-      if (wTrend[2]<wTrend[1] && wTrend[1]<wTrend[0]) rtxt += `<span class="danger">📉 Win rate declining 3 snapshots in a row — market pressure detected.</span>`;
-      else if (wTrend[2]>wTrend[1] && wTrend[1]>wTrend[0]) rtxt += `<strong style="color:var(--g)">✓ Win rate improving 3 snapshots in a row — strong positive momentum.</strong>`;
+    const pr = prev?.repricer||{}; 
+    const pwPct = prev?.repricer?.total ? ((pr.winning/pr.total)*100).toFixed(1) : null;
+    const wDiff = pwPct ? (parseFloat(wPct)-parseFloat(pwPct)).toFixed(1) : null;
+    if (wDiff) {
+      const wColor = wDiff >= 0 ? 'var(--g)' : 'var(--r)';
+      rtxt = `Win rate <strong style="color:${wColor}">${wDiff>=0?'↑':' ↓'} ${Math.abs(wDiff)}pp</strong> (${pwPct}% → ${wPct}%). `;
+      if (wDiff < -5) rtxt += `<span class="danger">⚠ Drop signals aggression or high floors.</span>`;
+      if (wDiff > 5) rtxt += `<strong style="color:var(--g)">✓ Strong improvement.</strong>`;
     }
   }
   ri.innerHTML = rtxt;
-
-  const rBullets = [];
-  const combined = r.total ? ((r.winning+r.matching)/r.total*100).toFixed(1) : 0;
-  rBullets.push(`<strong>BB Coverage:</strong> <strong>${combined}%</strong> of SKUs (${r.winning} winning + ${r.matching} matching)`);
-
-  if (parseFloat(wPct) > 30) rBullets.push(`<strong style="color:var(--g)">🏆 EXCELLENT</strong> — Winning >30% is exceptional performance`);
-  else if (parseFloat(wPct) > 20) rBullets.push(`<strong style="color:var(--g)">✓ STRONG</strong> — Win rate 20-30% is healthy competition`);
-  else if (parseFloat(wPct) > 10) rBullets.push(`<strong style="color:var(--y)">⚠ MODERATE</strong> — Win rate 10-20%, room to improve`);
-  else rBullets.push(`<span class="danger">⚠ BELOW TARGET</span> — Win rate <10%, review floor prices`);
-
-  const matchToWinRatio = parseFloat(wPct) > 0 ? (parseFloat(mPct) / parseFloat(wPct)).toFixed(1) : 0;
-  rBullets.push(`<strong>Match:Win Ratio:</strong> ${matchToWinRatio}x — for every 1 win, you match ${matchToWinRatio} times`);
-
-  if (snaps.length >= 5) {
-    const allWins = snaps.map(s => { const rr=s.repricer||{}; return rr.total ? ((rr.winning/rr.total)*100) : 0; });
-    const avgWin = (allWins.reduce((a,b)=>a+b,0) / allWins.length).toFixed(1);
-    const maxWin = Math.max(...allWins).toFixed(1);
-    const minWin = Math.min(...allWins).toFixed(1);
-    const current = parseFloat(wPct);
-    if (current > parseFloat(avgWin)) rBullets.push(`<strong style="color:var(--g)">↑ Above Average:</strong> ${current}% vs ${avgWin}% average (range: ${minWin}%-${maxWin}%)`);
-    else if (current < parseFloat(avgWin)) rBullets.push(`<span class="warn">↓ Below Average:</span> ${current}% vs ${avgWin}% average (range: ${minWin}%-${maxWin}%)`);
-    else rBullets.push(`<strong>At Average:</strong> ${current}% equals ${avgWin}% (range: ${minWin}%-${maxWin}%)`);
+  rb.innerHTML = '';
+  
+  // Render 3 charts
+  renderRepricerPercentChart(snaps);
+  renderRepricerCountChart(snaps);
+  
+  if (totalUnits > 0) {
+    document.getElementById('agingCardWrap').style.display = 'block';
+    renderAgingChart(snaps);
+  } else {
+    document.getElementById('agingCardWrap').style.display = 'none';
   }
+}
 
-  if (snaps.length >= 2) {
-    const recent5 = snaps.slice(-5).map(s => { const rr=s.repricer||{}; return rr.total ? ((rr.winning/rr.total)*100) : 0; });
-    const trend = recent5[recent5.length-1] - recent5[0];
-    if (trend > 3) rBullets.push(`<strong style="color:var(--g)">📈 Gaining Ground:</strong> +${trend.toFixed(1)}pp over last 5 snapshots`);
-    else if (trend < -3) rBullets.push(`<span class="danger">📉 Losing Ground:</span> ${trend.toFixed(1)}pp over last 5 snapshots`);
+function setRepKpi(valId, curr, prev, avg, upGood) {
+  const el = document.getElementById(valId);
+  const pillId = valId + 'Pill';
+  const subId = valId + 'Sub';
+  
+  const valEl = document.getElementById(valId);
+  const pillEl = document.getElementById(pillId);
+  const subEl = document.getElementById(subId);
+  
+  valEl.textContent = curr ? (Number.isInteger(curr) ? curr.toLocaleString() : curr.toFixed(1) + '%') : '—';
+  
+  let pillHtml = '';
+  if (prev && prev !== 0 && prev !== null) {
+    const diff = parseFloat(curr) - parseFloat(prev);
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    const suffix = Number.isInteger(curr) ? '' : '%';
+    pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}${suffix}</span>`;
   }
+  if (avg && avg > 0) {
+    const diff = parseFloat(curr) - avg;
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    const suffix = Number.isInteger(curr) ? '' : '%';
+    if (pillHtml) pillHtml += ' ';
+    pillHtml += `<span class="pill ${cls}" style="font-size:9px">${arrow} ${Math.abs(diff).toFixed(1)}${suffix}</span>`;
+  }
+  
+  pillEl.innerHTML = pillHtml;
+  subEl.textContent = !prev && !avg ? 'First snapshot' : 'vs period';
+}
 
-  rb.innerHTML = rBullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('');
-
-  destroyChart('repricerChart');
-  const ctx2 = document.getElementById('repricerChart').getContext('2d');
+function renderRepricerPercentChart(snaps) {
+  const ctx = document.getElementById('repricerChart');
+  if (!ctx) return;
+  const chartCtx = ctx.getContext('2d');
+  const tag = document.getElementById('repChartTag');
+  
   if (snaps.length < 2) {
-    ctx2.fillStyle='#4a5568'; ctx2.font="11px 'DM Mono'"; ctx2.textAlign='center';
-    ctx2.fillText('Add 2+ snapshots to see trend', ctx2.canvas.width/2, ctx2.canvas.height/2);
+    tag.textContent = 'Need 2+ snapshots';
+    chartCtx.fillStyle='#4a5568'; chartCtx.font="11px 'DM Mono'"; chartCtx.textAlign='center';
+    chartCtx.fillText('Add 2+ snapshots to see trend', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
     return;
   }
-  chartInstances.repricerChart = new Chart(ctx2, {
+  
+  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
+  
+  destroyChart('repricerChart');
+  chartInstances.repricerChart = new Chart(chartCtx, {
     type:'line',
     data:{
       labels: snaps.map(s=>fmtShort(s.date)),
       datasets:[
-        { label:'Winning BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.winning/rr.total)*100).toFixed(1):0; }), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
-        { label:'Matching BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.matching/rr.total)*100).toFixed(1):0; }), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'Win BB %', data:snaps.map(s=>{ const r=s.repricer||{}; return r.total?+((r.winning/r.total)*100).toFixed(1):0; }), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'Match BB %', data:snaps.map(s=>{ const r=s.repricer||{}; return r.total?+((r.matching/r.total)*100).toFixed(1):0; }), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 },
       ]
     },
-    options: {...chartOpts(), ...{plugins:{...chartOpts().plugins}, scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}, min:0, max:100, ticks:{callback:v=>v+'%', color:'#4a5568'}}}}}
+    options: {...chartOpts(), ...{scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}, min:0, max:100, ticks:{callback:v=>v+'%'}}}}}
   });
 }
 
-function setMiniPill(id, curr, prev, upGood) {
-  const el = document.getElementById(id); if(!el) return;
-  const diff = curr-prev;
-  const up = diff>0; const good = upGood?up:!up;
-  const cls = diff===0?'flat':(good?'up':'down');
-  const arrow = diff===0?'→':(up?'▲':'▼');
-  el.innerHTML = `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}pp vs prev</span>`;
+function renderRepricerCountChart(snaps) {
+  const ctx = document.getElementById('repCountChart');
+  if (!ctx) return;
+  const chartCtx = ctx.getContext('2d');
+  const tag = document.getElementById('repCountChartTag');
+  
+  if (snaps.length < 2) {
+    tag.textContent = 'Need 2+ snapshots';
+    chartCtx.fillStyle='#4a5568'; chartCtx.font="11px 'DM Mono'"; chartCtx.textAlign='center';
+    chartCtx.fillText('Add 2+ snapshots to see trend', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    return;
+  }
+  
+  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
+  
+  const maxSkus = Math.max(...snaps.map(s => s.repricer?.total || s.skus || 0));
+  const maxAsins = Math.max(...snaps.map(s => s.repricer?.asins || s.asins || 0));
+  
+  destroyChart('repCountChart');
+  chartInstances.repCountChart = new Chart(chartCtx, {
+    type:'line',
+    data:{
+      labels: snaps.map(s=>fmtShort(s.date)),
+      datasets:[
+        { label:'Total SKUs', data:snaps.map(s=>s.repricer?.total||s.skus||0), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.08)', tension:.35, fill:false, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2, yAxisID:'y' },
+        { label:'Total ASINs', data:snaps.map(s=>s.repricer?.asins||s.asins||0), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:false, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2, yAxisID:'y1' },
+      ]
+    },
+    options: {...chartOpts(), ...{scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}, position:'left'}, y1:{grid:{color:'#1c2330'}, position:'right'}}}}
+  });
+}
+
+function renderAgingChart(snaps) {
+  const ctx = document.getElementById('agingChart');
+  if (!ctx) return;
+  const chartCtx = ctx.getContext('2d');
+  const tag = document.getElementById('agingChartTag');
+  
+  if (snaps.length < 2) {
+    tag.textContent = 'Need 2+ snapshots';
+    chartCtx.fillStyle='#4a5568'; chartCtx.font="11px 'DM Mono'"; chartCtx.textAlign='center';
+    chartCtx.fillText('Add 2+ snapshots to see trend', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    return;
+  }
+  
+  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
+  
+  const bucketColors = ['#00f5a0', '#3d9eff', '#ffd166', '#ff9999', '#ff6b6b', '#ff4444', '#cc0000'];
+  const bucketLabels = ['0–30d', '31–60d', '61–90d', '91–180d', '181–270d', '271–365d', '365+'];
+  const bucketKeys = ['a0', 'a31', 'a61', 'a91', 'a181', 'a271', 'a365'];
+  
+  destroyChart('agingChart');
+  chartInstances.agingChart = new Chart(chartCtx, {
+    type:'line',
+    data:{
+      labels: snaps.map(s=>fmtShort(s.date)),
+      datasets: bucketKeys.map((key, idx) => ({
+        label: bucketLabels[idx],
+        data: snaps.map(s => s.ageing?.[key] || 0),
+        borderColor: bucketColors[idx],
+        backgroundColor: bucketColors[idx] + '20',
+        tension: .35,
+        fill: false,
+        pointRadius: 4,
+        pointBackgroundColor: bucketColors[idx],
+        pointBorderColor: '#07090c',
+        pointBorderWidth: 1,
+      }))
+    },
+    options: {...chartOpts(), ...{scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}}}}}
+  });
 }
 
 function renderCompTab() {
@@ -1200,6 +1412,53 @@ function renderCompTab() {
 
   if (search) sellers = sellers.filter(s => s.name.toLowerCase().includes(search) || s.sellerId.toLowerCase().includes(search));
 
+  // Calculate KPI metrics before filtering
+  const allSellers = Object.entries(sellerMap).map(([name, info]) => ({
+    name, sellerId: info.sellerId,
+    latest: info.data[info.data.length-1]?.pct||0,
+    prev: info.data.length>1 ? info.data[info.data.length-2]?.pct : null,
+    history: info.data.map(d=>d.pct),
+  })).map(s => ({...s, avg: s.history.length > 0 ? (s.history.reduce((a,b)=>a+b,0) / s.history.length) : 0}));
+  
+  // Highest overlap
+  const highest = allSellers.length > 0 ? allSellers.sort((a,b)=>b.latest-a.latest)[0] : null;
+  // Average overlap
+  const avgOverlap = allSellers.length > 0 ? (allSellers.reduce((sum,s)=>sum+s.latest,0) / allSellers.length) : 0;
+  // Top riser (biggest increase)
+  const topRiser = allSellers.filter(s=>s.prev!==null).sort((a,b)=>(b.latest-b.prev)-(a.latest-a.prev))[0] || null;
+  // Top dropper (biggest decrease)
+  const topDropper = allSellers.filter(s=>s.prev!==null).sort((a,b)=>(a.latest-a.prev)-(b.latest-b.prev))[0] || null;
+  
+  // Set KPI cards
+  if (highest) {
+    document.getElementById('compKpiHighest').textContent = highest.latest.toFixed(1) + '%';
+    document.getElementById('compKpiHighestSub').textContent = highest.name;
+  } else {
+    document.getElementById('compKpiHighest').textContent = '—';
+    document.getElementById('compKpiHighestSub').textContent = 'No data';
+  }
+  
+  document.getElementById('compKpiAvg').textContent = avgOverlap.toFixed(1) + '%';
+  document.getElementById('compKpiAvgSub').textContent = allSellers.length + ' sellers';
+  
+  if (topRiser) {
+    const riserDiff = (topRiser.latest - topRiser.prev).toFixed(1);
+    document.getElementById('compKpiRiser').textContent = topRiser.name;
+    document.getElementById('compKpiRiserSub').textContent = `↑ +${riserDiff}pp`;
+  } else {
+    document.getElementById('compKpiRiser').textContent = '—';
+    document.getElementById('compKpiRiserSub').textContent = 'No data';
+  }
+  
+  if (topDropper) {
+    const dropperDiff = (topDropper.latest - topDropper.prev).toFixed(1);
+    document.getElementById('compKpiDropper').textContent = topDropper.name;
+    document.getElementById('compKpiDropperSub').textContent = `↓ ${dropperDiff}pp`;
+  } else {
+    document.getElementById('compKpiDropper').textContent = '—';
+    document.getElementById('compKpiDropperSub').textContent = 'No data';
+  }
+
   meta.textContent = `${sellers.length} seller${sellers.length!==1?'s':''} · ${snaps.length} snapshot${snaps.length!==1?'s':''}`;
   document.getElementById('compNavBadge').textContent = Object.keys(sellerMap).length;
 
@@ -1228,15 +1487,15 @@ function renderCompTab() {
     const totalDaysInRange = snaps.length;
     const daysSeenStr = `${s.daysSeen}/${totalDaysInRange}`;
 
-    return `<tr>
+    return `<tr style="cursor:pointer;transition:background-color 0.2s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''" onclick="highlightCompetitor('${s.name.replace(/'/g, "\\'")}')">
       <td style="text-align:center;font-weight:600;color:var(--g)">#${s.rank}</td>
       <td><strong>${s.name}</strong></td>
       <td style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${s.sellerId||'—'}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${s.prev !== null ? s.prev.toFixed(1)+'%' : '—'}</td>
       <td style="font-weight:600;font-size:14px">${s.latest.toFixed(1)}%</td>
       <td>${vsLastHtml}</td>
       <td>${vsAvgHtml}</td>
       <td><canvas id="${sparkId}" width="100" height="32" class="sparkline-cell" style="vertical-align:middle"></canvas></td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:center">${daysSeenStr}</td>
     </tr>`;
   }).join('');
 
@@ -1264,6 +1523,12 @@ function renderCompTab() {
       });
     });
   }, 50);
+}
+
+function highlightCompetitor(sellerName) {
+  highlightedSeller = highlightedSeller === sellerName ? null : sellerName;
+  const snaps = filteredSnaps();
+  renderCompChart(snaps);
 }
 
 function renderCompChart(snaps) {
@@ -1296,37 +1561,41 @@ function renderCompChart(snaps) {
     data: info.data,
   }));
 
-  // Sort by latest and take top 5
+  // Sort by latest and use ALL sellers
   sellers.sort((a,b) => b.latest - a.latest);
-  const topCompetitors = sellers.slice(0, 5);
+  const allCompetitors = sellers;
 
-  if (!topCompetitors.length) {
+  if (!allCompetitors.length) {
     tag.textContent = 'No competitor data';
     chartCtx.fillStyle = '#4a5568'; chartCtx.font = "11px 'DM Mono'"; chartCtx.textAlign='center';
     chartCtx.fillText('No competitor data yet', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
     return;
   }
 
-  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)} · Top ${topCompetitors.length}`;
+  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)} · ${allCompetitors.length} competitors`;
 
-  const colors = ['#3d9eff', '#00f5a0', '#ffd166', '#ff6b6b', '#a78bfa'];
-  const datasets = topCompetitors.map((seller, idx) => {
+  const colors = ['#3d9eff', '#00f5a0', '#ffd166', '#ff9999', '#ff6b6b', '#ff4444', '#a78bfa', '#ff99ff', '#99ff99', '#ffff99'];
+  const datasets = allCompetitors.map((seller, idx) => {
+    const isHighlighted = highlightedSeller === seller.name;
+    const isDimmed = highlightedSeller && !isHighlighted;
     const data = snaps.map(snap => {
       const reading = seller.data.find(d => d.date === snap.date);
       return reading ? reading.pct : null;
     });
+    const color = isDimmed ? '#4a5568' : colors[idx % colors.length];
     return {
       label: seller.name,
       data,
-      borderColor: colors[idx % colors.length],
-      backgroundColor: colors[idx % colors.length] + '14',
+      borderColor: color,
+      backgroundColor: color + (isDimmed ? '08' : '14'),
       tension: .35,
       fill: false,
-      pointRadius: 4,
-      pointBackgroundColor: colors[idx % colors.length],
+      pointRadius: isHighlighted ? 5 : 3,
+      pointBackgroundColor: color,
       pointBorderColor: '#07090c',
-      pointBorderWidth: 1.5,
+      pointBorderWidth: isHighlighted ? 2 : 1,
       spanGaps: true,
+      borderWidth: isHighlighted ? 3 : 2,
     };
   });
 
@@ -1685,12 +1954,22 @@ function showToast(msg) {
 
 function openSnap(prefill=null) {
   editIdx = null;
+  const today = new Date().toISOString().split('T')[0];
   document.getElementById('snapModalTitle').textContent = 'Add Snapshot';
-  document.getElementById('fDate').value = new Date().toISOString().split('T')[0];
-  ['fAsins','fSkus','fUnits','fStockValue','fA0','fA31','fA61','fA91','fA181','fA271','fA365','fRepTotal','fRepMatch','fRepWin','fNotes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  
+  // Clear all fields
+  ['fAsins','fSkus','fUnits','fStockValue','fA0','fA31','fA61','fA91','fA181','fA271','fA365','fRepTotal','fRepAsins','fRepWinPct','fRepMatchPct','fNotes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('fDate').value = today;
   document.getElementById('fCost').value='';
   document.getElementById('fCostDisplay').textContent='—';
   document.getElementById('fCostCalc').textContent='';
+  
+  // Check if today already logged
+  const alreadyLogged = DB.find(s => s.date === today);
+  if (alreadyLogged) {
+    alert(`⚠ Already logged today (${fmt(today)}). You can edit the existing snapshot or enter a different date.`);
+  }
+  
   if (prefill) fillForm(prefill);
   document.getElementById('snapModal').classList.add('open');
 }
@@ -1723,6 +2002,7 @@ function fillForm(s) {
   document.getElementById('fA271').value=ag.a271||'';
   document.getElementById('fA365').value=ag.a365||'';
   const r = s.repricer||{};
+  document.getElementById('fRepAsins').value=r.asins||'';
   document.getElementById('fRepTotal').value=r.total||'';
   const repWinPct = r.total > 0 ? ((r.winning/r.total)*100).toFixed(1) : '';
   const repMatchPct = r.total > 0 ? ((r.matching/r.total)*100).toFixed(1) : '';
@@ -1739,6 +2019,7 @@ async function saveSnap() {
   const avgCost = units > 0 && stockValue > 0 ? +(stockValue/units).toFixed(2) : (+document.getElementById('fCost').value||0);
   
   const repTotal = +document.getElementById('fRepTotal').value||0;
+  const repAsins = +document.getElementById('fRepAsins').value||0;
   const repWinPct = +document.getElementById('fRepWinPct').value||0;
   const repMatchPct = +document.getElementById('fRepMatchPct').value||0;
   const repWinCount = repTotal > 0 ? Math.round((repWinPct/100)*repTotal) : 0;
@@ -1752,23 +2033,33 @@ async function saveSnap() {
     stockValue,
     totalUnits: units,
     ageing: { a0:+document.getElementById('fA0').value||0, a31:+document.getElementById('fA31').value||0, a61:+document.getElementById('fA61').value||0, a91:+document.getElementById('fA91').value||0, a181:+document.getElementById('fA181').value||0, a271:+document.getElementById('fA271').value||0, a365:+document.getElementById('fA365').value||0 },
-    repricer: { total: repTotal, matching: repMatchCount, winning: repWinCount },
+    repricer: { asins: repAsins, total: repTotal, matching: repMatchCount, winning: repWinCount },
     competitors: DB[editIdx]?.competitors || [],
     notes: document.getElementById('fNotes').value,
   };
   if (editIdx !== null) DB[editIdx] = s;
   else { DB.push(s); DB.sort((a,b)=>a.date.localeCompare(b.date)); }
+  
+  showSyncStatus('loading');
   await persist();
+  showSyncStatus('saved');
+  
   closeOverlay('snapModal');
-  if (DB.length >= 2 && !rangeFrom) {
-    const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
-    rangeFrom = sorted[sorted.length-2].date;
-    rangeTo = sorted[sorted.length-1].date;
-    document.getElementById('rangeFrom').value = rangeFrom;
-    document.getElementById('rangeTo').value = rangeTo;
+  
+  // Auto-refresh from Firebase
+  try {
+    const snap = await db.collection('bdl').doc('data').get();
+    if (snap.exists) {
+      DB = snap.data().snapshots || [];
+      DB.sort((a,b) => a.date.localeCompare(b.date));
+    }
+  } catch (err) {
+    console.error('Auto-refresh failed:', err);
   }
+  
   renderAll();
   renderHistory();
+  setTimeout(() => showSyncStatus(''), 2000);
 }
 
 async function deleteSnap(idx) {
@@ -1791,6 +2082,13 @@ function fmtShort(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${da
 
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
+
+function updateLastUpdated() {
+  const el = document.getElementById('lastUpdatedDisplay');
+  if (!el || !DB.length) return;
+  const latest = DB[DB.length - 1];
+  el.textContent = 'Last updated: ' + fmt(latest.date);
+}
 
 function renderBadges() {
   document.getElementById('histNavBadge').textContent = DB.length;
