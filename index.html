@@ -5,70 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BDL OA Overview</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script type="module">
-// ══ FIREBASE CONFIG ══════════════════════════════════════════════════════════
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCntSANP2j1a1Go4SWz6nOsJkEtX5kxXgo",
-  authDomain: "bdl-oa-overview.firebaseapp.com",
-  projectId: "bdl-oa-overview",
-  storageBucket: "bdl-oa-overview.firebasestorage.app",
-  messagingSenderId: "657106404188",
-  appId: "1:657106404188:web:13e836fd301af7c96cb799",
-  measurementId: "G-124VCGHF02"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const DOC_REF = doc(db, 'bdl', 'data');
-
-window._fbSave = async function(data) {
-  try {
-    await setDoc(DOC_REF, data);
-    return true;
-  } catch(e) {
-    console.error('Firebase save error:', e);
-    localStorage.setItem('bdl_oa_v3', JSON.stringify(data.snapshots||[]));
-    localStorage.setItem('bdl_sellers_v1', JSON.stringify(data.sellers||[]));
-    return false;
-  }
-};
-
-window._fbLoad = async function() {
-  try {
-    const snap = await getDoc(DOC_REF);
-    if (snap.exists()) return snap.data();
-    return null;
-  } catch(e) {
-    console.error('Firebase load error:', e);
-    return null;
-  }
-};
-
-window._fbReady = true;
-
-(async () => {
-  showSyncStatus('loading');
-  const data = await window._fbLoad();
-  if (data) {
-    DB = data.snapshots || [];
-    SELLERS = data.sellers || [];
-  } else {
-    const lsSnaps = localStorage.getItem('bdl_oa_v3');
-    const lsSellers = localStorage.getItem('bdl_sellers_v1');
-    if (lsSnaps) DB = JSON.parse(lsSnaps);
-    if (lsSellers) SELLERS = JSON.parse(lsSellers);
-    if (DB.length || SELLERS.length) await window._fbSave({snapshots:DB, sellers:SELLERS});
-  }
-  hideSyncStatus();
-  setDefaultDateRange();
-  renderAll();
-  renderHistory();
-  renderBadges();
-})();
-</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Clash+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1640,6 +1576,69 @@ Chart.defaults.borderColor = '#1c2330';
 Chart.defaults.font.family = "'DM Mono', monospace";
 renderAll();
 renderBadges();
+</script>
+
+<script type="module">
+// ══ FIREBASE CONFIG ══════════════════════════════════════════════════════════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCntSANP2j1a1Go4SWz6nOsJkEtX5kxXgo",
+  authDomain: "bdl-oa-overview.firebaseapp.com",
+  projectId: "bdl-oa-overview",
+  storageBucket: "bdl-oa-overview.firebasestorage.app",
+  messagingSenderId: "657106404188",
+  appId: "1:657106404188:web:13e836fd301af7c96cb799",
+  measurementId: "G-124VCGHF02"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const DOC_REF = doc(db, 'bdl', 'data');
+
+window._fbSave = async function(data) {
+  try {
+    await setDoc(DOC_REF, data);
+    return true;
+  } catch(e) {
+    console.error('Firebase save error:', e);
+    localStorage.setItem('bdl_oa_v3', JSON.stringify(data.snapshots||[]));
+    localStorage.setItem('bdl_sellers_v1', JSON.stringify(data.sellers||[]));
+    return false;
+  }
+};
+
+window._fbLoad = async function() {
+  try {
+    const snap = await getDoc(DOC_REF);
+    if (snap.exists()) return snap.data();
+    return null;
+  } catch(e) {
+    console.error('Firebase load error:', e);
+    return null;
+  }
+};
+
+(async () => {
+  showSyncStatus('loading');
+  const data = await window._fbLoad();
+  if (data) {
+    DB = data.snapshots || [];
+    SELLERS = data.sellers || [];
+  } else {
+    const lsSnaps = localStorage.getItem('bdl_oa_v3');
+    const lsSellers = localStorage.getItem('bdl_sellers_v1');
+    if (lsSnaps) DB = JSON.parse(lsSnaps);
+    if (lsSellers) SELLERS = JSON.parse(lsSellers);
+    if (DB.length || SELLERS.length) await window._fbSave({snapshots:DB, sellers:SELLERS});
+  }
+  hideSyncStatus();
+  setDefaultDateRange();
+  renderAll();
+  renderHistory();
+  renderBadges();
+})();
 </script>
 </body>
 </html>
