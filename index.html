@@ -1,10 +1,82 @@
-<!DOCTYPE html>
+/<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BDL OA Overview</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script type="module">
+// ══ FIREBASE CONFIG ══════════════════════════════════════════════════════════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCntSANP2j1a1Go4SWz6nOsJkEtX5kxXgo",
+  authDomain: "bdl-oa-overview.firebaseapp.com",
+  projectId: "bdl-oa-overview",
+  storageBucket: "bdl-oa-overview.firebasestorage.app",
+  messagingSenderId: "657106404188",
+  appId: "1:657106404188:web:13e836fd301af7c96cb799",
+  measurementId: "G-124VCGHF02"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const DOC_REF = doc(db, 'bdl', 'data');
+
+// Expose to global scope for use in non-module script
+window._fbSave = async function(data) {
+  try {
+    await setDoc(DOC_REF, data);
+    return true;
+  } catch(e) {
+    console.error('Firebase save error:', e);
+    localStorage.setItem('bdl_oa_v3', JSON.stringify(data.snapshots||[]));
+    localStorage.setItem('bdl_sellers_v1', JSON.stringify(data.sellers||[]));
+    return false;
+  }
+};
+
+window._fbLoad = async function() {
+  try {
+    const snap = await getDoc(DOC_REF);
+    if (snap.exists()) return snap.data();
+    return null;
+  } catch(e) {
+    console.error('Firebase load error:', e);
+    return null;
+  }
+};
+
+window._fbReady = true;
+
+// Load data from Firebase on startup
+(async () => {
+  showSyncStatus('loading');
+  const data = await window._fbLoad();
+  if (data) {
+    DB = data.snapshots || [];
+    SELLERS = data.sellers || [];
+  } else {
+    const lsSnaps = localStorage.getItem('bdl_oa_v3');
+    const lsSellers = localStorage.getItem('bdl_sellers_v1');
+    if (lsSnaps) DB = JSON.parse(lsSnaps);
+    if (lsSellers) SELLERS = JSON.parse(lsSellers);
+    if (DB.length || SELLERS.length) await window._fbSave({snapshots:DB, sellers:SELLERS});
+  }
+  hideSyncStatus();
+  if (DB.length >= 2) {
+    const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
+    rangeFrom = sorted[sorted.length-2].date;
+    rangeTo = sorted[sorted.length-1].date;
+    document.getElementById('rangeFrom').value = rangeFrom;
+    document.getElementById('rangeTo').value = rangeTo;
+  }
+  renderAll();
+  renderHistory();
+  renderBadges();
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Clash+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -32,28 +104,22 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--display);overflow:hidden}
-
 body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");opacity:.4;pointer-events:none;z-index:9999}
-
 .shell{display:grid;grid-template-rows:56px 1fr;grid-template-columns:220px 1fr;height:100vh}
-
 aside{grid-row:1/3;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .brand{padding:18px 20px;border-bottom:1px solid var(--border)}
 .brand-name{font-size:15px;font-weight:700;letter-spacing:.02em;line-height:1.1}
 .brand-sub{font-family:var(--mono);font-size:9px;color:var(--muted2);letter-spacing:.12em;text-transform:uppercase;margin-top:3px}
 .brand-accent{color:var(--g)}
-
 nav{flex:1;padding:12px 0;overflow-y:auto}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:13px;font-weight:500;color:var(--muted2);cursor:pointer;transition:all .15s;position:relative;border-left:2px solid transparent}
 .nav-item:hover{color:var(--text);background:var(--s2)}
 .nav-item.active{color:var(--text);background:var(--s2);border-left-color:var(--g)}
 .nav-item .nav-icon{font-size:15px;width:20px;text-align:center}
 .nav-item .nav-badge{margin-left:auto;font-family:var(--mono);font-size:9px;background:var(--s3);color:var(--muted2);padding:2px 6px;border-radius:2px}
-
 .sidebar-footer{padding:14px 20px;border-top:1px solid var(--border)}
 .snap-btn{width:100%;padding:10px;background:var(--g);color:var(--bg);font-family:var(--display);font-size:12px;font-weight:700;border:none;cursor:pointer;letter-spacing:.05em;transition:opacity .15s}
 .snap-btn:hover{opacity:.85}
-
 header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px}
 .page-title{font-size:13px;font-weight:600;letter-spacing:.03em}
 .header-right{display:flex;align-items:center;gap:16px}
@@ -61,14 +127,11 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .date-input{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;outline:none;transition:border-color .15s}
 .date-input:focus{border-color:var(--g)}
 .range-sep{color:var(--muted)}
-.range-presets{display:flex;gap:4px;flex-wrap:wrap}
+.range-presets{display:flex;gap:4px}
 .range-preset{font-family:var(--mono);font-size:10px;padding:4px 8px;background:var(--s2);border:1px solid var(--border);color:var(--muted2);cursor:pointer;transition:all .15s}
 .range-preset:hover,.range-preset.active{border-color:var(--g);color:var(--g)}
-
 .content{grid-column:2;overflow-y:auto;padding:24px 28px}
-
 .tab-page{display:none}.tab-page.active{display:block}
-
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
 .kpi{background:var(--s1);border:1px solid var(--border);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
 .kpi:hover{border-color:var(--border2);transform:translateY(-1px)}
@@ -81,20 +144,17 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .pill.down{background:var(--r2);color:var(--r)}
 .pill.flat{background:var(--s3);color:var(--muted2)}
 .pill.warn{background:var(--y2);color:var(--y)}
-
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
 .grid-65{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:16px}
 .full{grid-column:1/-1}
-
 .card{background:var(--s1);border:1px solid var(--border);padding:20px}
 .card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .card-title{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .card-tag{font-family:var(--mono);font-size:9px;color:var(--muted2);background:var(--s2);padding:3px 8px;border:1px solid var(--border)}
 .chart-wrap{position:relative;height:200px}
-.chart-wrap.tall{height:300px}
+.chart-wrap.tall{height:260px}
 .chart-wrap.sm{height:120px}
-
 .ageing-list{display:flex;flex-direction:column;gap:11px}
 .ag-row{display:grid;grid-template-columns:72px 1fr 48px 44px;align-items:center;gap:10px}
 .ag-lbl{font-family:var(--mono);font-size:10px;color:var(--muted2)}
@@ -102,7 +162,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .ag-fill{height:100%;transition:width 1.2s cubic-bezier(.16,1,.3,1)}
 .ag-cnt{font-family:var(--mono);font-size:11px;font-weight:500;text-align:right}
 .ag-pct{font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:right}
-
 .insight-box{background:linear-gradient(135deg,rgba(0,245,160,.04),rgba(61,158,255,.04));border:1px solid rgba(0,245,160,.15);padding:20px;margin-bottom:16px}
 .insight-hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .insight-badge{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;background:var(--g2);color:var(--g);padding:3px 8px}
@@ -113,14 +172,12 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .insight-bullets{margin-top:12px;display:flex;flex-direction:column;gap:7px}
 .insight-bullet{display:flex;gap:10px;font-size:12px;line-height:1.5;color:var(--muted2)}
 .insight-bullet::before{content:'→';color:var(--g);flex-shrink:0;font-family:var(--mono)}
-
 .rep-hero{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
 .rep-stat{background:var(--s1);border:1px solid var(--border);padding:22px 24px;position:relative;overflow:hidden}
 .rep-stat-lbl{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px}
 .rep-stat-val{font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:1}
 .rep-stat-sub{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:6px}
 .rep-stat-bg{position:absolute;right:-10px;top:-10px;font-size:80px;opacity:.04;pointer-events:none}
-
 .comp-controls{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .comp-search{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;width:240px;transition:border-color .15s}
 .comp-search:focus{border-color:var(--g)}
@@ -129,7 +186,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .comp-table th{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);background:var(--s2)}
 .comp-table td{padding:12px 16px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(31,40,54,.5);vertical-align:middle}
 .comp-table tr:last-child td{border-bottom:none}
-.comp-table tr.me-row td{background:rgba(0,245,160,.03)}
 .comp-table tr:hover td{background:var(--s2)}
 .me-tag{font-size:9px;background:var(--g2);color:var(--g);padding:2px 6px;margin-left:6px;font-family:var(--mono)}
 .seller-id{color:var(--muted2);font-size:10px}
@@ -137,7 +193,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .sparkline-cell canvas{display:block}
 .rank-badge{display:inline-block;font-family:var(--mono);font-size:10px;background:var(--s3);padding:2px 7px;color:var(--muted2)}
 .rank-badge.me{background:var(--g2);color:var(--g)}
-
 .history-controls{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .history-search{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;transition:border-color .15s}
 .history-search:focus{border-color:var(--g)}
@@ -153,25 +208,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .tbl-btn.del:hover{border-color:var(--r);color:var(--r)}
 .notes-cell{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted2)}
 .empty-row td{text-align:center;padding:48px;color:var(--muted);font-size:12px}
-
-/* ── COMPETITOR HISTORY TABLE ── */
-.comp-hist-row{display:grid;grid-template-columns:120px 1fr 80px 120px 100px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(31,40,54,.5);background:var(--s1)}
-.comp-hist-row:hover{background:var(--s2)}
-.comp-hist-row:last-child{border-bottom:none}
-.comp-hist-seller{font-size:13px;font-weight:600}
-.comp-hist-id{font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:2px}
-.comp-hist-date{font-family:var(--mono);font-size:11px;color:var(--muted2)}
-.comp-hist-pct{font-size:16px;font-weight:700}
-.comp-hist-trend{display:flex;align-items:center;gap:6px}
-.trend-arrow{font-size:16px;font-weight:700}
-.trend-arrow.up{color:var(--g)}
-.trend-arrow.down{color:var(--r)}
-.trend-arrow.flat{color:var(--muted2)}
-.trend-val{font-family:var(--mono);font-size:11px;font-weight:600}
-.trend-val.up{color:var(--g)}
-.trend-val.down{color:var(--r)}
-.trend-val.flat{color:var(--muted2)}
-
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .2s}
 .overlay.open{opacity:1;pointer-events:all}
 .modal{background:var(--s1);border:1px solid var(--border);width:100%;max-width:700px;max-height:90vh;overflow-y:auto;transform:translateY(16px);transition:transform .2s}
@@ -181,11 +217,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .modal-x{background:none;border:none;color:var(--muted2);font-size:22px;cursor:pointer;line-height:1;padding:2px 6px}
 .modal-x:hover{color:var(--text)}
 .modal-body{padding:24px}
-
-/* ── ALERT BOX IN MODAL ── */
-.modal-alert{background:var(--y2);border:1px solid var(--y);color:var(--y);padding:14px 16px;margin-bottom:20px;font-family:var(--mono);font-size:11px;border-radius:2px}
-.modal-alert strong{color:var(--y);font-weight:700}
-
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .fg{display:flex;flex-direction:column;gap:5px}
 .fg.full{grid-column:1/-1}
@@ -198,47 +229,81 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .btn:hover{color:var(--text);border-color:var(--border2)}
 .btn-g{background:var(--g);border-color:var(--g);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:9px 22px;cursor:pointer;transition:opacity .15s}
 .btn-g:hover{opacity:.85}
-
 .comp-form-row{display:grid;grid-template-columns:1fr 120px 80px 30px;gap:8px;align-items:end;margin-bottom:8px}
 .comp-add-btn{background:none;border:1px dashed var(--border2);color:var(--muted2);font-family:var(--mono);font-size:10px;padding:8px;width:100%;cursor:pointer;transition:all .15s;margin-top:4px}
 .comp-add-btn:hover{border-color:var(--b);color:var(--b)}
 .comp-rm{background:none;border:1px solid var(--border);color:var(--muted);font-size:13px;height:37px;cursor:pointer;transition:all .15s}
 .comp-rm:hover{border-color:var(--r);color:var(--r)}
-
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
 .dot.g{background:var(--g);box-shadow:0 0 6px var(--g)}
 .dot.r{background:var(--r)}
 .dot.y{background:var(--y)}
-
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:var(--s1)}
 ::-webkit-scrollbar-thumb{background:var(--s3)}
-
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 .tab-page.active>*{animation:fadeUp .3s ease both}
 .tab-page.active>*:nth-child(2){animation-delay:.05s}
 .tab-page.active>*:nth-child(3){animation-delay:.1s}
 .tab-page.active>*:nth-child(4){animation-delay:.15s}
-
 @media(max-width:1100px){
   .kpi-row{grid-template-columns:repeat(2,1fr)}
   .grid-2,.grid-65{grid-template-columns:1fr}
   .rep-hero{grid-template-columns:1fr}
 }
-
 @media(max-width:768px){
   html,body{overflow:hidden;height:100%;height:100dvh}
-  .shell{display:flex;flex-direction:column;height:100dvh;grid-template-columns:unset;grid-template-rows:unset}
+  .shell{
+    display:flex;flex-direction:column;
+    height:100dvh;
+    grid-template-columns:unset;
+    grid-template-rows:unset;
+  }
   aside{display:none}
-  header{flex-shrink:0;padding:0 14px;height:52px;flex-direction:row;justify-content:space-between}
+  header{
+    flex-shrink:0;
+    padding:0 14px;
+    height:52px;
+    flex-direction:row;
+    justify-content:space-between;
+  }
   .header-right{display:none}
-  .content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;padding-bottom:80px}
-  .mobile-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--s1);border-top:1px solid var(--border);z-index:200;padding-bottom:env(safe-area-inset-bottom)}
-  .mobile-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 4px 8px;font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--muted2);cursor:pointer;gap:4px;transition:color .15s;text-transform:uppercase}
+  .content{
+    flex:1;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:14px;
+    padding-bottom:80px;
+  }
+  .mobile-nav{
+    display:flex;
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--s1);
+    border-top:1px solid var(--border);
+    z-index:200;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .mobile-nav-item{
+    flex:1;display:flex;flex-direction:column;align-items:center;
+    padding:10px 4px 8px;
+    font-family:var(--mono);font-size:9px;letter-spacing:.06em;
+    color:var(--muted2);cursor:pointer;gap:4px;
+    transition:color .15s;
+    text-transform:uppercase;
+  }
   .mobile-nav-item.active{color:var(--g)}
   .mobile-nav-item .mn-icon{font-size:16px;line-height:1}
-  .mobile-nav-snap{flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 4px 8px;cursor:pointer;gap:3px;font-family:var(--mono);font-size:9px;color:var(--g)}
-  .mobile-nav-snap .mn-icon{background:var(--g);color:var(--bg);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;line-height:1}
+  .mobile-nav-snap{
+    flex:1;display:flex;flex-direction:column;align-items:center;
+    padding:6px 4px 8px;cursor:pointer;gap:3px;
+    font-family:var(--mono);font-size:9px;color:var(--g);
+  }
+  .mobile-nav-snap .mn-icon{
+    background:var(--g);color:var(--bg);
+    width:36px;height:36px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:700;line-height:1;
+  }
   .kpi-row{grid-template-columns:1fr 1fr;gap:10px}
   .kpi{padding:14px}
   .kpi-val{font-size:22px}
@@ -263,17 +328,16 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   .comp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .date-range-wrap{display:none}
 }
-
 @media(min-width:769px){
   .mobile-nav{display:none}
 }
+.metric-toggle{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:4px;font-size:10px;font-family:var(--mono);cursor:pointer;transition:all 0.2s;margin-right:4px}
+.metric-toggle:hover{color:var(--fg);border-color:var(--fg)}
+.metric-toggle.active{background:var(--g);color:#07090c;border-color:var(--g);font-weight:600}
 </style>
-<script>window.switchTab=window.openSnap=window.openBulkUpdate=window.openManageSellers=window.addManageRow=window.setDatePreset=window.setCompHistPreset=window.setHistPreset=window.clearCompHistFilters=window.clearHistFilters=window.editSnap=window.deleteSnap=window.saveBulkUpdate=window.saveSellerList=window.deleteCompReadingFn=window.renderCompTab=window.renderHistory=window.renderCompHistory=window.fmt=window.closeOverlay=()=>{};</script>
 </head>
 <body>
 <div class="shell">
-
-<!-- SIDEBAR -->
 <aside>
   <div class="brand">
     <div class="brand-name">BDL <span class="brand-accent">OA</span></div>
@@ -304,33 +368,28 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   </div>
 </aside>
 
-<!-- TOPBAR -->
 <header>
   <div class="page-title" id="pageTitle">Overview</div>
   <div class="header-right">
     <div class="date-range-wrap">
-      <span>Range:</span>
-      <div class="range-presets" id="datePresets">
-        <button class="range-preset" onclick="setDatePreset('mtd',event)">MTD</button>
-        <button class="range-preset" onclick="setDatePreset('last7',event)">Last 7d</button>
-        <button class="range-preset" onclick="setDatePreset('lastmonth',event)">Last Month</button>
-        <button class="range-preset" onclick="setDatePreset('ytd',event)">YTD</button>
-        <button class="range-preset" onclick="setDatePreset('last3m',event)">Last 3m</button>
-        <button class="range-preset" onclick="setDatePreset('custom',event)">Custom</button>
-      </div>
-      <div id="customDateWrap" style="display:none;gap:8px;align-items:center">
-        <input type="date" class="date-input" id="rangeFrom" onchange="applyRange()">
-        <span class="range-sep">→</span>
-        <input type="date" class="date-input" id="rangeTo" onchange="applyRange()">
-      </div>
+      <span>From</span>
+      <input type="date" class="date-input" id="rangeFrom" onchange="applyRange()">
+      <span class="range-sep">→</span>
+      <input type="date" class="date-input" id="rangeTo" onchange="applyRange()">
+    </div>
+    <div class="range-presets">
+      <button class="range-preset" onclick="setDatePreset('mtd',event)">MTD</button>
+      <button class="range-preset" onclick="setDatePreset('last7',event)">Last 7d</button>
+      <button class="range-preset" onclick="setDatePreset('lastmonth',event)">Last Month</button>
+      <button class="range-preset" onclick="setDatePreset('ytd',event)">YTD</button>
+      <button class="range-preset" onclick="setDatePreset('last3m',event)">Last 3m</button>
+      <button class="range-preset" onclick="setDatePreset('custom',event)">Custom</button>
     </div>
   </div>
 </header>
 
-<!-- CONTENT -->
 <div class="content">
 
-  <!-- ══ OVERVIEW TAB ══ -->
   <div class="tab-page active" id="tab-overview">
     <div class="kpi-row">
       <div class="kpi">
@@ -353,12 +412,11 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       </div>
       <div class="kpi">
         <div class="kpi-stripe" style="background:var(--y)"></div>
-        <div class="kpi-label">Total Stock Units</div>
-        <div class="kpi-val" id="kUnits">—</div>
-        <div class="kpi-footer"><span id="kUnitsPill"></span><span id="kUnitsSub">No data</span></div>
+        <div class="kpi-label">Competitor Overlap</div>
+        <div class="kpi-val" id="kCompOverlap">—</div>
+        <div class="kpi-footer"><span id="kCompOverlapPill"></span><span id="kCompOverlapSub">No data</span></div>
       </div>
     </div>
-
     <div class="insight-box" id="insightBox">
       <div class="insight-hd">
         <span class="insight-badge">✦ AI Analysis</span>
@@ -372,6 +430,13 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       <div class="card">
         <div class="card-hd">
           <div class="card-title">Key Metrics Over Time</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-right:auto">
+            <button class="metric-toggle active" onclick="switchChartMetric('units')">Units</button>
+            <button class="metric-toggle" onclick="switchChartMetric('asins')">ASINs</button>
+            <button class="metric-toggle" onclick="switchChartMetric('skus')">SKUs</button>
+            <button class="metric-toggle" onclick="switchChartMetric('winbb')">Win BB %</button>
+            <button class="metric-toggle" onclick="switchChartMetric('matchbb')">Match BB %</button>
+          </div>
           <div class="card-tag" id="chartRangeTag">—</div>
         </div>
         <div class="chart-wrap tall"><canvas id="overviewChart"></canvas></div>
@@ -388,7 +453,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     </div>
   </div>
 
-  <!-- ══ REPRICER TAB ══ -->
   <div class="tab-page" id="tab-repricer">
     <div class="rep-hero">
       <div class="rep-stat">
@@ -406,13 +470,11 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div style="margin-top:10px" id="rWinPill"></div>
       </div>
     </div>
-
     <div class="insight-box" id="repInsightBox">
       <div class="insight-hd"><span class="insight-badge">✦ Repricer Analysis</span></div>
       <div class="insight-text" id="repInsightText">Add snapshots to see repricer analysis.</div>
       <div class="insight-bullets" id="repInsightBullets"></div>
     </div>
-
     <div class="card">
       <div class="card-hd">
         <div class="card-title">Buy Box Performance Over Time</div>
@@ -422,7 +484,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     </div>
   </div>
 
-  <!-- ══ COMPETITORS TAB ══ -->
   <div class="tab-page" id="tab-competitors">
     <div class="insight-box" id="compInsightBox">
       <div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>
@@ -442,45 +503,37 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <div class="comp-table-wrap">
       <table class="comp-table">
         <thead><tr>
-          <th>Rank</th>
-          <th>Seller</th>
-          <th>Seller ID</th>
-          <th>Latest Overlap %</th>
-          <th>vs Last</th>
-          <th>Last 5 Snapshots</th>
+          <th>Rank</th><th>Seller</th><th>Seller ID</th><th>Latest %</th><th>vs Last</th><th>vs Avg</th><th>Trend</th><th>Days Seen</th>
         </tr></thead>
         <tbody id="compTableBody"></tbody>
       </table>
     </div>
+    <div class="card" style="margin-top:20px">
+      <div class="card-hd">
+        <div class="card-title">Competitor Overlap Trends</div>
+        <div class="card-tag" id="compChartTag">—</div>
+      </div>
+      <div class="chart-wrap tall"><canvas id="compChartCanvas"></canvas></div>
+    </div>
   </div>
 
-  <!-- ══ COMPETITOR HISTORY TAB ══ -->
   <div class="tab-page" id="tab-comp-history">
-    <div class="insight-box">
-      <div class="insight-hd"><span class="insight-badge">✦ Competitor History</span></div>
-      <div class="insight-text">Track individual competitor overlap readings over time. Green ▲ means growing overlap, Red ▼ means shrinking.</div>
-    </div>
-
-    <div class="history-controls">
-      <input type="text" class="history-search" id="compHistSearch" placeholder="Search competitor..." oninput="renderCompHistory()">
-      <input type="date" class="date-input" id="compHistFrom" onchange="renderCompHistory()" placeholder="From">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <input type="text" class="comp-search" id="compHistSearch" placeholder="Search seller..." oninput="renderCompHistory()" style="width:200px">
+      <input type="date" class="date-input" id="compHistFrom" onchange="renderCompHistory()">
       <span style="color:var(--muted);font-family:var(--mono);font-size:11px">→</span>
-      <input type="date" class="date-input" id="compHistTo" onchange="renderCompHistory()" placeholder="To">
+      <input type="date" class="date-input" id="compHistTo" onchange="renderCompHistory()">
       <div class="range-presets">
-        <button class="range-preset" onclick="setCompHistPreset('7d',event)">Last 7d</button>
-        <button class="range-preset" onclick="setCompHistPreset('month',event)">This Month</button>
-        <button class="range-preset" onclick="setCompHistPreset('all',event)">All</button>
+        <button class="range-preset" onclick="setCompHistPreset('7d',this)">Last 7d</button>
+        <button class="range-preset" onclick="setCompHistPreset('month',this)">This Month</button>
+        <button class="range-preset" onclick="setCompHistPreset('all',this)">All</button>
       </div>
       <button class="btn" onclick="clearCompHistFilters()">Clear</button>
       <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-left:auto" id="compHistCount"></span>
     </div>
-
-    <div id="compHistoryContainer">
-      <!-- Rendered by renderCompHistory() -->
-    </div>
+    <div id="compHistoryContainer"></div>
   </div>
 
-  <!-- ══ HISTORY TAB ══ -->
   <div class="tab-page" id="tab-history">
     <div class="history-controls">
       <input type="text" class="history-search" id="histSearch" placeholder="Search notes..." oninput="renderHistory()">
@@ -488,11 +541,11 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       <span style="color:var(--muted);font-family:var(--mono);font-size:11px">→</span>
       <input type="date" class="date-input" id="histTo" onchange="renderHistory()" placeholder="To">
       <div class="range-presets">
-        <button class="range-preset" onclick="setHistPreset('7d',event)">Last 7d</button>
-        <button class="range-preset" onclick="setHistPreset('month',event)">This Month</button>
-        <button class="range-preset" onclick="setHistPreset('lastmonth',event)">Last Month</button>
-        <button class="range-preset" onclick="setHistPreset('90d',event)">90 Days</button>
-        <button class="range-preset" onclick="setHistPreset('all',event)">All</button>
+        <button class="range-preset" onclick="setHistPreset('7d',this)">Last 7d</button>
+        <button class="range-preset" onclick="setHistPreset('month',this)">This Month</button>
+        <button class="range-preset" onclick="setHistPreset('lastmonth',this)">Last Month</button>
+        <button class="range-preset" onclick="setHistPreset('90d',this)">90 Days</button>
+        <button class="range-preset" onclick="setHistPreset('all',this)">All</button>
       </div>
       <button class="btn" onclick="clearHistFilters()">Clear</button>
       <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-left:auto" id="histCount"></span>
@@ -500,25 +553,16 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <div class="history-table-wrap">
       <table class="history-table">
         <thead><tr>
-          <th>Date</th>
-          <th>ASINs</th>
-          <th>SKUs</th>
-          <th>Avg Cost</th>
-          <th>Units</th>
-          <th>180d+ Units</th>
-          <th>Win BB%</th>
-          <th>Notes</th>
-          <th>Actions</th>
+          <th>Date</th><th>ASINs</th><th>SKUs</th><th>Avg Cost</th><th>Units</th><th>180d+ Units</th><th>Win BB%</th><th>Notes</th><th>Actions</th>
         </tr></thead>
         <tbody id="histBody"></tbody>
       </table>
     </div>
   </div>
 
-</div><!-- end content -->
-</div><!-- end shell -->
+</div>
+</div>
 
-<!-- MOBILE BOTTOM NAV -->
 <div class="mobile-nav" id="mobileNav">
   <div class="mobile-nav-item active" id="mn-overview" onclick="switchTabMobile('overview')">
     <span class="mn-icon">◈</span>Overview
@@ -538,7 +582,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   </div>
 </div>
 
-<!-- SNAPSHOT MODAL -->
 <div class="overlay" id="snapModal">
 <div class="modal">
   <div class="modal-hd">
@@ -548,7 +591,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   <div class="modal-body">
     <div class="form-grid">
       <div class="fg full"><label>Date</label><input type="date" id="fDate"></div>
-
       <div class="form-section">Inventory</div>
       <div class="fg"><label>Total ASINs</label><input type="number" id="fAsins" placeholder="e.g. 320"></div>
       <div class="fg"><label>Total SKUs</label><input type="number" id="fSkus" placeholder="e.g. 450"></div>
@@ -560,7 +602,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div id="fCostCalc" style="font-family:var(--mono);font-size:10px;color:var(--muted2)"></div>
       </div>
       <input type="hidden" id="fCost">
-
       <div class="form-section">Ageing (units in each bucket)</div>
       <div class="fg"><label>0–30 days</label><input type="number" id="fA0" placeholder="304"></div>
       <div class="fg"><label>31–60 days</label><input type="number" id="fA31" placeholder="152"></div>
@@ -569,12 +610,10 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       <div class="fg"><label>181–270 days</label><input type="number" id="fA181" placeholder="28"></div>
       <div class="fg"><label>271–365 days</label><input type="number" id="fA271" placeholder="6"></div>
       <div class="fg"><label>365+ days</label><input type="number" id="fA365" placeholder="2"></div>
-
       <div class="form-section">Repricer</div>
       <div class="fg"><label>Total SKUs in Repricer</label><input type="number" id="fRepTotal" placeholder="450"></div>
       <div class="fg"><label>Win BB %</label><input type="number" step="0.1" id="fRepWinPct" placeholder="e.g. 9.5"></div>
       <div class="fg"><label>Match BB %</label><input type="number" step="0.1" id="fRepMatchPct" placeholder="e.g. 16.3"></div>
-
       <div class="form-section">Notes</div>
       <div class="fg full"><label>Notes (optional)</label><input type="text" id="fNotes" placeholder="e.g. Post-Prime Day, lots of repricing..."></div>
     </div>
@@ -586,7 +625,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 </div>
 </div>
 
-<!-- BULK UPDATE MODAL -->
 <div class="overlay" id="bulkUpdateModal">
 <div class="modal" style="max-width:540px">
   <div class="modal-hd">
@@ -594,7 +632,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <button class="modal-x" onclick="closeOverlay('bulkUpdateModal')">×</button>
   </div>
   <div class="modal-body">
-    <div id="bulkAlert" style="display:none"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="bulkDateLabel"></div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Today's date — auto applied</div>
@@ -611,7 +648,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 </div>
 </div>
 
-<!-- MANAGE SELLERS MODAL -->
 <div class="overlay" id="manageModal">
 <div class="modal" style="max-width:560px">
   <div class="modal-hd">
@@ -633,15 +669,14 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 </div>
 
 <script>
-// ══ DATA ══════════════════════════════════════════════════════════════════════
 let DB = [];
 let SELLERS = [];
 let editIdx = null;
 let rangeFrom = null, rangeTo = null;
 let chartInstances = {};
-let manageRowCount = 0;
+let compFieldCount = 0;
+let chartMetric = 'units';
 
-// ── SYNC STATUS ────────────────────────────────────────────────────────────────
 function showSyncStatus(state) {
   let el = document.getElementById('syncStatus');
   if (!el) {
@@ -666,16 +701,14 @@ async function persist() {
   }
 }
 
-// ══ TABS ══════════════════════════════════════════════════════════════════════
 const TITLES = { overview:'Overview', repricer:'Repricer', competitors:'Competitors', 'comp-history':'Competitor History', history:'History' };
 function switchTab(id, el) {
   document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('tab-' + id).classList.add('active');
-  if (el) el.classList.add('active');
+  el.classList.add('active');
   document.getElementById('pageTitle').textContent = TITLES[id];
   if (id === 'competitors') renderCompTab();
-  if (id === 'comp-history') renderCompHistory();
   if (id === 'history') renderHistory();
 }
 
@@ -688,29 +721,28 @@ function switchTabMobile(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('pageTitle').textContent = TITLES[id];
   if (id === 'competitors') renderCompTab();
-  if (id === 'comp-history') renderCompHistory();
   if (id === 'history') renderHistory();
-}
-
-// ══ DATE RANGE ═══════════════════════════════════════════════════════════════
-function setDefaultDateRange() {
-  if (DB.length >= 2) {
-    const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
-    rangeFrom = sorted[sorted.length-2].date;
-    rangeTo = sorted[sorted.length-1].date;
-  }
 }
 
 function setDatePreset(p, e) {
   e.preventDefault();
   const customWrap = document.getElementById('customDateWrap');
   if (p === 'custom') {
-    customWrap.style.display = 'flex';
-    document.querySelectorAll('#datePresets .range-preset').forEach(b => b.classList.remove('active'));
+    if (!customWrap) {
+      const wrap = document.createElement('div');
+      wrap.id = 'customDateWrap';
+      wrap.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:16px';
+      wrap.innerHTML = `<input type="date" id="customFrom" onchange="applyRange()"><span>→</span><input type="date" id="customTo" onchange="applyRange()">`;
+      e.target.parentElement.appendChild(wrap);
+    } else {
+      customWrap.style.display = 'flex';
+    }
+    document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
     return;
   }
-  customWrap.style.display = 'none';
-  document.querySelectorAll('#datePresets .range-preset').forEach(b => b.classList.remove('active'));
+  const customWrap2 = document.getElementById('customDateWrap');
+  if (customWrap2) customWrap2.style.display = 'none';
+  document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
   e.target.classList.add('active');
 
   const now = new Date();
@@ -741,13 +773,15 @@ function setDatePreset(p, e) {
     rangeFrom = d.toISOString().split('T')[0];
     rangeTo = now.toISOString().split('T')[0];
   }
+  document.getElementById('rangeFrom').value = rangeFrom || '';
+  document.getElementById('rangeTo').value = rangeTo || '';
   renderAll();
 }
 
 function applyRange() {
   rangeFrom = document.getElementById('rangeFrom').value || null;
   rangeTo = document.getElementById('rangeTo').value || null;
-  document.querySelectorAll('#datePresets .range-preset').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
   renderAll();
 }
 
@@ -758,7 +792,6 @@ function filteredSnaps() {
   return d;
 }
 
-// ══ RENDER ALL ════════════════════════════════════════════════════════════════
 function renderAll() {
   const snaps = filteredSnaps();
   renderKpis(snaps);
@@ -766,27 +799,49 @@ function renderAll() {
   renderOverviewChart(snaps);
   renderAgeing(snaps);
   renderRepricerTab(snaps);
+  renderCompTab();
+  renderCompChart(snaps);
   renderCompInsights(snaps);
   renderBadges();
 }
 
-// ══ KPI TILES ════════════════════════════════════════════════════════════════
 function renderKpis(snaps) {
-  if (!snaps.length) { ['kAsins','kSkus','kCost','kUnits'].forEach(id => document.getElementById(id).textContent = '—'); return; }
+  if (!snaps.length) { ['kAsins','kSkus','kCost','kUnits','kCompOverlap'].forEach(id => document.getElementById(id).textContent = '—'); return; }
   const latest = snaps[snaps.length-1];
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
-
-  setKpi('kAsins','kAsinsPill','kAsinsSub', latest.asins, prev?.asins, '', true);
-  setKpi('kSkus','kSkusPill','kSkusSub', latest.skus, prev?.skus, '', true);
-  setKpi('kCost','kCostPill','kCostSub', latest.avgCost, prev?.avgCost, '£', false);
-  setKpi('kUnits','kUnitsPill','kUnitsSub', latest.totalUnits, prev?.totalUnits, '', true);
+  
+  const avgUnits = snaps.reduce((sum,s)=>sum+(s.totalUnits||0),0) / snaps.length;
+  const avgAsins = snaps.reduce((sum,s)=>sum+(s.asins||0),0) / snaps.length;
+  const avgSkus = snaps.reduce((sum,s)=>sum+(s.skus||0),0) / snaps.length;
+  const avgCost = snaps.reduce((sum,s)=>sum+(s.avgCost||0),0) / snaps.length;
+  
+  setKpi('kAsins','kAsinsPill','kAsinsSub', latest.asins, prev?.asins, '', true, avgAsins);
+  setKpi('kSkus','kSkusPill','kSkusSub', latest.skus, prev?.skus, '', true, avgSkus);
+  setKpi('kCost','kCostPill','kCostSub', latest.avgCost, prev?.avgCost, '£', false, avgCost);
+  setKpi('kUnits','kUnitsPill','kUnitsSub', latest.totalUnits, prev?.totalUnits, '', true, avgUnits);
+  
+  // Competitor overlap pressure = average overlap % across all competitors
+  const compOverlapLatest = latest.competitors && latest.competitors.length > 0 
+    ? (latest.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / latest.competitors.length).toFixed(1)
+    : null;
+  const compOverlapPrev = prev && prev.competitors && prev.competitors.length > 0
+    ? (prev.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / prev.competitors.length).toFixed(1)
+    : null;
+  const compSnapsWithData = snaps.filter(s => s.competitors && s.competitors.length > 0);
+  const compOverlapAvg = compSnapsWithData.length > 0
+    ? compSnapsWithData.reduce((sum,s) => sum + (s.competitors.reduce((cs,c)=>cs+(c.pct||0),0)/s.competitors.length), 0) / compSnapsWithData.length
+    : 0;
+  
+  setKpiDual('kCompOverlap','kCompOverlapPill','kCompOverlapSub', compOverlapLatest, compOverlapPrev, compOverlapAvg, '%', false);
 }
 
-function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true) {
+function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0) {
   const el = document.getElementById(valId);
   const pill = document.getElementById(pillId);
   const sub = document.getElementById(subId);
   el.textContent = curr ? (prefix + (Number.isInteger(curr) ? curr.toLocaleString() : '£'+curr.toFixed(2))) : '—';
+  
+  let pillHtml = '';
   if (prev && prev !== 0) {
     const diff = curr - prev;
     const pct = ((diff/prev)*100).toFixed(1);
@@ -794,15 +849,50 @@ function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true) {
     const good = upGood ? up : !up;
     const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
     const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
-    pill.innerHTML = `<span class="pill ${cls}">${arrow} ${Math.abs(pct)}%</span>`;
-    sub.textContent = 'vs prev snapshot';
-  } else {
-    pill.innerHTML = '';
-    sub.textContent = 'First snapshot';
+    pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(pct)}% vs last</span>`;
   }
+  if (avg && avg > 0) {
+    const diff = curr - avg;
+    const pct = ((diff/avg)*100).toFixed(1);
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    if (pillHtml) pillHtml += ' ';
+    pillHtml += `<span class="pill ${cls}" style="font-size:9px">${arrow} ${Math.abs(pct)}% vs avg</span>`;
+  }
+  pill.innerHTML = pillHtml;
+  sub.textContent = !prev ? 'First snapshot' : 'vs period';
 }
 
-// ══ AGEING ════════════════════════════════════════════════════════════════════
+function setKpiDual(valId, pillId, subId, curr, prev, avg, suffix='', upGood=true) {
+  const el = document.getElementById(valId);
+  const pill = document.getElementById(pillId);
+  const sub = document.getElementById(subId);
+  el.textContent = curr !== null ? curr + suffix : '—';
+  
+  let pillHtml = '';
+  if (prev && prev !== 0) {
+    const diff = parseFloat(curr) - parseFloat(prev);
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)} vs last</span>`;
+  }
+  if (avg && avg > 0) {
+    const diff = parseFloat(curr) - avg;
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    if (pillHtml) pillHtml += ' ';
+    pillHtml += `<span class="pill ${cls}" style="font-size:9px">${arrow} ${Math.abs(diff).toFixed(1)} vs avg</span>`;
+  }
+  pill.innerHTML = pillHtml;
+  sub.textContent = !prev ? 'First period' : 'vs period';
+}
+
 const AG_BUCKETS = [
   {key:'a0',  label:'0–30d',    color:'#00f5a0'},
   {key:'a31', label:'31–60d',   color:'#3d9eff'},
@@ -823,16 +913,10 @@ function renderAgeing(snaps) {
   list.innerHTML = AG_BUCKETS.map(b => {
     const cnt = ag[b.key]||0;
     const pct = ((cnt/total)*100).toFixed(1);
-    return `<div class="ag-row">
-      <div class="ag-lbl">${b.label}</div>
-      <div class="ag-track"><div class="ag-fill" style="width:${pct}%;background:${b.color}"></div></div>
-      <div class="ag-cnt" style="color:${b.color}">${cnt}</div>
-      <div class="ag-pct">${pct}%</div>
-    </div>`;
+    return `<div class="ag-row"><div class="ag-lbl">${b.label}</div><div class="ag-track"><div class="ag-fill" style="width:${pct}%;background:${b.color}"></div></div><div class="ag-cnt" style="color:${b.color}">${cnt}</div><div class="ag-pct">${pct}%</div></div>`;
   }).join('');
 }
 
-// ══ AI INSIGHTS ═══════════════════════════════════════════════════════════════
 function renderInsights(snaps) {
   const box = document.getElementById('insightText');
   const bulls = document.getElementById('insightBullets');
@@ -857,7 +941,7 @@ function renderInsights(snaps) {
   if (snaps.length === 1) {
     main = `This is your first snapshot — <strong>baseline established</strong>. You currently hold <strong>${latest.asins} ASINs</strong> across <strong>${latest.skus} SKUs</strong> with <strong>${totalUnits} units</strong> in stock. `;
     if (over180 > 0) main += `<span class="danger">${over180} units (${over180pct}%)</span> are already aged over 180 days — worth reviewing these for repricing or clearance. `;
-    if (freshPct > 40) main += `<strong>✓ ${freshPct}% of your stock is under 30 days old</strong>, which is a healthy sign of active buying.`;
+    if (freshPct > 40) main += `<strong>${freshPct}% of your stock is under 30 days old</strong>, which is a healthy sign of active buying.`;
   } else {
     const asinDiff = latest.asins - prev.asins;
     const skuDiff = latest.skus - prev.skus;
@@ -875,21 +959,14 @@ function renderInsights(snaps) {
     if (skuDiff > 0) main += `<strong style="color:var(--g)">added ${skuDiff} SKUs</strong>. `;
     else if (skuDiff < 0) main += `<strong style="color:var(--r)">dropped ${Math.abs(skuDiff)} SKUs</strong>. `;
     else main += `held the same SKU count. `;
-
-    if (over180change > 2) {
-      main += `<span class="danger">Your 180d+ stock has increased from ${prevOver180pct}% to ${over180pct}%</span> — costing cash flow. `;
-    } else if (over180change < -2) {
-      main += `<strong style="color:var(--g)">✓ You've reduced 180d+ stock from ${prevOver180pct}% down to ${over180pct}%</strong> — great clearance work. `;
-    } else {
-      main += `Your 180d+ ageing stock is holding steady at <strong>${over180pct}%</strong>. `;
-    }
+    if (over180change > 2) main += `<span class="danger">Your 180d+ stock has increased from ${prevOver180pct}% to ${over180pct}%</span> — this is costing you cash flow. `;
+    else if (over180change < -2) main += `<strong style="color:var(--g)">You've reduced 180d+ stock from ${prevOver180pct}% down to ${over180pct}%</strong> — good clearance work. `;
+    else main += `Your 180d+ ageing stock is holding steady at <strong>${over180pct}%</strong>. `;
   }
   box.innerHTML = main;
 
   const bullets = [];
-  if (over180 > 0 && parseFloat(over180pct) > 5) {
-    bullets.push(`<span class="danger">${over180} units are 181d+ old (${over180pct}% of stock)</span> — clear them to recover cash`);
-  }
+  if (over180 > 0 && parseFloat(over180pct) > 5) bullets.push(`<span class="danger">${over180} units are 181d+ old (${over180pct}% of stock)</span> — clear them to recover cash`);
   if (r.total > 0) {
     const combined = ((r.winning+r.matching)/r.total*100).toFixed(1);
     bullets.push(`Repricer has you <strong>matching or winning BB on ${combined}% of SKUs</strong> — winning on ${winPct}%, matching on ${matchPct}%`);
@@ -897,18 +974,23 @@ function renderInsights(snaps) {
   }
   if (snaps.length >= 3) {
     const asinTrend = snaps.slice(-3).map(s=>s.asins);
-    if (asinTrend[2] > asinTrend[1] && asinTrend[1] > asinTrend[0]) bullets.push(`<strong style="color:var(--g)">✓ ASIN catalogue growing 3 snapshots running</strong> — positive sourcing momentum`);
+    if (asinTrend[2] > asinTrend[1] && asinTrend[1] > asinTrend[0]) bullets.push(`<strong style="color:var(--g)">ASIN catalogue growing 3 snapshots running</strong> — positive sourcing momentum`);
   }
 
   bulls.innerHTML = bullets.map(b => `<div class="insight-bullet">${b}</div>`).join('');
 }
 
-// ══ OVERVIEW CHART ════════════════════════════════════════════════════════════
+function switchChartMetric(metric) {
+  chartMetric = metric;
+  document.querySelectorAll('.metric-toggle').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+  renderOverviewChart(filteredSnaps());
+}
+
 function renderOverviewChart(snaps) {
   destroyChart('overviewChart');
   const ctx = document.getElementById('overviewChart').getContext('2d');
   const tag = document.getElementById('chartRangeTag');
-
   if (snaps.length < 2) {
     tag.textContent = 'Need 2+ snapshots';
     ctx.fillStyle = '#4a5568'; ctx.font = "11px 'DM Mono'"; ctx.textAlign='center';
@@ -917,29 +999,63 @@ function renderOverviewChart(snaps) {
   }
   tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
 
+  let datasets = [];
+  let yMin = 0, yMax = 100;
+  let yLabel = '';
+
+  if (chartMetric === 'units') {
+    const data = snaps.map(s=>s.totalUnits);
+    const max = Math.max(...data);
+    yMin = 0; yMax = Math.ceil(max * 1.1);
+    yLabel = 'Units';
+    datasets.push({ label:'Units', data, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 });
+  } else if (chartMetric === 'asins') {
+    const data = snaps.map(s=>s.asins);
+    const max = Math.max(...data);
+    yMin = 0; yMax = Math.ceil(max * 1.1);
+    yLabel = 'ASINs';
+    datasets.push({ label:'ASINs', data, borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 });
+  } else if (chartMetric === 'skus') {
+    const data = snaps.map(s=>s.skus);
+    const max = Math.max(...data);
+    yMin = 0; yMax = Math.ceil(max * 1.1);
+    yLabel = 'SKUs';
+    datasets.push({ label:'SKUs', data, borderColor:'#3d9eff', backgroundColor:'rgba(61,158,255,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#3d9eff', pointBorderColor:'#07090c', pointBorderWidth:2 });
+  } else if (chartMetric === 'winbb') {
+    const data = snaps.map(s=>{ const r=s.repricer||{}; return r.total ? +((r.winning/r.total)*100).toFixed(1) : 0; });
+    const max = Math.max(...data, 100);
+    const min = Math.min(...data, 0);
+    yMin = Math.max(0, Math.floor(min - 5));
+    yMax = Math.min(100, Math.ceil(max + 5));
+    yLabel = '% Win BB';
+    datasets.push({ label:'Winning BB %', data, borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 });
+  } else if (chartMetric === 'matchbb') {
+    const data = snaps.map(s=>{ const r=s.repricer||{}; return r.total ? +((r.matching/r.total)*100).toFixed(1) : 0; });
+    const max = Math.max(...data, 100);
+    const min = Math.min(...data, 0);
+    yMin = Math.max(0, Math.floor(min - 5));
+    yMax = Math.min(100, Math.ceil(max + 5));
+    yLabel = '% Match BB';
+    datasets.push({ label:'Matching BB %', data, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 });
+  }
+
+  const opts = chartOpts();
+  opts.scales.y.min = yMin;
+  opts.scales.y.max = yMax;
+  if (chartMetric.includes('bb')) {
+    opts.scales.y.ticks.callback = v => v + '%';
+  }
+
   chartInstances.overviewChart = new Chart(ctx, {
     type:'line',
     data:{
       labels: snaps.map(s => fmtShort(s.date)),
-      datasets:[
-        { label:'ASINs', data:snaps.map(s=>s.asins), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.1)', tension:.4, fill:true, pointRadius:6, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2, borderWidth:3 },
-        { label:'SKUs',  data:snaps.map(s=>s.skus),  borderColor:'#3d9eff', backgroundColor:'rgba(61,158,255,.1)', tension:.4, fill:true, pointRadius:6, pointBackgroundColor:'#3d9eff', pointBorderColor:'#07090c', pointBorderWidth:2, borderWidth:3 },
-        { label:'Units', data:snaps.map(s=>s.totalUnits), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.05)', tension:.4, fill:true, pointRadius:6, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2, borderDash:[5,4], borderWidth:2 },
-      ]
+      datasets
     },
-    options: {
-      ...chartOpts(),
-      plugins: {
-        ...chartOpts().plugins,
-        filler: {
-          propagate: false
-        }
-      }
-    }
+    options: opts
   });
 }
 
-// ══ REPRICER TAB ══════════════════════════════════════════════════════════════
 function renderRepricerTab(snaps) {
   if (!snaps.length) return;
   const latest = snaps[snaps.length-1];
@@ -967,23 +1083,55 @@ function renderRepricerTab(snaps) {
 
   let rtxt = '';
   if (snaps.length === 1) {
-    rtxt = `Baseline: <strong>${wPct}% winning</strong> and <strong>${mPct}% matching</strong> the buy box across ${r.total||0} SKUs. `;
+    rtxt = `Baseline: <strong>${wPct}% winning</strong> and <strong>${mPct}% matching</strong> the buy box across ${r.total||0} SKUs. Add more snapshots to see trends.`;
   } else {
     const pr = prev?.repricer||{}; const pt = pr.total||1;
     const pwPct = ((pr.winning/pt)*100).toFixed(1);
     const pmPct = ((pr.matching/pt)*100).toFixed(1);
     const wDiff = (parseFloat(wPct)-parseFloat(pwPct)).toFixed(1);
-    rtxt = `Win rate has <strong style="color:${wDiff>=0?'var(--g)':'var(--r)'}">${wDiff>=0?'improved':'dropped'} ${Math.abs(wDiff)}pp</strong> since ${fmt(prev.date)} (${pwPct}% → ${wPct}%). `;
-    if (wDiff < -5) rtxt += `<span class="danger">A drop of this size often signals competitor price aggression.</span> `;
-    if (wDiff > 5) rtxt += `<strong style="color:var(--g)">✓ Strong improvement — your repricer is working well.</strong> `;
+    const wArrow = wDiff >= 0 ? '▲' : '▼';
+    const wColor = wDiff >= 0 ? 'var(--g)' : 'var(--r)';
+    rtxt = `Win rate has <strong style="color:${wColor}">${wArrow} ${Math.abs(wDiff)}pp</strong> since ${fmt(prev.date)} (${pwPct}% → ${wPct}%). `;
+    if (wDiff < -5) rtxt += `<span class="danger">⚠ Drop of this size signals competitor aggression or floors too high.</span> `;
+    if (wDiff > 5) rtxt += `<strong style="color:var(--g)">✓ Strong improvement — repricer floors working well.</strong> `;
+    if (snaps.length >= 3) {
+      const wTrend = snaps.slice(-3).map(s => { const rr=s.repricer||{}; return rr.total ? (rr.winning/rr.total)*100 : 0; });
+      if (wTrend[2]<wTrend[1] && wTrend[1]<wTrend[0]) rtxt += `<span class="danger">📉 Win rate declining 3 snapshots in a row — market pressure detected.</span>`;
+      else if (wTrend[2]>wTrend[1] && wTrend[1]>wTrend[0]) rtxt += `<strong style="color:var(--g)">✓ Win rate improving 3 snapshots in a row — strong positive momentum.</strong>`;
+    }
   }
   ri.innerHTML = rtxt;
 
   const rBullets = [];
   const combined = r.total ? ((r.winning+r.matching)/r.total*100).toFixed(1) : 0;
-  rBullets.push(`Combined BB presence (match + win): <strong>${combined}%</strong> of all repriced SKUs`);
-  if (parseFloat(wPct) > 25) rBullets.push(`<strong style="color:var(--g)">✓ Winning over 25% — strong position. Monitor margin.</strong>`);
-  if (parseFloat(wPct) < 10) rBullets.push(`<span class="warn">Under 10% win rate — repricer floors may be too high</span>`);
+  rBullets.push(`<strong>BB Coverage:</strong> <strong>${combined}%</strong> of SKUs (${r.winning} winning + ${r.matching} matching)`);
+
+  if (parseFloat(wPct) > 30) rBullets.push(`<strong style="color:var(--g)">🏆 EXCELLENT</strong> — Winning >30% is exceptional performance`);
+  else if (parseFloat(wPct) > 20) rBullets.push(`<strong style="color:var(--g)">✓ STRONG</strong> — Win rate 20-30% is healthy competition`);
+  else if (parseFloat(wPct) > 10) rBullets.push(`<strong style="color:var(--y)">⚠ MODERATE</strong> — Win rate 10-20%, room to improve`);
+  else rBullets.push(`<span class="danger">⚠ BELOW TARGET</span> — Win rate <10%, review floor prices`);
+
+  const matchToWinRatio = parseFloat(wPct) > 0 ? (parseFloat(mPct) / parseFloat(wPct)).toFixed(1) : 0;
+  rBullets.push(`<strong>Match:Win Ratio:</strong> ${matchToWinRatio}x — for every 1 win, you match ${matchToWinRatio} times`);
+
+  if (snaps.length >= 5) {
+    const allWins = snaps.map(s => { const rr=s.repricer||{}; return rr.total ? ((rr.winning/rr.total)*100) : 0; });
+    const avgWin = (allWins.reduce((a,b)=>a+b,0) / allWins.length).toFixed(1);
+    const maxWin = Math.max(...allWins).toFixed(1);
+    const minWin = Math.min(...allWins).toFixed(1);
+    const current = parseFloat(wPct);
+    if (current > parseFloat(avgWin)) rBullets.push(`<strong style="color:var(--g)">↑ Above Average:</strong> ${current}% vs ${avgWin}% average (range: ${minWin}%-${maxWin}%)`);
+    else if (current < parseFloat(avgWin)) rBullets.push(`<span class="warn">↓ Below Average:</span> ${current}% vs ${avgWin}% average (range: ${minWin}%-${maxWin}%)`);
+    else rBullets.push(`<strong>At Average:</strong> ${current}% equals ${avgWin}% (range: ${minWin}%-${maxWin}%)`);
+  }
+
+  if (snaps.length >= 2) {
+    const recent5 = snaps.slice(-5).map(s => { const rr=s.repricer||{}; return rr.total ? ((rr.winning/rr.total)*100) : 0; });
+    const trend = recent5[recent5.length-1] - recent5[0];
+    if (trend > 3) rBullets.push(`<strong style="color:var(--g)">📈 Gaining Ground:</strong> +${trend.toFixed(1)}pp over last 5 snapshots`);
+    else if (trend < -3) rBullets.push(`<span class="danger">📉 Losing Ground:</span> ${trend.toFixed(1)}pp over last 5 snapshots`);
+  }
+
   rb.innerHTML = rBullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('');
 
   destroyChart('repricerChart');
@@ -998,8 +1146,8 @@ function renderRepricerTab(snaps) {
     data:{
       labels: snaps.map(s=>fmtShort(s.date)),
       datasets:[
-        { label:'Winning BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.winning/rr.total)*100).toFixed(1):0; }), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.12)', tension:.4, fill:true, pointRadius:6, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2, borderWidth:3 },
-        { label:'Matching BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.matching/rr.total)*100).toFixed(1):0; }), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.08)', tension:.4, fill:true, pointRadius:6, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2, borderWidth:3 },
+        { label:'Winning BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.winning/rr.total)*100).toFixed(1):0; }), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'Matching BB %', data:snaps.map(s=>{ const rr=s.repricer||{}; return rr.total?+((rr.matching/rr.total)*100).toFixed(1):0; }), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 },
       ]
     },
     options: {...chartOpts(), ...{plugins:{...chartOpts().plugins}, scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}, min:0, max:100, ticks:{callback:v=>v+'%', color:'#4a5568'}}}}}
@@ -1015,7 +1163,6 @@ function setMiniPill(id, curr, prev, upGood) {
   el.innerHTML = `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}pp vs prev</span>`;
 }
 
-// ══ COMPETITORS TAB ═══════════════════════════════════════════════════════════
 function renderCompTab() {
   const snaps = filteredSnaps();
   const search = document.getElementById('compSearch').value.toLowerCase();
@@ -1038,8 +1185,16 @@ function renderCompTab() {
     latest: info.data[info.data.length-1]?.pct||0,
     prev: info.data.length>1 ? info.data[info.data.length-2]?.pct : null,
     history: info.data.map(d=>d.pct),
+    daysSeen: info.data.length,
   }));
 
+  // Calculate average for each seller over selected range
+  sellers = sellers.map(s => ({
+    ...s,
+    avg: s.history.length > 0 ? (s.history.reduce((a,b)=>a+b,0) / s.history.length) : 0,
+  }));
+
+  // Sort by latest overlap % descending (highest threat first)
   sellers.sort((a,b) => b.latest - a.latest);
   sellers = sellers.map((s,i) => ({...s, rank: i+1}));
 
@@ -1049,49 +1204,152 @@ function renderCompTab() {
   document.getElementById('compNavBadge').textContent = Object.keys(sellerMap).length;
 
   if (!sellers.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No competitor data yet. Use ⚙ Manage Sellers to add your list, then ⚡ Update Overlaps to log readings.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No competitor data yet. Use ⚙ Manage Sellers to add your list, then ⚡ Update Overlaps to log readings.</td></tr>';
     return;
   }
 
   tbody.innerHTML = sellers.map(s => {
-    const diff = s.prev !== null ? (s.latest - s.prev).toFixed(1) : null;
-    const arrowHtml = diff !== null
-      ? `<span class="pill ${parseFloat(diff)>0?'up':(parseFloat(diff)<0?'down':'flat')}">${parseFloat(diff)>0?'▲':(parseFloat(diff)<0?'▼':'→')} ${Math.abs(diff)}%</span>`
-      : '<span style="color:var(--muted);font-size:10px">—</span>';
+    // vs Last comparison (competitor overlap increasing = negative/threat)
+    const diffLast = s.prev !== null ? (s.latest - s.prev) : null;
+    const vsLastHtml = diffLast !== null
+      ? `<div style="display:flex;align-items:center;gap:4px"><span class="pill ${diffLast>0?'down':(diffLast<0?'up':'flat')}">${diffLast>0?'▲':(diffLast<0?'▼':'→')} ${Math.abs(diffLast).toFixed(1)}</span></div>`
+      : '<div style="color:var(--muted);font-size:10px;padding:2px">—</div>';
 
-    const sparkId = 'spark_' + s.name.replace(/\s+/g,'_');
-    return `<tr ${s.isMe?'':''}>
-      <td><span class="rank-badge ${s.isMe?'me':''}">#${s.rank}</span></td>
-      <td>${s.name}</td>
-      <td class="seller-id">${s.sellerId||'—'}</td>
-      <td><span class="pct-val" style="color:var(--text)">${s.latest.toFixed(1)}%</span></td>
-      <td>${arrowHtml}</td>
-      <td><canvas id="${sparkId}" width="120" height="36" class="sparkline-cell"></canvas></td>
+    // vs Avg comparison
+    const diffAvg = s.latest - s.avg;
+    const vsAvgHtml = s.history.length > 0
+      ? `<div style="display:flex;align-items:center;gap:4px"><span class="pill ${diffAvg>0?'down':(diffAvg<0?'up':'flat')}" style="font-size:9px">${diffAvg>0?'▲':(diffAvg<0?'▼':'→')} ${Math.abs(diffAvg).toFixed(1)}</span></div>`
+      : '<div style="color:var(--muted);font-size:10px">—</div>';
+
+    // Sparkline
+    const sparkId = 'spark_' + s.name.replace(/[^\w]/g,'_');
+    
+    // Days seen format: "7/30 days" style
+    const totalDaysInRange = snaps.length;
+    const daysSeenStr = `${s.daysSeen}/${totalDaysInRange}`;
+
+    return `<tr>
+      <td style="text-align:center;font-weight:600;color:var(--g)">#${s.rank}</td>
+      <td><strong>${s.name}</strong></td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${s.sellerId||'—'}</td>
+      <td style="font-weight:600;font-size:14px">${s.latest.toFixed(1)}%</td>
+      <td>${vsLastHtml}</td>
+      <td>${vsAvgHtml}</td>
+      <td><canvas id="${sparkId}" width="100" height="32" class="sparkline-cell" style="vertical-align:middle"></canvas></td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:center">${daysSeenStr}</td>
     </tr>`;
   }).join('');
 
   setTimeout(() => {
     sellers.forEach(s => {
-      const sparkId = 'spark_' + s.name.replace(/\s+/g,'_');
+      const sparkId = 'spark_' + s.name.replace(/[^\w]/g,'_');
       const canvas = document.getElementById(sparkId);
       if (!canvas) return;
-      const last5 = s.history.slice(-5);
       destroyChart(sparkId);
       chartInstances[sparkId] = new Chart(canvas.getContext('2d'), {
         type:'line',
-        data:{ labels:last5.map((_,i)=>i), datasets:[{
-          data: last5,
-          borderColor: '#3d9eff',
-          borderWidth: 2,
-          pointRadius: 2,
-          pointBackgroundColor: '#3d9eff',
-          tension: .3,
-          fill: false,
-        }]},
-        options:{ responsive:false, plugins:{legend:{display:false},tooltip:{enabled:false}}, scales:{x:{display:false},y:{display:false}}, animation:{duration:400} }
+        data:{ 
+          labels: s.history.map((_,i)=>i), 
+          datasets:[{
+            data: s.history,
+            borderColor: '#3d9eff',
+            borderWidth: 1.5,
+            pointRadius: 2,
+            pointBackgroundColor: '#3d9eff',
+            tension: .3,
+            fill: false,
+          }]
+        },
+        options:{ responsive:false, plugins:{legend:{display:false},tooltip:{enabled:false}}, scales:{x:{display:false},y:{display:false, min:0, max:100}}, animation:{duration:400} }
       });
     });
   }, 50);
+}
+
+function renderCompChart(snaps) {
+  const ctx = document.getElementById('compChartCanvas');
+  if (!ctx) return;
+  const chartCtx = ctx.getContext('2d');
+  const tag = document.getElementById('compChartTag');
+
+  if (snaps.length < 2) {
+    tag.textContent = 'Need 2+ snapshots';
+    chartCtx.fillStyle = '#4a5568'; chartCtx.font = "11px 'DM Mono'"; chartCtx.textAlign='center';
+    chartCtx.fillText('Add 2+ snapshots to see competitor trends', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    return;
+  }
+
+  // Build competitor dataset from all snapshots
+  const sellerMap = {};
+  snaps.forEach(s => {
+    (s.competitors||[]).forEach(c => {
+      const key = c.name.trim();
+      if (!sellerMap[key]) sellerMap[key] = { sellerId: c.sellerId||'', data: [] };
+      sellerMap[key].data.push({ date: s.date, pct: c.pct||0 });
+      if (c.sellerId) sellerMap[key].sellerId = c.sellerId;
+    });
+  });
+
+  let sellers = Object.entries(sellerMap).map(([name, info]) => ({
+    name, sellerId: info.sellerId,
+    latest: info.data[info.data.length-1]?.pct||0,
+    data: info.data,
+  }));
+
+  // Sort by latest and take top 5
+  sellers.sort((a,b) => b.latest - a.latest);
+  const topCompetitors = sellers.slice(0, 5);
+
+  if (!topCompetitors.length) {
+    tag.textContent = 'No competitor data';
+    chartCtx.fillStyle = '#4a5568'; chartCtx.font = "11px 'DM Mono'"; chartCtx.textAlign='center';
+    chartCtx.fillText('No competitor data yet', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    return;
+  }
+
+  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)} · Top ${topCompetitors.length}`;
+
+  const colors = ['#3d9eff', '#00f5a0', '#ffd166', '#ff6b6b', '#a78bfa'];
+  const datasets = topCompetitors.map((seller, idx) => {
+    const data = snaps.map(snap => {
+      const reading = seller.data.find(d => d.date === snap.date);
+      return reading ? reading.pct : null;
+    });
+    return {
+      label: seller.name,
+      data,
+      borderColor: colors[idx % colors.length],
+      backgroundColor: colors[idx % colors.length] + '14',
+      tension: .35,
+      fill: false,
+      pointRadius: 4,
+      pointBackgroundColor: colors[idx % colors.length],
+      pointBorderColor: '#07090c',
+      pointBorderWidth: 1.5,
+      spanGaps: true,
+    };
+  });
+
+  destroyChart('compChartCanvas');
+  chartInstances.compChartCanvas = new Chart(chartCtx, {
+    type: 'line',
+    data: {
+      labels: snaps.map(s => fmtShort(s.date)),
+      datasets,
+    },
+    options: {
+      ...chartOpts(),
+      scales: {
+        x: { grid: { color: '#1c2330' } },
+        y: {
+          grid: { color: '#1c2330' },
+          min: 0,
+          max: 100,
+          ticks: { callback: v => v + '%', color: '#4a5568' },
+        }
+      }
+    }
+  });
 }
 
 function renderCompInsights(snaps) {
@@ -1103,7 +1361,7 @@ function renderCompInsights(snaps) {
   snaps.forEach(s => { (s.competitors||[]).forEach(c => { const k=c.name.trim(); if(!sellerMap[k]) sellerMap[k]={sellerId:c.sellerId||'',data:[]}; sellerMap[k].data.push(c.pct||0); if(c.sellerId) sellerMap[k].sellerId=c.sellerId; }); });
 
   const allLatest = Object.entries(sellerMap).map(([n,v])=>({name:n,pct:v.data[v.data.length-1]})).sort((a,b)=>b.pct-a.pct);
-  if (!allLatest.length) { ci.innerHTML = 'Add competitor readings to track overlap trends.'; cb.innerHTML=''; return; }
+  if (!allLatest.length) { ci.innerHTML = 'Add competitor readings on this tab to start tracking their overlap % over time.'; cb.innerHTML=''; return; }
 
   const top = allLatest[0];
   const growing = Object.entries(sellerMap).filter(([_,v])=>{ const d=v.data; return d.length>=2 && d[d.length-1]>d[d.length-2]; });
@@ -1127,14 +1385,12 @@ function renderCompInsights(snaps) {
   cb.innerHTML = bullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('');
 }
 
-// ══ COMPETITOR HISTORY TAB ════════════════════════════════════════════════════
 function renderCompHistory() {
   const search = document.getElementById('compHistSearch')?.value.toLowerCase() || '';
   const hFrom = document.getElementById('compHistFrom')?.value || '';
   const hTo = document.getElementById('compHistTo')?.value || '';
   const container = document.getElementById('compHistoryContainer');
-
-  // Flatten all competitor readings
+  
   let readings = [];
   DB.forEach(snap => {
     (snap.competitors||[]).forEach(comp => {
@@ -1146,13 +1402,10 @@ function renderCompHistory() {
       });
     });
   });
-
-  // Filter
+  
   if (search) readings = readings.filter(r => r.sellerName.toLowerCase().includes(search) || r.sellerId.toLowerCase().includes(search));
   if (hFrom) readings = readings.filter(r => r.date >= hFrom);
   if (hTo) readings = readings.filter(r => r.date <= hTo);
-
-  // Sort by date desc, then by seller name
   readings.sort((a,b) => {
     const dCmp = b.date.localeCompare(a.date);
     if (dCmp !== 0) return dCmp;
@@ -1160,14 +1413,12 @@ function renderCompHistory() {
   });
 
   document.getElementById('compHistCount').textContent = `${readings.length} readings`;
-  document.getElementById('compHistNavBadge').textContent = Object.keys([...new Set(readings.map(r=>r.sellerName))]).length;
-
+  
   if (!readings.length) {
     container.innerHTML = '<div style="text-align:center;padding:48px;color:var(--muted);font-size:12px">No competitor history yet. Add competitors and log overlap readings to see history.</div>';
     return;
   }
 
-  // Build history map: seller -> sorted readings
   const historyMap = {};
   readings.forEach(r => {
     if (!historyMap[r.sellerName]) historyMap[r.sellerName] = { sellerId: r.sellerId, readings: [] };
@@ -1177,45 +1428,39 @@ function renderCompHistory() {
     historyMap[seller].readings.sort((a,b) => b.date.localeCompare(a.date));
   });
 
-  // Render all readings with trend indicators
   let html = '<div style="display:flex;flex-direction:column;gap:0;background:var(--s1);border:1px solid var(--border)">';
   readings.forEach(reading => {
     const sellerReadings = historyMap[reading.sellerName].readings;
     const idx = sellerReadings.findIndex(r => r.date === reading.date);
     const prev = idx > 0 ? sellerReadings[idx+1] : null;
     const diff = prev ? (reading.pct - prev.pct) : null;
-    
     let trendHtml = '';
     if (diff !== null) {
       const trend = diff > 0 ? 'up' : (diff < 0 ? 'down' : 'flat');
       const arrow = diff > 0 ? '▲' : (diff < 0 ? '▼' : '→');
-      trendHtml = `<div class="comp-hist-trend"><span class="trend-arrow ${trend}">${arrow}</span><span class="trend-val ${trend}">${Math.abs(diff).toFixed(1)}%</span></div>`;
+      trendHtml = `<div style="display:flex;align-items:center;gap:4px;min-width:60px"><span class="pill ${trend}">${arrow} ${Math.abs(diff).toFixed(1)}%</span></div>`;
     } else {
-      trendHtml = '<div class="comp-hist-trend"><span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">—</span></div>';
+      trendHtml = '<div style="font-family:var(--mono);font-size:10px;color:var(--muted2);min-width:60px">—</div>';
     }
-
-    html += `<div class="comp-hist-row">
+    html += `<div style="display:grid;grid-template-columns:100px 1fr 80px 80px 100px;gap:12px;padding:12px 16px;border-bottom:1px solid rgba(31,40,54,.5);align-items:center">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--g)">${fmt(reading.date)}</div>
       <div>
-        <div class="comp-hist-date">${fmt(reading.date)}</div>
+        <div style="font-size:13px;font-weight:600">${reading.sellerName}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${reading.sellerId || '—'}</div>
       </div>
-      <div>
-        <div class="comp-hist-seller">${reading.sellerName}</div>
-        <div class="comp-hist-id">${reading.sellerId || '—'}</div>
-      </div>
-      <div class="comp-hist-pct">${reading.pct.toFixed(1)}%</div>
+      <div style="font-size:14px;font-weight:600;text-align:center">${reading.pct.toFixed(1)}%</div>
       ${trendHtml}
       <div style="text-align:right">
-        <button class="tbl-btn del" onclick="deleteCompReading('${reading.date}','${reading.sellerName.replace(/'/g,\"\\'\")}')">✕</button>
+        <button class="tbl-btn del" onclick="deleteCompReadingFn('${reading.date.replace(/'/g, "&apos;")}', '${reading.sellerName.replace(/'/g, "&apos;")}')">✕</button>
       </div>
     </div>`;
   });
   html += '</div>';
-
   container.innerHTML = html;
 }
 
 function setCompHistPreset(p, btn) {
-  document.querySelectorAll('.history-controls .range-preset').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.history-controls .range-preset, .range-presets .range-preset').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const now = new Date();
   let from='', to='';
@@ -1237,11 +1482,11 @@ function clearCompHistFilters() {
   document.getElementById('compHistSearch').value = '';
   document.getElementById('compHistFrom').value = '';
   document.getElementById('compHistTo').value = '';
-  document.querySelectorAll('.history-controls .range-preset').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.range-presets .range-preset').forEach(b => b.classList.remove('active'));
   renderCompHistory();
 }
 
-async function deleteCompReading(date, sellerName) {
+async function deleteCompReadingFn(date, sellerName) {
   if (!confirm(`Delete overlap reading for ${sellerName} on ${fmt(date)}?`)) return;
   const snap = DB.find(s => s.date === date);
   if (snap) {
@@ -1251,7 +1496,6 @@ async function deleteCompReading(date, sellerName) {
   }
 }
 
-// ══ HISTORY TAB ═══════════════════════════════════════════════════════════════
 function renderHistory() {
   const search = document.getElementById('histSearch').value.toLowerCase();
   const hFrom = document.getElementById('histFrom').value;
@@ -1340,29 +1584,17 @@ function calcAvgCost() {
   }
 }
 
-// ══ SELLER LIST ══════════════════════════════════════════════════════════════
+let manageRowCount = 0;
+
 function openBulkUpdate() {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('bulkDateLabel').textContent = 'Date: ' + fmt(today);
-  
-  // Check if already logged for today
-  const todaySnap = DB.find(s => s.date === today);
-  const alertEl = document.getElementById('bulkAlert');
-  if (todaySnap && todaySnap.competitors && todaySnap.competitors.length > 0) {
-    alertEl.style.display = 'block';
-    alertEl.innerHTML = `<div class="modal-alert"><strong>⚠ Already logged today (${fmt(today)})</strong> — editing will overwrite your previous readings. Fields are blank so you can enter fresh data.</div>`;
-  } else {
-    alertEl.style.display = 'none';
-  }
-
   const wrap = document.getElementById('bulkRows');
   if (!SELLERS.length) {
     wrap.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--muted2);padding:20px 0;text-align:center">No sellers yet — use ⚙ Manage Sellers to add your competitor list first.</div>';
     document.getElementById('bulkUpdateModal').classList.add('open');
     return;
   }
-
-  // Always show blank fields (don't pre-fill)
   wrap.innerHTML = SELLERS.map((s,i) => {
     return `<div style="display:grid;grid-template-columns:1fr 140px;gap:10px;align-items:center;padding:10px 12px;background:var(--s2);border:1px solid var(--border)">
       <div>
@@ -1402,9 +1634,8 @@ async function saveBulkUpdate() {
   closeOverlay('bulkUpdateModal');
   renderCompTab();
   renderCompInsights(filteredSnaps());
-  renderCompHistory();
   renderBadges();
-  if (saved) showToast(`✓ Saved ${saved} overlap reading${saved!==1?'s':''}`);
+  if (saved) showToast(`✓ Saved ${saved} overlap reading${saved!==1?'s':''} for ${fmt(new Date().toISOString().split('T')[0])}`);
 }
 
 function openManageSellers() {
@@ -1452,7 +1683,6 @@ function showToast(msg) {
   setTimeout(()=>t.style.opacity='0', 2800);
 }
 
-// ══ SNAP MODAL ════════════════════════════════════════════════════════════════
 function openSnap(prefill=null) {
   editIdx = null;
   document.getElementById('snapModalTitle').textContent = 'Add Snapshot';
@@ -1534,6 +1764,8 @@ async function saveSnap() {
     const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
     rangeFrom = sorted[sorted.length-2].date;
     rangeTo = sorted[sorted.length-1].date;
+    document.getElementById('rangeFrom').value = rangeFrom;
+    document.getElementById('rangeTo').value = rangeTo;
   }
   renderAll();
   renderHistory();
@@ -1544,14 +1776,13 @@ async function deleteSnap(idx) {
   DB.splice(idx,1); await persist(); renderAll(); renderHistory();
 }
 
-// ══ UTILS ═════════════════════════════════════════════════════════════════════
 function destroyChart(id) { if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];} }
 
 function chartOpts() {
   return {
     responsive:true, maintainAspectRatio:false,
-    plugins:{ legend:{ position:'top', labels:{ boxWidth:12, padding:16, color:'#6b7a8d', font:{family:'DM Mono',size:11,weight:500} } }, tooltip:{ backgroundColor:'#1c2330', padding:12, titleFont:{family:'DM Mono',size:12,weight:600}, bodyFont:{family:'DM Mono',size:11}, borderColor:'#2a3545', borderWidth:1, cornerRadius:2, displayColors:true, callbacks:{label:ctx=>' '+ctx.label+': '+ctx.parsed.y}} } },
-    scales:{ x:{ grid:{color:'#1c2330',drawBorder:false}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}} }, y:{ grid:{color:'#1c2330',drawBorder:false}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}}, beginAtZero:false } }
+    plugins:{ legend:{ position:'top', labels:{ boxWidth:10, padding:16, color:'#6b7a8d', font:{family:'DM Mono',size:10} } }, tooltip:{ backgroundColor:'#1c2330', titleFont:{family:'DM Mono',size:11}, bodyFont:{family:'DM Mono',size:11}, borderColor:'#2a3545', borderWidth:1 } },
+    scales:{ x:{ grid:{color:'#1c2330'}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}} }, y:{ grid:{color:'#1c2330'}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}}, beginAtZero:false } }
   };
 }
 
@@ -1560,7 +1791,6 @@ function fmtShort(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${da
 
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.querySelectorAll('.overlay.open').forEach(el=>el.classList.remove('open')); });
 
 function renderBadges() {
   document.getElementById('histNavBadge').textContent = DB.length;
@@ -1570,73 +1800,21 @@ function renderBadges() {
   document.getElementById('compHistNavBadge').textContent = readings.length;
 }
 
-// ══ INIT ══════════════════════════════════════════════════════════════════════
 Chart.defaults.color = '#4a5568';
 Chart.defaults.borderColor = '#1c2330';
 Chart.defaults.font.family = "'DM Mono', monospace";
-</script>
 
-<script type="module">
-// ══ FIREBASE CONFIG ══════════════════════════════════════════════════════════
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// Set default range to last 30 days
+const now = new Date();
+const d30 = new Date(now);
+d30.setDate(d30.getDate()-30);
+rangeFrom = d30.toISOString().split('T')[0];
+rangeTo = now.toISOString().split('T')[0];
+document.getElementById('rangeFrom').value = rangeFrom;
+document.getElementById('rangeTo').value = rangeTo;
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCntSANP2j1a1Go4SWz6nOsJkEtX5kxXgo",
-  authDomain: "bdl-oa-overview.firebaseapp.com",
-  projectId: "bdl-oa-overview",
-  storageBucket: "bdl-oa-overview.firebasestorage.app",
-  messagingSenderId: "657106404188",
-  appId: "1:657106404188:web:13e836fd301af7c96cb799",
-  measurementId: "G-124VCGHF02"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const DOC_REF = doc(db, 'bdl', 'data');
-
-window._fbSave = async function(data) {
-  try {
-    await setDoc(DOC_REF, data);
-    return true;
-  } catch(e) {
-    console.error('Firebase save error:', e);
-    localStorage.setItem('bdl_oa_v3', JSON.stringify(data.snapshots||[]));
-    localStorage.setItem('bdl_sellers_v1', JSON.stringify(data.sellers||[]));
-    return false;
-  }
-};
-
-window._fbLoad = async function() {
-  try {
-    const snap = await getDoc(DOC_REF);
-    if (snap.exists()) return snap.data();
-    return null;
-  } catch(e) {
-    console.error('Firebase load error:', e);
-    return null;
-  }
-};
-
-(async () => {
-  showSyncStatus('loading');
-  const data = await window._fbLoad();
-  if (data) {
-    DB = data.snapshots || [];
-    SELLERS = data.sellers || [];
-  } else {
-    const lsSnaps = localStorage.getItem('bdl_oa_v3');
-    const lsSellers = localStorage.getItem('bdl_sellers_v1');
-    if (lsSnaps) DB = JSON.parse(lsSnaps);
-    if (lsSellers) SELLERS = JSON.parse(lsSellers);
-    if (DB.length || SELLERS.length) await window._fbSave({snapshots:DB, sellers:SELLERS});
-  }
-  hideSyncStatus();
-  setDefaultDateRange();
-  renderAll();
-  renderHistory();
-  renderBadges();
-})();
+renderAll();
+renderBadges();
 </script>
 </body>
 </html>
