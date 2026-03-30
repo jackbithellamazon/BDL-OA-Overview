@@ -8,7 +8,7 @@
 <script type="module">
 // ══ FIREBASE CONFIG ══════════════════════════════════════════════════════════
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCntSANP2j1a1Go4SWz6nOsJkEtX5kxXgo",
@@ -33,6 +33,7 @@ window._fbSave = async function(data) {
     console.error('Firebase save error:', e);
     localStorage.setItem('bdl_oa_v3', JSON.stringify(data.snapshots||[]));
     localStorage.setItem('bdl_sellers_v1', JSON.stringify(data.sellers||[]));
+    localStorage.setItem('bdl_comp_sessions_v1', JSON.stringify(data.competitorSessions||[]));
     return false;
   }
 };
@@ -57,12 +58,15 @@ window._fbReady = true;
   if (data) {
     DB = data.snapshots || [];
     SELLERS = data.sellers || [];
+    COMPETITOR_SESSIONS = data.competitorSessions || [];
   } else {
     const lsSnaps = localStorage.getItem('bdl_oa_v3');
     const lsSellers = localStorage.getItem('bdl_sellers_v1');
+    const lsCompSessions = localStorage.getItem('bdl_comp_sessions_v1');
     if (lsSnaps) DB = JSON.parse(lsSnaps);
     if (lsSellers) SELLERS = JSON.parse(lsSellers);
-    if (DB.length || SELLERS.length) await window._fbSave({snapshots:DB, sellers:SELLERS});
+    if (lsCompSessions) COMPETITOR_SESSIONS = JSON.parse(lsCompSessions);
+    if (DB.length || SELLERS.length || COMPETITOR_SESSIONS.length) await window._fbSave({snapshots:DB, sellers:SELLERS, competitorSessions:COMPETITOR_SESSIONS});
   }
   hideSyncStatus();
   if (DB.length >= 2) {
@@ -742,6 +746,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 <script>
 let DB = [];
 let SELLERS = [];
+let COMPETITOR_SESSIONS = [];
 let editIdx = null;
 let rangeFrom = null, rangeTo = null;
 let chartInstances = {};
@@ -766,9 +771,10 @@ function hideSyncStatus() { showSyncStatus(''); const el=document.getElementById
 async function persist() {
   localStorage.setItem('bdl_oa_v3', JSON.stringify(DB));
   localStorage.setItem('bdl_sellers_v1', JSON.stringify(SELLERS));
+  localStorage.setItem('bdl_comp_sessions_v1', JSON.stringify(COMPETITOR_SESSIONS));
   if (window._fbSave) {
     showSyncStatus('loading');
-    const ok = await window._fbSave({snapshots:DB, sellers:SELLERS});
+    const ok = await window._fbSave({snapshots:DB, sellers:SELLERS, competitorSessions:COMPETITOR_SESSIONS});
     showSyncStatus(ok ? 'saved' : 'error');
   }
 }
@@ -782,6 +788,7 @@ function switchTab(id, el) {
   document.getElementById('pageTitle').textContent = TITLES[id];
   if (id === 'competitors') renderCompTab();
   if (id === 'history') renderHistory();
+  updateLastUpdated();
 }
 
 function switchTabMobile(id) {
@@ -892,16 +899,18 @@ function renderKpis(snaps) {
   setKpi('kCost','kCostPill','kCostSub', latest.avgCost, prev?.avgCost, '£', false, avgCost);
   setKpi('kUnits','kUnitsPill','kUnitsSub', latest.totalUnits, prev?.totalUnits, '', true, avgUnits);
   
-  // Competitor overlap pressure = average overlap % across all competitors
-  const compOverlapLatest = latest.competitors && latest.competitors.length > 0 
-    ? (latest.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / latest.competitors.length).toFixed(1)
+  // Competitor overlap pressure = average overlap % across all competitors (from COMPETITOR_SESSIONS)
+  const latestCompSession = COMPETITOR_SESSIONS.length > 0 ? COMPETITOR_SESSIONS[COMPETITOR_SESSIONS.length - 1] : null;
+  const prevCompSession = COMPETITOR_SESSIONS.length > 1 ? COMPETITOR_SESSIONS[COMPETITOR_SESSIONS.length - 2] : null;
+  
+  const compOverlapLatest = latestCompSession && latestCompSession.competitors && latestCompSession.competitors.length > 0
+    ? (latestCompSession.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / latestCompSession.competitors.length).toFixed(1)
     : null;
-  const compOverlapPrev = prev && prev.competitors && prev.competitors.length > 0
-    ? (prev.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / prev.competitors.length).toFixed(1)
+  const compOverlapPrev = prevCompSession && prevCompSession.competitors && prevCompSession.competitors.length > 0
+    ? (prevCompSession.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / prevCompSession.competitors.length).toFixed(1)
     : null;
-  const compSnapsWithData = snaps.filter(s => s.competitors && s.competitors.length > 0);
-  const compOverlapAvg = compSnapsWithData.length > 0
-    ? compSnapsWithData.reduce((sum,s) => sum + (s.competitors.reduce((cs,c)=>cs+(c.pct||0),0)/s.competitors.length), 0) / compSnapsWithData.length
+  const compOverlapAvg = COMPETITOR_SESSIONS.length > 0
+    ? (COMPETITOR_SESSIONS.reduce((sum,s) => sum + (s.competitors && s.competitors.length > 0 ? (s.competitors.reduce((cs,c)=>cs+(c.pct||0),0)/s.competitors.length) : 0), 0) / COMPETITOR_SESSIONS.length)
     : 0;
   
   setKpiDual('kCompOverlap','kCompOverlapPill','kCompOverlapSub', compOverlapLatest, compOverlapPrev, compOverlapAvg, '%', false);
@@ -1376,31 +1385,30 @@ function renderAgingChart(snaps) {
 }
 
 function renderCompTab() {
-  const snaps = filteredSnaps();
   const search = document.getElementById('compSearch').value.toLowerCase();
   const tbody = document.getElementById('compTableBody');
   const meta = document.getElementById('compMeta');
 
+  // Get competitors from COMPETITOR_SESSIONS (all of them, not filtered by date)
   const sellerMap = {};
-  snaps.forEach(s => {
-    (s.competitors||[]).forEach(c => {
+  COMPETITOR_SESSIONS.forEach(session => {
+    (session.competitors||[]).forEach(c => {
       const key = c.name.trim();
-      if (!sellerMap[key]) sellerMap[key] = { sellerId: c.sellerId||'', isMe: c.isMe, data: [] };
-      sellerMap[key].data.push({ date: s.date, pct: c.pct||0 });
+      if (!sellerMap[key]) sellerMap[key] = { sellerId: c.sellerId||'', data: [] };
+      sellerMap[key].data.push({ date: session.date, pct: c.pct||0 });
       if (c.sellerId) sellerMap[key].sellerId = c.sellerId;
-      if (c.isMe) sellerMap[key].isMe = true;
     });
   });
 
   let sellers = Object.entries(sellerMap).map(([name, info]) => ({
-    name, sellerId: info.sellerId, isMe: info.isMe,
+    name, sellerId: info.sellerId,
     latest: info.data[info.data.length-1]?.pct||0,
     prev: info.data.length>1 ? info.data[info.data.length-2]?.pct : null,
     history: info.data.map(d=>d.pct),
     daysSeen: info.data.length,
   }));
 
-  // Calculate average for each seller over selected range
+  // Calculate average for each seller
   sellers = sellers.map(s => ({
     ...s,
     avg: s.history.length > 0 ? (s.history.reduce((a,b)=>a+b,0) / s.history.length) : 0,
@@ -1459,7 +1467,7 @@ function renderCompTab() {
     document.getElementById('compKpiDropperSub').textContent = 'No data';
   }
 
-  meta.textContent = `${sellers.length} seller${sellers.length!==1?'s':''} · ${snaps.length} snapshot${snaps.length!==1?'s':''}`;
+  meta.textContent = `${sellers.length} seller${sellers.length!==1?'s':''} · ${COMPETITOR_SESSIONS.length} session${COMPETITOR_SESSIONS.length!==1?'s':''}`;
   document.getElementById('compNavBadge').textContent = Object.keys(sellerMap).length;
 
   if (!sellers.length) {
@@ -1537,20 +1545,20 @@ function renderCompChart(snaps) {
   const chartCtx = ctx.getContext('2d');
   const tag = document.getElementById('compChartTag');
 
-  if (snaps.length < 2) {
-    tag.textContent = 'Need 2+ snapshots';
+  if (COMPETITOR_SESSIONS.length < 2) {
+    tag.textContent = 'Need 2+ competitor sessions';
     chartCtx.fillStyle = '#4a5568'; chartCtx.font = "11px 'DM Mono'"; chartCtx.textAlign='center';
-    chartCtx.fillText('Add 2+ snapshots to see competitor trends', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    chartCtx.fillText('Add 2+ competitor sessions to see trends', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
     return;
   }
 
-  // Build competitor dataset from all snapshots
+  // Build competitor dataset from COMPETITOR_SESSIONS
   const sellerMap = {};
-  snaps.forEach(s => {
-    (s.competitors||[]).forEach(c => {
+  COMPETITOR_SESSIONS.forEach(session => {
+    (session.competitors||[]).forEach(c => {
       const key = c.name.trim();
       if (!sellerMap[key]) sellerMap[key] = { sellerId: c.sellerId||'', data: [] };
-      sellerMap[key].data.push({ date: s.date, pct: c.pct||0 });
+      sellerMap[key].data.push({ date: session.date, pct: c.pct||0 });
       if (c.sellerId) sellerMap[key].sellerId = c.sellerId;
     });
   });
@@ -1572,14 +1580,17 @@ function renderCompChart(snaps) {
     return;
   }
 
-  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)} · ${allCompetitors.length} competitors`;
+  const sortedSessions = [...COMPETITOR_SESSIONS].sort((a,b) => a.date.localeCompare(b.date));
+  tag.textContent = `${fmt(sortedSessions[0].date)} → ${fmt(sortedSessions[sortedSessions.length-1].date)} · ${allCompetitors.length} competitors`;
 
   const colors = ['#3d9eff', '#00f5a0', '#ffd166', '#ff9999', '#ff6b6b', '#ff4444', '#a78bfa', '#ff99ff', '#99ff99', '#ffff99'];
+  const sortedSessions2 = [...COMPETITOR_SESSIONS].sort((a,b) => a.date.localeCompare(b.date));
+  
   const datasets = allCompetitors.map((seller, idx) => {
     const isHighlighted = highlightedSeller === seller.name;
     const isDimmed = highlightedSeller && !isHighlighted;
-    const data = snaps.map(snap => {
-      const reading = seller.data.find(d => d.date === snap.date);
+    const data = sortedSessions2.map(session => {
+      const reading = seller.data.find(d => d.date === session.date);
       return reading ? reading.pct : null;
     });
     const color = isDimmed ? '#4a5568' : colors[idx % colors.length];
@@ -1603,7 +1614,7 @@ function renderCompChart(snaps) {
   chartInstances.compChartCanvas = new Chart(chartCtx, {
     type: 'line',
     data: {
-      labels: snaps.map(s => fmtShort(s.date)),
+      labels: sortedSessions2.map(s => fmtShort(s.date)),
       datasets,
     },
     options: {
@@ -1624,10 +1635,10 @@ function renderCompChart(snaps) {
 function renderCompInsights(snaps) {
   const ci = document.getElementById('compInsightText');
   const cb = document.getElementById('compInsightBullets');
-  if (!snaps.length) return;
+  if (!COMPETITOR_SESSIONS.length) { ci.innerHTML = 'Add competitor readings using ⚡ Update Overlaps to start tracking trends.'; cb.innerHTML=''; return; }
 
   const sellerMap = {};
-  snaps.forEach(s => { (s.competitors||[]).forEach(c => { const k=c.name.trim(); if(!sellerMap[k]) sellerMap[k]={sellerId:c.sellerId||'',data:[]}; sellerMap[k].data.push(c.pct||0); if(c.sellerId) sellerMap[k].sellerId=c.sellerId; }); });
+  COMPETITOR_SESSIONS.forEach(session => { (session.competitors||[]).forEach(c => { const k=c.name.trim(); if(!sellerMap[k]) sellerMap[k]={sellerId:c.sellerId||'',data:[]}; sellerMap[k].data.push(c.pct||0); if(c.sellerId) sellerMap[k].sellerId=c.sellerId; }); });
 
   const allLatest = Object.entries(sellerMap).map(([n,v])=>({name:n,pct:v.data[v.data.length-1]})).sort((a,b)=>b.pct-a.pct);
   if (!allLatest.length) { ci.innerHTML = 'Add competitor readings on this tab to start tracking their overlap % over time.'; cb.innerHTML=''; return; }
@@ -1660,72 +1671,60 @@ function renderCompHistory() {
   const hTo = document.getElementById('compHistTo')?.value || '';
   const container = document.getElementById('compHistoryContainer');
   
-  let readings = [];
-  DB.forEach(snap => {
-    (snap.competitors||[]).forEach(comp => {
-      readings.push({
-        date: snap.date,
-        sellerName: comp.name,
-        sellerId: comp.sellerId || '',
-        pct: comp.pct || 0,
-      });
-    });
-  });
+  // Filter sessions by date range
+  let sessions = [...COMPETITOR_SESSIONS];
+  if (hFrom) sessions = sessions.filter(s => s.date >= hFrom);
+  if (hTo) sessions = sessions.filter(s => s.date <= hTo);
+  sessions.sort((a,b) => b.date.localeCompare(a.date));
   
-  if (search) readings = readings.filter(r => r.sellerName.toLowerCase().includes(search) || r.sellerId.toLowerCase().includes(search));
-  if (hFrom) readings = readings.filter(r => r.date >= hFrom);
-  if (hTo) readings = readings.filter(r => r.date <= hTo);
-  readings.sort((a,b) => {
-    const dCmp = b.date.localeCompare(a.date);
-    if (dCmp !== 0) return dCmp;
-    return a.sellerName.localeCompare(b.sellerName);
-  });
-
-  document.getElementById('compHistCount').textContent = `${readings.length} readings`;
+  // Filter by seller search
+  if (search) {
+    sessions = sessions.map(s => ({
+      ...s,
+      competitors: s.competitors.filter(c => c.name.toLowerCase().includes(search) || (c.sellerId || '').toLowerCase().includes(search))
+    })).filter(s => s.competitors.length > 0);
+  }
   
-  if (!readings.length) {
-    container.innerHTML = '<div style="text-align:center;padding:48px;color:var(--muted);font-size:12px">No competitor history yet. Add competitors and log overlap readings to see history.</div>';
+  document.getElementById('compHistCount').textContent = `${sessions.length} sessions`;
+  
+  if (!sessions.length) {
+    container.innerHTML = '<div style="text-align:center;padding:48px;color:var(--muted);font-size:12px">No competitor sessions yet. Use ⚡ Update Overlaps to log competitors for a day.</div>';
     return;
   }
-
-  const historyMap = {};
-  readings.forEach(r => {
-    if (!historyMap[r.sellerName]) historyMap[r.sellerName] = { sellerId: r.sellerId, readings: [] };
-    historyMap[r.sellerName].readings.push(r);
-  });
-  Object.keys(historyMap).forEach(seller => {
-    historyMap[seller].readings.sort((a,b) => b.date.localeCompare(a.date));
-  });
-
+  
   let html = '<div style="display:flex;flex-direction:column;gap:0;background:var(--s1);border:1px solid var(--border)">';
-  readings.forEach(reading => {
-    const sellerReadings = historyMap[reading.sellerName].readings;
-    const idx = sellerReadings.findIndex(r => r.date === reading.date);
-    const prev = idx > 0 ? sellerReadings[idx+1] : null;
-    const diff = prev ? (reading.pct - prev.pct) : null;
-    let trendHtml = '';
-    if (diff !== null) {
-      const trend = diff > 0 ? 'up' : (diff < 0 ? 'down' : 'flat');
-      const arrow = diff > 0 ? '▲' : (diff < 0 ? '▼' : '→');
-      trendHtml = `<div style="display:flex;align-items:center;gap:4px;min-width:60px"><span class="pill ${trend}">${arrow} ${Math.abs(diff).toFixed(1)}%</span></div>`;
-    } else {
-      trendHtml = '<div style="font-family:var(--mono);font-size:10px;color:var(--muted2);min-width:60px">—</div>';
-    }
-    html += `<div style="display:grid;grid-template-columns:100px 1fr 80px 80px 100px;gap:12px;padding:12px 16px;border-bottom:1px solid rgba(31,40,54,.5);align-items:center">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--g)">${fmt(reading.date)}</div>
+  sessions.forEach(session => {
+    const compCount = session.competitors ? session.competitors.length : 0;
+    html += `<div style="display:grid;grid-template-columns:100px 1fr 80px 100px;gap:12px;padding:12px 16px;border-bottom:1px solid rgba(31,40,54,.5);align-items:center;cursor:pointer;transition:background-color 0.2s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''" onclick="viewCompetitorSession('${session.date}')">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--g);font-weight:600">${fmt(session.date)}</div>
       <div>
-        <div style="font-size:13px;font-weight:600">${reading.sellerName}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${reading.sellerId || '—'}</div>
+        <div style="font-size:13px;font-weight:600">${compCount} competitor${compCount!==1?'s':''} logged</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${session.updatedAt ? new Date(session.updatedAt).toLocaleTimeString() : '—'}</div>
       </div>
-      <div style="font-size:14px;font-weight:600;text-align:center">${reading.pct.toFixed(1)}%</div>
-      ${trendHtml}
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:right">${compCount} entries</div>
       <div style="text-align:right">
-        <button class="tbl-btn del" onclick="deleteCompReadingFn('${reading.date.replace(/'/g, "&apos;")}', '${reading.sellerName.replace(/'/g, "&apos;")}')">✕</button>
+        <button class="tbl-btn del" onclick="deleteCompetitorSession('${session.date}'); event.stopPropagation()">✕</button>
       </div>
     </div>`;
   });
   html += '</div>';
   container.innerHTML = html;
+}
+
+function viewCompetitorSession(date) {
+  const session = COMPETITOR_SESSIONS.find(s => s.date === date);
+  if (!session || !session.competitors.length) return;
+  
+  // Show modal or expanded view of that day's competitors
+  let html = `<div style="padding:16px"><h3>${fmt(date)}</h3><table style="width:100%;border-collapse:collapse">`;
+  html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:8px">Seller</th><th style="text-align:center;padding:8px">Overlap %</th></tr>';
+  session.competitors.forEach(c => {
+    html += `<tr style="border-bottom:1px solid rgba(31,40,54,.5)"><td style="padding:8px">${c.name}</td><td style="text-align:center;padding:8px;font-weight:600">${c.pct.toFixed(1)}%</td></tr>`;
+  });
+  html += '</table></div>';
+  
+  // For now, just show as alert (better UX would be modal)
+  alert(`Session for ${fmt(date)}:\n${session.competitors.map(c => `${c.name}: ${c.pct.toFixed(1)}%`).join('\n')}`);
 }
 
 function setCompHistPreset(p, btn) {
@@ -1753,16 +1752,6 @@ function clearCompHistFilters() {
   document.getElementById('compHistTo').value = '';
   document.querySelectorAll('.range-presets .range-preset').forEach(b => b.classList.remove('active'));
   renderCompHistory();
-}
-
-async function deleteCompReadingFn(date, sellerName) {
-  if (!confirm(`Delete overlap reading for ${sellerName} on ${fmt(date)}?`)) return;
-  const snap = DB.find(s => s.date === date);
-  if (snap) {
-    snap.competitors = (snap.competitors || []).filter(c => c.name !== sellerName);
-    await persist();
-    renderCompHistory();
-  }
 }
 
 function renderHistory() {
@@ -1883,28 +1872,37 @@ function openBulkUpdate() {
 
 async function saveBulkUpdate() {
   const today = new Date().toISOString().split('T')[0];
+  const competitors = [];
   let saved = 0;
+  
   SELLERS.forEach((s,i) => {
     const val = document.getElementById('bulk_'+i)?.value;
     if (val==='' || val===null || val===undefined) return;
     const pct = parseFloat(val);
     if (isNaN(pct)) return;
-    let snap = DB.find(sn=>sn.date===today);
-    if (!snap) {
-      snap = { date:today, asins:0, skus:0, avgCost:0, totalUnits:0, stockValue:0, ageing:{a0:0,a31:0,a61:0,a91:0,a181:0,a271:0,a365:0}, repricer:{total:0,matching:0,winning:0}, competitors:[], notes:'Competitor update' };
-      DB.push(snap); DB.sort((a,b)=>a.date.localeCompare(b.date));
-    }
-    if (!snap.competitors) snap.competitors=[];
-    const ex = snap.competitors.find(c=>c.name===s.name);
-    if (ex) ex.pct=pct; else snap.competitors.push({name:s.name, sellerId:s.sellerId||'', pct, isMe:false});
+    competitors.push({name:s.name, sellerId:s.sellerId||'', pct, isMe:false});
     saved++;
   });
+  
+  if (saved > 0) {
+    // Create/update competitor session for today
+    let session = COMPETITOR_SESSIONS.find(s => s.date === today);
+    if (!session) {
+      session = { date: today, competitors: [], createdAt: new Date().toISOString() };
+      COMPETITOR_SESSIONS.push(session);
+      COMPETITOR_SESSIONS.sort((a,b) => a.date.localeCompare(b.date));
+    }
+    session.competitors = competitors;
+    session.updatedAt = new Date().toISOString();
+  }
+  
   await persist();
   closeOverlay('bulkUpdateModal');
   renderCompTab();
+  renderCompHistory();
   renderCompInsights(filteredSnaps());
   renderBadges();
-  if (saved) showToast(`✓ Saved ${saved} overlap reading${saved!==1?'s':''} for ${fmt(new Date().toISOString().split('T')[0])}`);
+  if (saved) showToast(`✓ Saved ${saved} overlap reading${saved!==1?'s':''} for ${fmt(today)}`);
 }
 
 function openManageSellers() {
@@ -2034,7 +2032,6 @@ async function saveSnap() {
     totalUnits: units,
     ageing: { a0:+document.getElementById('fA0').value||0, a31:+document.getElementById('fA31').value||0, a61:+document.getElementById('fA61').value||0, a91:+document.getElementById('fA91').value||0, a181:+document.getElementById('fA181').value||0, a271:+document.getElementById('fA271').value||0, a365:+document.getElementById('fA365').value||0 },
     repricer: { asins: repAsins, total: repTotal, matching: repMatchCount, winning: repWinCount },
-    competitors: DB[editIdx]?.competitors || [],
     notes: document.getElementById('fNotes').value,
   };
   if (editIdx !== null) DB[editIdx] = s;
@@ -2085,17 +2082,42 @@ document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=
 
 function updateLastUpdated() {
   const el = document.getElementById('lastUpdatedDisplay');
-  if (!el || !DB.length) return;
-  const latest = DB[DB.length - 1];
-  el.textContent = 'Last updated: ' + fmt(latest.date);
+  if (!el) return;
+  
+  const currentTab = document.querySelector('.tab-page.active')?.id || 'tab-overview';
+  let latestSnap = null;
+  
+  if (currentTab === 'tab-repricer') {
+    // Show latest repricer snapshot with data
+    latestSnap = DB.filter(s => s.repricer && s.repricer.total).reverse()[0];
+  } else if (currentTab === 'tab-competitors' || currentTab === 'tab-comp-history') {
+    // Show latest competitor session (not from snapshots)
+    const latestSession = COMPETITOR_SESSIONS.length > 0 ? COMPETITOR_SESSIONS[COMPETITOR_SESSIONS.length - 1] : null;
+    if (latestSession) {
+      el.textContent = 'Last updated: ' + fmt(latestSession.date);
+      return;
+    } else {
+      el.textContent = 'Last updated: —';
+      return;
+    }
+  } else {
+    // Default: show latest snapshot overall
+    latestSnap = DB.length > 0 ? DB[DB.length - 1] : null;
+  }
+  
+  if (latestSnap) {
+    el.textContent = 'Last updated: ' + fmt(latestSnap.date);
+  } else {
+    el.textContent = 'Last updated: —';
+  }
 }
 
 function renderBadges() {
   document.getElementById('histNavBadge').textContent = DB.length;
   document.getElementById('compNavBadge').textContent = SELLERS.length||0;
-  const readings = [];
-  DB.forEach(snap => { (snap.competitors||[]).forEach(c => readings.push(c)); });
-  document.getElementById('compHistNavBadge').textContent = readings.length;
+  // Count total competitors across all sessions
+  const totalReadings = COMPETITOR_SESSIONS.reduce((sum, session) => sum + (session.competitors?.length || 0), 0);
+  document.getElementById('compHistNavBadge').textContent = totalReadings;
 }
 
 Chart.defaults.color = '#4a5568';
