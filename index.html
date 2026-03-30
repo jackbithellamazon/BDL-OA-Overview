@@ -5,81 +5,217 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BDL OA Overview</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script type="module">
-// ══ FIREBASE CONFIG ══════════════════════════════════════════════════════════
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// ══ SUPABASE CONFIG ══════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://ffbdazepqrsyurhouxif.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmYmRhemVwcXJzeXVyaG91eGlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTM5MjIsImV4cCI6MjA5MDQ2OTkyMn0.BAuodLUDGzO9A7IfoRRn0HZ1MgWOXNPeYKPDBNaNWeg';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCntSANP2j1a1Go4SWz6nOsJkEtX5kxXgo",
-  authDomain: "bdl-oa-overview.firebaseapp.com",
-  projectId: "bdl-oa-overview",
-  storageBucket: "bdl-oa-overview.firebasestorage.app",
-  messagingSenderId: "657106404188",
-  appId: "1:657106404188:web:13e836fd301af7c96cb799",
-  measurementId: "G-124VCGHF02"
-};
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const DOC_REF = doc(db, 'bdl', 'data');
-
-// Expose to global scope for use in non-module script
-window._fbSave = async function(data) {
+// Save data to Supabase
+window._supabaseSave = async function(snapshots, sellers, competitorSessions) {
   try {
-    await setDoc(DOC_REF, data);
+    // Save snapshots
+    if (snapshots && snapshots.length > 0) {
+      for (const snap of snapshots) {
+        await supabase.from('bdl_snapshots').upsert({
+          date: snap.date,
+          asins: snap.asins,
+          skus: snap.skus,
+          avg_cost: snap.avgCost,
+          stock_value: snap.stockValue,
+          total_units: snap.totalUnits,
+          ageing_a0: snap.ageing?.a0,
+          ageing_a31: snap.ageing?.a31,
+          ageing_a61: snap.ageing?.a61,
+          ageing_a91: snap.ageing?.a91,
+          ageing_a181: snap.ageing?.a181,
+          ageing_a271: snap.ageing?.a271,
+          ageing_a365: snap.ageing?.a365,
+          repricer_asins: snap.repricer?.asins,
+          repricer_total: snap.repricer?.total,
+          repricer_matching: snap.repricer?.matching,
+          repricer_winning: snap.repricer?.winning,
+          notes: snap.notes
+        }, { onConflict: 'date' });
+      }
+    }
+    
+    // Save sellers
+    if (sellers && sellers.length > 0) {
+      for (const seller of sellers) {
+        await supabase.from('bdl_sellers').upsert({
+          seller_id: seller.sellerId,
+          name: seller.name
+        }, { onConflict: 'seller_id' });
+      }
+    }
+    
+    // Save competitor sessions with readings
+    if (competitorSessions && competitorSessions.length > 0) {
+      for (const session of competitorSessions) {
+        // Upsert session
+        const { data: sessionData, error: sessError } = await supabase
+          .from('bdl_competitor_sessions')
+          .upsert({ date: session.date }, { onConflict: 'date' })
+          .select()
+          .single();
+        
+        if (sessError) throw sessError;
+        
+        // Delete old readings for this session
+        await supabase.from('bdl_competitor_readings').delete().eq('session_id', sessionData.id);
+        
+        // Insert new readings
+        if (session.competitors && session.competitors.length > 0) {
+          await supabase.from('bdl_competitor_readings').insert(
+            session.competitors.map(c => ({
+              session_id: sessionData.id,
+              seller_id: c.sellerId,
+              seller_name: c.name,
+              overlap_pct: c.pct
+            }))
+          );
+        }
+      }
+    }
+    
     return true;
   } catch(e) {
-    console.error('Firebase save error:', e);
-    localStorage.setItem('bdl_oa_v3', JSON.stringify(data.snapshots||[]));
-    localStorage.setItem('bdl_sellers_v1', JSON.stringify(data.sellers||[]));
-    localStorage.setItem('bdl_comp_sessions_v1', JSON.stringify(data.competitorSessions||[]));
+    console.error('Supabase save error:', e);
     return false;
   }
 };
 
-window._fbLoad = async function() {
+// Load data from Supabase
+window._supabaseLoad = async function() {
   try {
-    const snap = await getDoc(DOC_REF);
-    if (snap.exists()) return snap.data();
-    return null;
+    console.log('Starting Supabase load...');
+    
+    // Load snapshots
+    const { data: snapshots, error: snapError } = await supabase
+      .from('bdl_snapshots')
+      .select('*')
+      .order('date', { ascending: true });
+    
+    console.log('Snapshots loaded:', snapshots, 'Error:', snapError);
+    if (snapError) throw snapError;
+    
+    // Load sellers
+    const { data: sellers, error: sellError } = await supabase
+      .from('bdl_sellers')
+      .select('*');
+    
+    console.log('Sellers loaded:', sellers, 'Error:', sellError);
+    if (sellError) throw sellError;
+    
+    // Load competitor sessions
+    const { data: sessions, error: sessError } = await supabase
+      .from('bdl_competitor_sessions')
+      .select('*')
+      .order('date', { ascending: true });
+    
+    console.log('Sessions loaded:', sessions, 'Error:', sessError);
+    if (sessError) throw sessError;
+    
+    // Load competitor readings
+    const { data: readings, error: readError } = await supabase
+      .from('bdl_competitor_readings')
+      .select('*');
+    
+    console.log('Readings loaded:', readings, 'Error:', readError);
+    if (readError) throw readError;
+    
+    return {
+      snapshots: snapshots?.map(s => ({
+        date: s.date,
+        asins: s.asins,
+        skus: s.skus,
+        avgCost: s.avg_cost,
+        stockValue: s.stock_value,
+        totalUnits: s.total_units,
+        ageing: {
+          a0: s.ageing_a0,
+          a31: s.ageing_a31,
+          a61: s.ageing_a61,
+          a91: s.ageing_a91,
+          a181: s.ageing_a181,
+          a271: s.ageing_a271,
+          a365: s.ageing_a365
+        },
+        repricer: {
+          asins: s.repricer_asins,
+          total: s.repricer_total,
+          matching: s.repricer_matching,
+          winning: s.repricer_winning
+        },
+        notes: s.notes
+      })) || [],
+      sellers: sellers?.map(s => ({ sellerId: s.seller_id, name: s.name })) || [],
+      competitorSessions: sessions?.map(s => {
+        const sessionReadings = readings?.filter(r => r.session_id === s.id) || [];
+        return {
+          date: s.date,
+          competitors: sessionReadings.map(r => ({
+            sellerId: r.seller_id,
+            name: r.seller_name,
+            pct: parseFloat(r.overlap_pct)
+          }))
+        };
+      }) || []
+    };
   } catch(e) {
-    console.error('Firebase load error:', e);
+    console.error('Supabase load error:', e);
     return null;
   }
 };
 
 window._fbReady = true;
 
-// Load data from Firebase on startup
-(async () => {
-  showSyncStatus('loading');
-  const data = await window._fbLoad();
+// Load data from Supabase on startup (after DOM is ready)
+window._startupLoad = async function() {
+  // Only call showSyncStatus if element exists
+  const syncEl = document.getElementById('syncStatus');
+  if (syncEl) showSyncStatus('loading');
+  
+  const data = await window._supabaseLoad();
+  console.log('=== DATA LOAD START ===');
+  console.log('Supabase data loaded:', data);
   if (data) {
+    console.log('Using Supabase data');
     DB = data.snapshots || [];
     SELLERS = data.sellers || [];
     COMPETITOR_SESSIONS = data.competitorSessions || [];
+    console.log('DB length:', DB.length);
+    console.log('SELLERS length:', SELLERS.length);
+    console.log('COMPETITOR_SESSIONS length:', COMPETITOR_SESSIONS.length);
   } else {
-    const lsSnaps = localStorage.getItem('bdl_oa_v3');
-    const lsSellers = localStorage.getItem('bdl_sellers_v1');
-    const lsCompSessions = localStorage.getItem('bdl_comp_sessions_v1');
-    if (lsSnaps) DB = JSON.parse(lsSnaps);
-    if (lsSellers) SELLERS = JSON.parse(lsSellers);
-    if (lsCompSessions) COMPETITOR_SESSIONS = JSON.parse(lsCompSessions);
-    if (DB.length || SELLERS.length || COMPETITOR_SESSIONS.length) await window._fbSave({snapshots:DB, sellers:SELLERS, competitorSessions:COMPETITOR_SESSIONS});
+    console.log('Supabase load failed');
   }
-  hideSyncStatus();
+  console.log('=== DATA LOAD END ===');
+  if (syncEl) hideSyncStatus();
   if (DB.length >= 2) {
     const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
     rangeFrom = sorted[sorted.length-2].date;
     rangeTo = sorted[sorted.length-1].date;
-    document.getElementById('rangeFrom').value = rangeFrom;
-    document.getElementById('rangeTo').value = rangeTo;
+    const rangeFromEl = document.getElementById('rangeFrom');
+    const rangeToEl = document.getElementById('rangeTo');
+    if (rangeFromEl) rangeFromEl.value = rangeFrom;
+    if (rangeToEl) rangeToEl.value = rangeTo;
   }
-  renderAll();
-  renderHistory();
-  renderBadges();
-})();
+  // Only render if DOM elements exist
+  try {
+    renderAll();
+    renderHistory();
+    renderBadges();
+  } catch(e) {
+    console.error('Render error:', e);
+  }
+};
+
+// Call startup after DOM is ready
+document.addEventListener('DOMContentLoaded', window._startupLoad);
 </script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Clash+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -772,9 +908,9 @@ async function persist() {
   localStorage.setItem('bdl_oa_v3', JSON.stringify(DB));
   localStorage.setItem('bdl_sellers_v1', JSON.stringify(SELLERS));
   localStorage.setItem('bdl_comp_sessions_v1', JSON.stringify(COMPETITOR_SESSIONS));
-  if (window._fbSave) {
+  if (window._supabaseSave) {
     showSyncStatus('loading');
-    const ok = await window._fbSave({snapshots:DB, sellers:SELLERS, competitorSessions:COMPETITOR_SESSIONS});
+    const ok = await window._supabaseSave(DB, SELLERS, COMPETITOR_SESSIONS);
     showSyncStatus(ok ? 'saved' : 'error');
   }
 }
@@ -865,8 +1001,13 @@ function applyRange() {
 
 function filteredSnaps() {
   let d = [...DB].sort((a,b) => a.date.localeCompare(b.date));
-  if (rangeFrom) d = d.filter(s => s.date >= rangeFrom);
-  if (rangeTo) d = d.filter(s => s.date <= rangeTo);
+  // Only filter by range if both are set
+  if (rangeFrom && rangeTo) {
+    d = d.filter(s => s.date >= rangeFrom && s.date <= rangeTo);
+  } else if (DB.length > 0) {
+    // If no range set, show all data
+    // (do nothing, return all)
+  }
   return d;
 }
 
@@ -885,8 +1026,17 @@ function renderAll() {
 }
 
 function renderKpis(snaps) {
-  if (!snaps.length) { ['kAsins','kSkus','kCost','kUnits','kCompOverlap'].forEach(id => document.getElementById(id).textContent = '—'); return; }
+  console.log('renderKpis called with snaps:', snaps);
+  if (!snaps.length) { 
+    console.log('No snaps, setting to —');
+    ['kAsins','kSkus','kCost','kUnits','kCompOverlap'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    }); 
+    return; 
+  }
   const latest = snaps[snaps.length-1];
+  console.log('Latest snapshot:', latest);
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
   
   const avgUnits = snaps.reduce((sum,s)=>sum+(s.totalUnits||0),0) / snaps.length;
@@ -2043,11 +2193,11 @@ async function saveSnap() {
   
   closeOverlay('snapModal');
   
-  // Auto-refresh from Firebase
+  // Auto-refresh from Supabase
   try {
-    const snap = await db.collection('bdl').doc('data').get();
-    if (snap.exists) {
-      DB = snap.data().snapshots || [];
+    const data = await window._supabaseLoad();
+    if (data) {
+      DB = data.snapshots || [];
       DB.sort((a,b) => a.date.localeCompare(b.date));
     }
   } catch (err) {
@@ -2133,8 +2283,6 @@ rangeTo = now.toISOString().split('T')[0];
 document.getElementById('rangeFrom').value = rangeFrom;
 document.getElementById('rangeTo').value = rangeTo;
 
-renderAll();
-renderBadges();
 </script>
 </body>
 </html>
