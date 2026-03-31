@@ -2115,14 +2115,25 @@ function openBulkUpdate() {
     document.getElementById('bulkUpdateModal').classList.add('open');
     return;
   }
+  
+  // Check if there's existing data for today
+  const todaySession = COMPETITOR_SESSIONS.find(s => s.date === today);
+  const todayData = {};
+  if (todaySession && todaySession.competitors) {
+    todaySession.competitors.forEach(c => {
+      todayData[c.name] = c.pct;
+    });
+  }
+  
   wrap.innerHTML = SELLERS.map((s,i) => {
+    const existingValue = todayData[s.name] || '';
     return `<div style="display:grid;grid-template-columns:1fr 140px;gap:10px;align-items:center;padding:10px 12px;background:var(--s2);border:1px solid var(--border)">
       <div>
         <div style="font-size:13px;font-weight:600">${s.name}</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:2px">${s.sellerId||'No ID set'}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
-        <input type="number" step="0.1" id="bulk_${i}" placeholder="% e.g. 42.5"
+        <input type="number" step="0.1" id="bulk_${i}" placeholder="% e.g. 42.5" value="${existingValue}"
           style="background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;width:100%;transition:border-color .15s"
           onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='var(--border)'">
         <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">%</span>
@@ -2158,12 +2169,29 @@ async function saveBulkUpdate() {
     session.updatedAt = new Date().toISOString();
   }
   
+  showSyncStatus('loading');
   await persist();
+  
+  // Reload from Supabase to ensure fresh data
+  try {
+    const data = await window._supabaseLoad();
+    if (data) {
+      COMPETITOR_SESSIONS = data.competitorSessions || [];
+      console.log('Reloaded competitor sessions:', COMPETITOR_SESSIONS);
+    }
+  } catch (err) {
+    console.error('Auto-refresh failed:', err);
+  }
+  
   closeOverlay('bulkUpdateModal');
+  
+  // Render all competitor pages with fresh data
   renderCompTab();
   renderCompHistory();
   renderCompInsights(filteredSnaps());
   renderBadges();
+  showSyncStatus('saved');
+  
   if (saved) showToast(`✓ Saved ${saved} overlap reading${saved!==1?'s':''} for ${fmt(today)}`);
 }
 
@@ -2246,6 +2274,18 @@ async function saveSellerList() {
     if (name) SELLERS.push({name, sellerId});
   });
   await persist();
+  
+  // Reload from Supabase to ensure order is correct
+  try {
+    const data = await window._supabaseLoad();
+    if (data) {
+      SELLERS = data.sellers || [];
+      console.log('Reloaded sellers with correct order:', SELLERS);
+    }
+  } catch (err) {
+    console.error('Failed to reload sellers:', err);
+  }
+  
   closeOverlay('manageModal');
   renderCompTab();
   renderBadges();
