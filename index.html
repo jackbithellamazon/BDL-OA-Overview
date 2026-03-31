@@ -43,12 +43,14 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions) {
       }
     }
     
-    // Save sellers
+    // Save sellers with order
     if (sellers && sellers.length > 0) {
-      for (const seller of sellers) {
+      for (let idx = 0; idx < sellers.length; idx++) {
+        const seller = sellers[idx];
         await supabase.from('bdl_sellers').upsert({
           seller_id: seller.sellerId,
-          name: seller.name
+          name: seller.name,
+          seller_order: idx
         }, { onConflict: 'seller_id' });
       }
     }
@@ -154,7 +156,7 @@ window._supabaseLoad = async function() {
         },
         notes: s.notes
       })) || [],
-      sellers: sellers?.map(s => ({ sellerId: s.seller_id, name: s.name })) || [],
+      sellers: sellers?.sort((a, b) => (a.seller_order || 0) - (b.seller_order || 0)).map(s => ({ sellerId: s.seller_id, name: s.name })) || [],
       competitorSessions: sessions?.map(s => {
         const sessionReadings = readings?.filter(r => r.session_id === s.id) || [];
         return {
@@ -192,6 +194,11 @@ window._startupLoad = async function() {
     console.log('DB length:', DB.length);
     console.log('SELLERS length:', SELLERS.length);
     console.log('COMPETITOR_SESSIONS length:', COMPETITOR_SESSIONS.length);
+    // Update badges immediately after loading data
+    if (document.getElementById('compHistNavBadge')) {
+      document.getElementById('compHistNavBadge').textContent = COMPETITOR_SESSIONS.length;
+      console.log('Badge updated to:', COMPETITOR_SESSIONS.length);
+    }
   } else {
     console.log('Supabase load failed');
   }
@@ -210,6 +217,8 @@ window._startupLoad = async function() {
   try {
     renderAll();
     renderHistory();
+    renderCompTab();
+    renderCompHistory();
     renderBadges();
   } catch(e) {
     console.error('Render error:', e);
@@ -325,10 +334,12 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .comp-search:focus{border-color:var(--g)}
 .comp-table-wrap{background:var(--s1);border:1px solid var(--border);overflow:hidden}
 .comp-table{width:100%;border-collapse:collapse}
-.comp-table th{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);background:var(--s2)}
-.comp-table td{padding:12px 16px;font-family:var(--mono);font-size:12px;border-bottom:1px solid rgba(31,40,54,.5);vertical-align:middle}
+.comp-table th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--g);padding:14px 16px;text-align:left;border-bottom:2px solid var(--g);background:var(--s2);font-weight:600}
+.comp-table td{padding:14px 16px;font-family:'DM Mono', monospace;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text)}
 .comp-table tr:last-child td{border-bottom:none}
-.comp-table tr:hover td{background:var(--s2)}
+.comp-table tr:hover td{background:var(--s2);transition:background 0.15s}
+.comp-table tbody tr{transition:all 0.15s}
+.comp-table tbody tr strong{color:var(--text);font-weight:700}
 .me-tag{font-size:9px;background:var(--g2);color:var(--g);padding:2px 6px;margin-left:6px;font-family:var(--mono)}
 .seller-id{color:var(--muted2);font-size:10px}
 .pct-val{font-size:14px;font-weight:600}
@@ -725,7 +736,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="card-title">Competitor Overlap Trends</div>
         <div class="card-tag" id="compChartTag">—</div>
       </div>
-      <div class="chart-wrap tall"><canvas id="compChartCanvas"></canvas></div>
+      <div class="chart-wrap tall"><canvas id="compChartCanvas" height="400"></canvas></div>
     </div>
   </div>
 
@@ -929,6 +940,7 @@ function switchTab(id, el) {
   el.classList.add('active');
   document.getElementById('pageTitle').textContent = TITLES[id];
   if (id === 'competitors') renderCompTab();
+  if (id === 'comp-history') renderCompHistory();
   if (id === 'history') renderHistory();
   updateLastUpdated();
 }
@@ -942,6 +954,7 @@ function switchTabMobile(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('pageTitle').textContent = TITLES[id];
   if (id === 'competitors') renderCompTab();
+  if (id === 'comp-history') renderCompHistory();
   if (id === 'history') renderHistory();
 }
 
@@ -1309,12 +1322,16 @@ function renderOverviewChart(snaps) {
 }
 
 function renderRepricerTab(snaps) {
+  console.log('renderRepricerTab called with snaps:', snaps);
   if (!snaps.length) {
+    console.log('No snaps, clearing repricer KPIs');
     ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch','repKpiWinCov','repKpiCombined','repKpiAgedRisk'].forEach(id => document.getElementById(id).textContent = '—');
     return;
   }
   
   const latest = snaps[snaps.length-1];
+  console.log('Latest snap:', latest);
+  console.log('Repricer data:', latest.repricer);
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
   const r = latest.repricer||{};
   const avgSnaps = snaps.filter(s => s.repricer && s.repricer.total > 0);
@@ -1544,6 +1561,7 @@ function renderCompTab() {
   const search = document.getElementById('compSearch').value.toLowerCase();
   const tbody = document.getElementById('compTableBody');
   const meta = document.getElementById('compMeta');
+  const snaps = filteredSnaps(); // Get filtered snapshots
 
   // Get competitors from COMPETITOR_SESSIONS (all of them, not filtered by date)
   const sellerMap = {};
@@ -1593,9 +1611,12 @@ function renderCompTab() {
   // Top dropper (biggest decrease)
   const topDropper = allSellers.filter(s=>s.prev!==null).sort((a,b)=>(a.latest-a.prev)-(b.latest-b.prev))[0] || null;
   
-  // Set KPI cards
+  // Set KPI cards with trend colors
   if (highest) {
-    document.getElementById('compKpiHighest').textContent = highest.latest.toFixed(1) + '%';
+    const highestTrend = highest.prev !== null ? highest.latest - highest.prev : null;
+    const highestTrendColor = highestTrend > 0 ? 'var(--g)' : highestTrend < 0 ? 'var(--o)' : 'var(--muted2)';
+    const highestTrendStr = highestTrend !== null ? (highestTrend > 0 ? '↑' : highestTrend < 0 ? '↓' : '→') + ' ' + Math.abs(highestTrend).toFixed(1) + 'pp' : 'No prev';
+    document.getElementById('compKpiHighest').innerHTML = `<span style="color:var(--g)">${highest.latest.toFixed(1)}%</span><div style="font-family:var(--mono);font-size:11px;color:${highestTrendColor};margin-top:4px;font-weight:600">${highestTrendStr}</div>`;
     document.getElementById('compKpiHighestSub').textContent = highest.name;
   } else {
     document.getElementById('compKpiHighest').textContent = '—';
@@ -1607,8 +1628,8 @@ function renderCompTab() {
   
   if (topRiser) {
     const riserDiff = (topRiser.latest - topRiser.prev).toFixed(1);
-    document.getElementById('compKpiRiser').textContent = topRiser.name;
-    document.getElementById('compKpiRiserSub').textContent = `↑ +${riserDiff}pp`;
+    document.getElementById('compKpiRiser').innerHTML = `<span style="color:var(--g)">${topRiser.name}</span><div style="font-family:var(--mono);font-size:11px;color:var(--g);margin-top:4px;font-weight:600">↑ +${riserDiff}pp</div>`;
+    document.getElementById('compKpiRiserSub').textContent = 'Top gainer';
   } else {
     document.getElementById('compKpiRiser').textContent = '—';
     document.getElementById('compKpiRiserSub').textContent = 'No data';
@@ -1616,8 +1637,8 @@ function renderCompTab() {
   
   if (topDropper) {
     const dropperDiff = (topDropper.latest - topDropper.prev).toFixed(1);
-    document.getElementById('compKpiDropper').textContent = topDropper.name;
-    document.getElementById('compKpiDropperSub').textContent = `↓ ${dropperDiff}pp`;
+    document.getElementById('compKpiDropper').innerHTML = `<span style="color:var(--o)">${topDropper.name}</span><div style="font-family:var(--mono);font-size:11px;color:var(--o);margin-top:4px;font-weight:600">↓ ${dropperDiff}pp</div>`;
+    document.getElementById('compKpiDropperSub').textContent = 'Lost ground';
   } else {
     document.getElementById('compKpiDropper').textContent = '—';
     document.getElementById('compKpiDropperSub').textContent = 'No data';
@@ -1632,34 +1653,39 @@ function renderCompTab() {
   }
 
   tbody.innerHTML = sellers.map(s => {
-    // vs Last comparison (competitor overlap increasing = negative/threat)
+    // Trend is positive when you're catching them (overlap increasing)
     const diffLast = s.prev !== null ? (s.latest - s.prev) : null;
+    
+    // Color based on IMPROVEMENT: green if gaining, orange if losing, gray if flat
+    const trendColor = diffLast > 0 ? 'var(--g)' : diffLast < 0 ? 'var(--o)' : 'var(--muted2)';
+    const trendLabel = diffLast > 0 ? 'GAINING' : diffLast < 0 ? 'LOSING' : 'FLAT';
+    
     const vsLastHtml = diffLast !== null
-      ? `<div style="display:flex;align-items:center;gap:4px"><span class="pill ${diffLast>0?'down':(diffLast<0?'up':'flat')}">${diffLast>0?'▲':(diffLast<0?'▼':'→')} ${Math.abs(diffLast).toFixed(1)}</span></div>`
-      : '<div style="color:var(--muted);font-size:10px;padding:2px">—</div>';
+      ? `<div style="display:flex;align-items:center;gap:6px;color:${trendColor};font-weight:700;font-size:13px"><strong style="font-size:18px;color:${trendColor}">${diffLast>0?'↑':(diffLast<0?'↓':'→')}</strong> <div><strong>${Math.abs(diffLast).toFixed(1)}pp</strong><div style="font-size:10px;color:${trendColor};margin-top:2px">${trendLabel}</div></div></div>`
+      : '<div style="color:var(--muted2);font-size:12px;padding:2px">—</div>';
 
-    // vs Avg comparison
+    // vs Avg - positive when above average
     const diffAvg = s.latest - s.avg;
+    const diffAvgColor = diffAvg > 0 ? 'var(--g)' : diffAvg < 0 ? 'var(--o)' : 'var(--muted2)';
     const vsAvgHtml = s.history.length > 0
-      ? `<div style="display:flex;align-items:center;gap:4px"><span class="pill ${diffAvg>0?'down':(diffAvg<0?'up':'flat')}" style="font-size:9px">${diffAvg>0?'▲':(diffAvg<0?'▼':'→')} ${Math.abs(diffAvg).toFixed(1)}</span></div>`
-      : '<div style="color:var(--muted);font-size:10px">—</div>';
+      ? `<div style="display:flex;align-items:center;gap:6px;color:${diffAvgColor};font-weight:700;font-size:13px"><strong style="font-size:18px;color:${diffAvgColor}">${diffAvg>0?'↑':(diffAvg<0?'↓':'→')}</strong> ${Math.abs(diffAvg).toFixed(1)}pp</div>`
+      : '<div style="color:var(--muted2);font-size:12px">—</div>';
+
+    // Current value color - show if winning/gaining
+    const progressColor = s.latest > 40 ? 'var(--g)' : s.latest > 25 ? 'var(--y)' : 'var(--text)';
 
     // Sparkline
     const sparkId = 'spark_' + s.name.replace(/[^\w]/g,'_');
-    
-    // Days seen format: "7/30 days" style
-    const totalDaysInRange = snaps.length;
-    const daysSeenStr = `${s.daysSeen}/${totalDaysInRange}`;
 
-    return `<tr style="cursor:pointer;transition:background-color 0.2s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''" onclick="highlightCompetitor('${s.name.replace(/'/g, "\\'")}')">
-      <td style="text-align:center;font-weight:600;color:var(--g)">#${s.rank}</td>
-      <td><strong>${s.name}</strong></td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${s.sellerId||'—'}</td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${s.prev !== null ? s.prev.toFixed(1)+'%' : '—'}</td>
-      <td style="font-weight:600;font-size:14px">${s.latest.toFixed(1)}%</td>
-      <td>${vsLastHtml}</td>
-      <td>${vsAvgHtml}</td>
-      <td><canvas id="${sparkId}" width="100" height="32" class="sparkline-cell" style="vertical-align:middle"></canvas></td>
+    return `<tr style="cursor:pointer;transition:all 0.15s;height:80px" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''" onclick="highlightCompetitor('${s.name.replace(/'/g, "\\'")}')">
+      <td style="text-align:center;font-weight:700;color:var(--g);font-size:16px;padding:16px">#${s.rank}</td>
+      <td style="padding:16px"><strong style="color:var(--text);font-size:14px;display:block;margin-bottom:6px">${s.name}</strong><div style="font-family:var(--mono);font-size:11px;color:var(--text);font-weight:500">Average: <strong style="color:var(--g)">${s.avg.toFixed(1)}%</strong></div></td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--text);letter-spacing:.05em;font-weight:500">${s.sellerId||'—'}</td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--text);font-weight:600">${s.prev !== null ? s.prev.toFixed(1)+'%' : '—'}</td>
+      <td style="font-weight:700;font-size:18px;color:${progressColor};letter-spacing:.05em;padding:16px">${s.latest.toFixed(1)}%</td>
+      <td style="padding:16px">${vsLastHtml}</td>
+      <td style="padding:16px">${vsAvgHtml}</td>
+      <td style="padding:16px"><canvas id="${sparkId}" width="120" height="40" class="sparkline-cell" style="vertical-align:middle"></canvas></td>
     </tr>`;
   }).join('');
 
@@ -1676,11 +1702,14 @@ function renderCompTab() {
           datasets:[{
             data: s.history,
             borderColor: '#3d9eff',
-            borderWidth: 1.5,
-            pointRadius: 2,
+            backgroundColor: 'rgba(61,158,255,0.1)',
+            borderWidth: 2,
+            pointRadius: 3,
             pointBackgroundColor: '#3d9eff',
-            tension: .3,
-            fill: false,
+            pointBorderColor: '#07090c',
+            pointBorderWidth: 1,
+            tension: .4,
+            fill: true,
           }]
         },
         options:{ responsive:false, plugins:{legend:{display:false},tooltip:{enabled:false}}, scales:{x:{display:false},y:{display:false, min:0, max:100}}, animation:{duration:400} }
@@ -1796,29 +1825,40 @@ function renderCompInsights(snaps) {
   const sellerMap = {};
   COMPETITOR_SESSIONS.forEach(session => { (session.competitors||[]).forEach(c => { const k=c.name.trim(); if(!sellerMap[k]) sellerMap[k]={sellerId:c.sellerId||'',data:[]}; sellerMap[k].data.push(c.pct||0); if(c.sellerId) sellerMap[k].sellerId=c.sellerId; }); });
 
-  const allLatest = Object.entries(sellerMap).map(([n,v])=>({name:n,pct:v.data[v.data.length-1]})).sort((a,b)=>b.pct-a.pct);
+  const allLatest = Object.entries(sellerMap).map(([n,v])=>({name:n,pct:v.data[v.data.length-1],avg:v.data.reduce((a,b)=>a+b,0)/v.data.length})).sort((a,b)=>b.pct-a.pct);
   if (!allLatest.length) { ci.innerHTML = 'Add competitor readings on this tab to start tracking their overlap % over time.'; cb.innerHTML=''; return; }
 
   const top = allLatest[0];
   const growing = Object.entries(sellerMap).filter(([_,v])=>{ const d=v.data; return d.length>=2 && d[d.length-1]>d[d.length-2]; });
   const shrinking = Object.entries(sellerMap).filter(([_,v])=>{ const d=v.data; return d.length>=2 && d[d.length-1]<d[d.length-2]; });
+  const high = allLatest.filter(s => s.pct > 40);
+  const medium = allLatest.filter(s => s.pct > 25 && s.pct <= 40);
 
-  let txt = `Tracking <strong>${allLatest.length} competitor${allLatest.length!==1?'s':''}</strong>. `;
-  txt += `<strong>${top.name}</strong> has the highest overlap at <strong>${top.pct.toFixed(1)}%</strong>. `;
-  if (growing.length) txt += `<strong style="color:var(--g)">▲ ${growing.map(g=>g[0]).join(', ')}</strong> ${growing.length===1?'is':'are'} <strong>growing</strong> in overlap. `;
-  if (shrinking.length) txt += `<span class="danger">▼ ${shrinking.map(s=>s[0]).join(', ')} ${shrinking.length===1?'is':'are'} shrinking</span>. `;
+  let txt = `<strong style="color:var(--g)">Tracking ${allLatest.length} competitor${allLatest.length!==1?'s':''}</strong> • `;
+  txt += `<strong style="color:var(--g)">${top.name} at ${top.pct.toFixed(1)}% — catch them!</strong> • `;
+  if (high.length) txt += `<strong style="color:var(--g)">${high.length} strong overlap</strong> (>40%) • `;
+  if (growing.length) txt += `<strong style="color:var(--g)"><span style="color:var(--g)">↑</span> ${growing.length} improving</strong> • `;
+  if (shrinking.length) txt += `<strong style="color:var(--o)"><span style="color:var(--o)">↓</span> ${shrinking.length} slipping</strong>`;
 
   ci.innerHTML = txt;
 
   const bullets = [];
   Object.entries(sellerMap).forEach(([name, info]) => {
     const d = info.data;
+    const trend = d[d.length-1] - d[d.length-2];
+    const avgDiff = d[d.length-1] - (d.reduce((a,b)=>a+b,0)/d.length);
+    
     if (d.length >= 3 && d[d.length-1]>d[d.length-2] && d[d.length-2]>d[d.length-3])
-      bullets.push(`<strong style="color:var(--g)">▲ ${name}</strong> growing 3 readings in a row`);
-    if (d.length >= 2 && d[d.length-1]-d[d.length-2] > 5)
-      bullets.push(`<span class="warn">⚠ ${name} jumped +${(d[d.length-1]-d[d.length-2]).toFixed(1)}pp</span>`);
+      bullets.push(`<strong style="color:var(--g)"><span style="color:var(--g)">↑</span> ${name}</strong> gaining 3 straight — you're closing in!`);
+    if (d.length >= 2 && trend > 5)
+      bullets.push(`<span style="color:var(--g)"><span style="color:var(--g)">↑</span> ${name} +${trend.toFixed(1)}pp — excellent progress!</span>`);
+    if (d.length >= 2 && trend < -5)
+      bullets.push(`<span style="color:var(--o)"><span style="color:var(--o)">↓</span> ${name} -${Math.abs(trend).toFixed(1)}pp — lost ground here</span>`);
+    if (d[d.length-1] > 40)
+      bullets.push(`<span style="color:var(--g)"><strong>${name}</strong> at ${d[d.length-1].toFixed(1)}% — dominating this seller!</span>`);
   });
-  cb.innerHTML = bullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('');
+  
+  cb.innerHTML = bullets.length > 0 ? bullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('') : '<div class="insight-bullet" style="color:var(--muted)">All competitors stable — keep testing</div>';
 }
 
 function renderCompHistory() {
@@ -1848,23 +1888,89 @@ function renderCompHistory() {
     return;
   }
   
-  let html = '<div style="display:flex;flex-direction:column;gap:0;background:var(--s1);border:1px solid var(--border)">';
-  sessions.forEach(session => {
+  // Calculate stats across all sessions for context
+  const allComps = {};
+  sessions.forEach(s => {
+    (s.competitors||[]).forEach(c => {
+      const key = c.name;
+      if (!allComps[key]) allComps[key] = { name: c.name, sellerId: c.sellerId, values: [] };
+      allComps[key].values.push(c.pct);
+    });
+  });
+  
+  // Calculate stats
+  const compStats = Object.entries(allComps).map(([name, data]) => {
+    const vals = data.values;
+    const latest = vals[vals.length-1];
+    const prev = vals.length > 1 ? vals[vals.length-2] : null;
+    const avg = vals.reduce((a,b)=>a+b,0) / vals.length;
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    return { ...data, latest, prev, avg, min, max, trend: prev ? latest - prev : 0 };
+  });
+
+  let html = '<div style="display:flex;flex-direction:column;gap:0;background:var(--s1);border:1px solid var(--border);border-radius:4px;overflow:hidden">';
+  
+  sessions.forEach((session, idx) => {
     const compCount = session.competitors ? session.competitors.length : 0;
-    html += `<div style="display:grid;grid-template-columns:100px 1fr 80px 100px;gap:12px;padding:12px 16px;border-bottom:1px solid rgba(31,40,54,.5);align-items:center;cursor:pointer;transition:background-color 0.2s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''" onclick="viewCompetitorSession('${session.date}')">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--g);font-weight:600">${fmt(session.date)}</div>
-      <div>
-        <div style="font-size:13px;font-weight:600">${compCount} competitor${compCount!==1?'s':''} logged</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${session.updatedAt ? new Date(session.updatedAt).toLocaleTimeString() : '—'}</div>
+    const avgOverlap = compCount > 0 ? (session.competitors.reduce((sum, c) => sum + c.pct, 0) / compCount) : 0;
+    const maxOverlap = compCount > 0 ? Math.max(...session.competitors.map(c => c.pct)) : 0;
+    
+    // Progress level - higher is better (you're catching them!)
+    const progressColor = maxOverlap > 40 ? 'var(--g)' : maxOverlap > 25 ? 'var(--y)' : 'var(--muted)';
+    const progressLevel = maxOverlap > 40 ? 'WINNING' : maxOverlap > 25 ? 'GAINING' : 'EARLY';
+    
+    html += `<div style="display:grid;grid-template-columns:1fr;gap:0;padding:14px 16px;border-bottom:1px solid rgba(31,40,54,.5);cursor:pointer;transition:all 0.2s;background:var(--s1)" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='var(--s1)'" onclick="toggleCompSessionDetail(this, '${session.date}')">
+      <div style="display:grid;grid-template-columns:120px 1fr 120px 120px 120px;gap:12px;align-items:center">
+        <div style="font-family:var(--mono);font-size:12px;color:var(--g);font-weight:700">${fmt(session.date)}</div>
+        <div>
+          <div style="font-size:13px;font-weight:600">${compCount} competitor${compCount!==1?'s':''} logged</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:2px">Avg: ${avgOverlap.toFixed(1)}% | Max: ${maxOverlap.toFixed(1)}%</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Progress</div>
+          <div style="font-size:12px;font-weight:600;color:${progressColor};margin-top:2px">${progressLevel}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Entries</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text);margin-top:2px">${compCount}</div>
+        </div>
+        <div style="text-align:right">
+          <button class="tbl-btn del" onclick="deleteCompetitorSession('${session.date}'); event.stopPropagation()">✕</button>
+        </div>
       </div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:right">${compCount} entries</div>
-      <div style="text-align:right">
-        <button class="tbl-btn del" onclick="deleteCompetitorSession('${session.date}'); event.stopPropagation()">✕</button>
+      <div class="comp-session-detail" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(31,40,54,.5)">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px">
+          ${session.competitors.map(c => {
+            const stat = compStats.find(s => s.name === c.name);
+            const trendArrow = stat && stat.trend > 0 ? '↑' : stat && stat.trend < 0 ? '↓' : '→';
+            const trendColor = stat && stat.trend > 0 ? 'var(--g)' : stat && stat.trend < 0 ? 'var(--o)' : 'var(--muted2)';
+            const trendText = stat && stat.trend > 0 ? 'GAINING' : stat && stat.trend < 0 ? 'LOSING' : 'FLAT';
+            return `<div style="background:var(--s2);border:1px solid var(--border);padding:10px;border-radius:3px">
+              <div style="font-weight:600;color:var(--text);margin-bottom:4px">${c.name}</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:8px">${c.sellerId || '—'}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px">
+                <div><span style="color:var(--muted2)">Today:</span> <strong style="color:var(--g);font-size:13px">${c.pct.toFixed(1)}%</strong></div>
+                <div><span style="color:var(--muted2)">Avg:</span> <strong>${stat ? stat.avg.toFixed(1) : '—'}%</strong></div>
+                <div><span style="color:var(--muted2)">Range:</span> <strong>${stat ? stat.min.toFixed(1) : '—'}–${stat ? stat.max.toFixed(1) : '—'}%</strong></div>
+                <div><span style="color:var(--muted2)">Trend:</span> <strong style="color:${trendColor}">${trendArrow} ${stat && stat.trend !== 0 ? (stat.trend > 0 ? '+' : '') + stat.trend.toFixed(1) + 'pp' : '—'}</strong></div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
     </div>`;
   });
+  
   html += '</div>';
   container.innerHTML = html;
+}
+
+function toggleCompSessionDetail(el, date) {
+  const detail = el.querySelector('.comp-session-detail');
+  if (detail) {
+    detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+  }
 }
 
 function viewCompetitorSession(date) {
@@ -2326,9 +2432,8 @@ function updateLastUpdated() {
 function renderBadges() {
   document.getElementById('histNavBadge').textContent = DB.length;
   document.getElementById('compNavBadge').textContent = SELLERS.length||0;
-  // Count total competitors across all sessions
-  const totalReadings = COMPETITOR_SESSIONS.reduce((sum, session) => sum + (session.competitors?.length || 0), 0);
-  document.getElementById('compHistNavBadge').textContent = totalReadings;
+  // Count total sessions (not competitor entries)
+  document.getElementById('compHistNavBadge').textContent = COMPETITOR_SESSIONS.length;
 }
 
 Chart.defaults.color = '#4a5568';
