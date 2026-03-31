@@ -2075,70 +2075,60 @@ function addManageRow(name='', sellerId='') {
   const wrap = document.getElementById('manageRows');
   const row = document.createElement('div');
   row.id = 'mr_'+manageRowCount;
-  row.draggable = true;
   row.className = 'manage-row';
-  row.style.cssText = 'display:grid;grid-template-columns:32px 1fr 1fr 32px 32px 32px;gap:8px;align-items:end;padding:8px;background:var(--s2);border:1px solid var(--border);cursor:grab;transition:opacity .15s';
+  row.draggable = true;
+  row.style.cssText = 'display:grid;grid-template-columns:20px 1fr 1fr 32px;gap:8px;align-items:end;padding:6px;background:var(--s2);border:1px solid var(--border);border-radius:2px;cursor:grab;transition:opacity .2s,background .15s';
   row.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:16px;cursor:grab">⋮</div>
+    <div class="drag-handle" style="display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:14px;cursor:grab;user-select:none">⋮</div>
     <div class="fg"><label>Seller Nickname</label><input type="text" id="mn_${manageRowCount}" value="${name}" placeholder="e.g. BargainWorld" style="width:100%"></div>
     <div class="fg"><label>Seller ID</label><input type="text" id="mid_${manageRowCount}" value="${sellerId}" placeholder="e.g. A1B2C3D4E5" style="width:100%"></div>
-    <button class="comp-rm" onclick="moveManageRow(document.getElementById('mr_${manageRowCount}'), 'up')" style="margin-bottom:0;padding:6px 8px;font-size:12px" title="Move up">↑</button>
-    <button class="comp-rm" onclick="moveManageRow(document.getElementById('mr_${manageRowCount}'), 'down')" style="margin-bottom:0;padding:6px 8px;font-size:12px" title="Move down">↓</button>
     <button class="comp-rm" onclick="document.getElementById('mr_${manageRowCount}').remove()" style="margin-bottom:0">×</button>`;
   wrap.appendChild(row);
   
-  // Add drag event listeners
-  row.addEventListener('dragstart', handleDragStart);
-  row.addEventListener('dragover', handleDragOver);
-  row.addEventListener('drop', handleDrop);
-  row.addEventListener('dragend', handleDragEnd);
+  // Set up drag listeners
+  row.addEventListener('dragstart', (e) => {
+    draggedRow = row;
+    row.style.opacity = '0.5';
+    row.style.background = 'var(--s3)';
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  
+  row.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedRow && draggedRow !== row) {
+      row.style.borderTop = '2px solid var(--g)';
+    }
+  });
+  
+  row.addEventListener('dragleave', (e) => {
+    row.style.borderTop = '';
+  });
+  
+  row.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (draggedRow && draggedRow !== row) {
+      const wrap = document.getElementById('manageRows');
+      wrap.insertBefore(draggedRow, row);
+    }
+  });
+  
+  row.addEventListener('dragend', (e) => {
+    row.style.opacity = '1';
+    row.style.background = '';
+    row.style.borderTop = '';
+    document.querySelectorAll('.manage-row').forEach(r => {
+      r.style.borderTop = '';
+      r.style.opacity = '1';
+      r.style.background = '';
+    });
+    draggedRow = null;
+  });
 }
 
 let draggedRow = null;
-function handleDragStart(e) {
-  draggedRow = this;
-  this.style.opacity = '0.5';
-  e.dataTransfer.effectAllowed = 'move';
-}
-function handleDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  if (this !== draggedRow && this.classList.contains('manage-row')) {
-    this.style.borderTop = '2px solid var(--g)';
-  }
-}
-function handleDrop(e) {
-  e.preventDefault();
-  if (draggedRow !== this && this.classList.contains('manage-row')) {
-    const wrap = document.getElementById('manageRows');
-    const allRows = Array.from(wrap.querySelectorAll('.manage-row'));
-    const draggedIdx = allRows.indexOf(draggedRow);
-    const targetIdx = allRows.indexOf(this);
-    
-    if (draggedIdx < targetIdx) {
-      this.parentNode.insertBefore(draggedRow, this.nextSibling);
-    } else {
-      this.parentNode.insertBefore(draggedRow, this);
-    }
-  }
-}
-function handleDragEnd(e) {
-  this.style.opacity = '1';
-  document.querySelectorAll('.manage-row').forEach(r => r.style.borderTop = '');
-  draggedRow = null;
-}
 
-function moveManageRow(row, direction) {
-  const wrap = document.getElementById('manageRows');
-  const allRows = Array.from(wrap.querySelectorAll('.manage-row'));
-  const idx = allRows.indexOf(row);
-  
-  if (direction === 'up' && idx > 0) {
-    wrap.insertBefore(row, allRows[idx - 1]);
-  } else if (direction === 'down' && idx < allRows.length - 1) {
-    wrap.insertBefore(allRows[idx + 1], row);
-  }
-}
+
 
 async function saveSellerList() {
   const rows = document.querySelectorAll('[id^=mr_]');
@@ -2289,7 +2279,17 @@ function fmt(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${
 function fmtShort(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${m}`; }
 
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
-// Overlays can only be closed via explicit buttons (save, cancel, x)
+
+// Prevent closing modal when clicking inside it - only close on background click or explicit buttons
+document.querySelectorAll('.overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      // User clicked the background, not the modal - close it
+      overlay.classList.remove('open');
+    }
+    // If they clicked inside the modal, do nothing (let them interact normally)
+  });
+});
 
 function updateLastUpdated() {
   const el = document.getElementById('lastUpdatedDisplay');
