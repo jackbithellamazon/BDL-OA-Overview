@@ -33,10 +33,11 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions) {
           ageing_a181: snap.ageing?.a181,
           ageing_a271: snap.ageing?.a271,
           ageing_a365: snap.ageing?.a365,
-          repricer_asins: snap.repricer?.asins,
           repricer_total: snap.repricer?.total,
-          repricer_matching: snap.repricer?.matching,
           repricer_winning: snap.repricer?.winning,
+          repricer_win_pct: snap.repricer?.winPct,
+          repricer_matching: snap.repricer?.matching,
+          repricer_match_pct: snap.repricer?.matchPct,
           notes: snap.notes
         }, { onConflict: 'date' });
       }
@@ -145,10 +146,11 @@ window._supabaseLoad = async function() {
           a365: s.ageing_a365
         },
         repricer: {
-          asins: s.repricer_asins,
           total: s.repricer_total,
           matching: s.repricer_matching,
-          winning: s.repricer_winning
+          winning: s.repricer_winning,
+          winPct: s.repricer_win_pct,
+          matchPct: s.repricer_match_pct
         },
         notes: s.notes
       })) || [],
@@ -812,7 +814,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div id="fCostCalc" style="font-family:var(--mono);font-size:10px;color:var(--muted2)"></div>
       </div>
       <input type="hidden" id="fCost">
-      <div class="form-section">Ageing (units in each bucket)</div>
+      <div class="form-section">Available FBA Stock (SKUs in each bucket)</div>
       <div class="fg"><label>0–30 days</label><input type="number" id="fA0" placeholder="304"></div>
       <div class="fg"><label>31–60 days</label><input type="number" id="fA31" placeholder="152"></div>
       <div class="fg"><label>61–90 days</label><input type="number" id="fA61" placeholder="75"></div>
@@ -821,10 +823,15 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       <div class="fg"><label>271–365 days</label><input type="number" id="fA271" placeholder="6"></div>
       <div class="fg"><label>365+ days</label><input type="number" id="fA365" placeholder="2"></div>
       <div class="form-section">Repricer</div>
-      <div class="fg"><label>Total ASINs in Repricer</label><input type="number" id="fRepAsins" placeholder="250"></div>
       <div class="fg"><label>Total SKUs in Repricer</label><input type="number" id="fRepTotal" placeholder="450"></div>
-      <div class="fg"><label>Win BB %</label><input type="number" step="0.1" id="fRepWinPct" placeholder="e.g. 9.5"></div>
-      <div class="fg"><label>Match BB %</label><input type="number" step="0.1" id="fRepMatchPct" placeholder="e.g. 16.3"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="fg"><label>Win BB — SKUs</label><input type="number" id="fRepWinNum" placeholder="e.g. 85"></div>
+        <div class="fg"><label>Win BB — %</label><input type="number" step="0.1" id="fRepWinPct" placeholder="e.g. 9.5"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="fg"><label>Match BB — SKUs</label><input type="number" id="fRepMatchNum" placeholder="e.g. 145"></div>
+        <div class="fg"><label>Match BB — %</label><input type="number" step="0.1" id="fRepMatchPct" placeholder="e.g. 16.3"></div>
+      </div>
       <div class="form-section">Notes</div>
       <div class="fg full"><label>Notes (optional)</label><input type="text" id="fNotes" placeholder="e.g. Post-Prime Day, lots of repricing..."></div>
     </div>
@@ -905,14 +912,13 @@ function showSyncStatus(state) {
 function hideSyncStatus() { showSyncStatus(''); const el=document.getElementById('syncStatus'); if(el) el.style.opacity='0'; }
 
 async function persist() {
-  localStorage.setItem('bdl_oa_v3', JSON.stringify(DB));
-  localStorage.setItem('bdl_sellers_v1', JSON.stringify(SELLERS));
-  localStorage.setItem('bdl_comp_sessions_v1', JSON.stringify(COMPETITOR_SESSIONS));
   if (window._supabaseSave) {
     showSyncStatus('loading');
     const ok = await window._supabaseSave(DB, SELLERS, COMPETITOR_SESSIONS);
     showSyncStatus(ok ? 'saved' : 'error');
+    return ok;
   }
+  return false;
 }
 
 const TITLES = { overview:'Overview', repricer:'Repricer', competitors:'Competitors', 'comp-history':'Competitor History', history:'History' };
@@ -2069,12 +2075,69 @@ function addManageRow(name='', sellerId='') {
   const wrap = document.getElementById('manageRows');
   const row = document.createElement('div');
   row.id = 'mr_'+manageRowCount;
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 32px;gap:8px;align-items:end';
+  row.draggable = true;
+  row.className = 'manage-row';
+  row.style.cssText = 'display:grid;grid-template-columns:32px 1fr 1fr 32px 32px 32px;gap:8px;align-items:end;padding:8px;background:var(--s2);border:1px solid var(--border);cursor:grab;transition:opacity .15s';
   row.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:16px;cursor:grab">⋮</div>
     <div class="fg"><label>Seller Nickname</label><input type="text" id="mn_${manageRowCount}" value="${name}" placeholder="e.g. BargainWorld" style="width:100%"></div>
     <div class="fg"><label>Seller ID</label><input type="text" id="mid_${manageRowCount}" value="${sellerId}" placeholder="e.g. A1B2C3D4E5" style="width:100%"></div>
+    <button class="comp-rm" onclick="moveManageRow(document.getElementById('mr_${manageRowCount}'), 'up')" style="margin-bottom:0;padding:6px 8px;font-size:12px" title="Move up">↑</button>
+    <button class="comp-rm" onclick="moveManageRow(document.getElementById('mr_${manageRowCount}'), 'down')" style="margin-bottom:0;padding:6px 8px;font-size:12px" title="Move down">↓</button>
     <button class="comp-rm" onclick="document.getElementById('mr_${manageRowCount}').remove()" style="margin-bottom:0">×</button>`;
   wrap.appendChild(row);
+  
+  // Add drag event listeners
+  row.addEventListener('dragstart', handleDragStart);
+  row.addEventListener('dragover', handleDragOver);
+  row.addEventListener('drop', handleDrop);
+  row.addEventListener('dragend', handleDragEnd);
+}
+
+let draggedRow = null;
+function handleDragStart(e) {
+  draggedRow = this;
+  this.style.opacity = '0.5';
+  e.dataTransfer.effectAllowed = 'move';
+}
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (this !== draggedRow && this.classList.contains('manage-row')) {
+    this.style.borderTop = '2px solid var(--g)';
+  }
+}
+function handleDrop(e) {
+  e.preventDefault();
+  if (draggedRow !== this && this.classList.contains('manage-row')) {
+    const wrap = document.getElementById('manageRows');
+    const allRows = Array.from(wrap.querySelectorAll('.manage-row'));
+    const draggedIdx = allRows.indexOf(draggedRow);
+    const targetIdx = allRows.indexOf(this);
+    
+    if (draggedIdx < targetIdx) {
+      this.parentNode.insertBefore(draggedRow, this.nextSibling);
+    } else {
+      this.parentNode.insertBefore(draggedRow, this);
+    }
+  }
+}
+function handleDragEnd(e) {
+  this.style.opacity = '1';
+  document.querySelectorAll('.manage-row').forEach(r => r.style.borderTop = '');
+  draggedRow = null;
+}
+
+function moveManageRow(row, direction) {
+  const wrap = document.getElementById('manageRows');
+  const allRows = Array.from(wrap.querySelectorAll('.manage-row'));
+  const idx = allRows.indexOf(row);
+  
+  if (direction === 'up' && idx > 0) {
+    wrap.insertBefore(row, allRows[idx - 1]);
+  } else if (direction === 'down' && idx < allRows.length - 1) {
+    wrap.insertBefore(allRows[idx + 1], row);
+  }
 }
 
 async function saveSellerList() {
@@ -2106,7 +2169,7 @@ function openSnap(prefill=null) {
   document.getElementById('snapModalTitle').textContent = 'Add Snapshot';
   
   // Clear all fields
-  ['fAsins','fSkus','fUnits','fStockValue','fA0','fA31','fA61','fA91','fA181','fA271','fA365','fRepTotal','fRepAsins','fRepWinPct','fRepMatchPct','fNotes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['fAsins','fSkus','fUnits','fStockValue','fA0','fA31','fA61','fA91','fA181','fA271','fA365','fRepTotal','fRepWinNum','fRepWinPct','fRepMatchNum','fRepMatchPct','fNotes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('fDate').value = today;
   document.getElementById('fCost').value='';
   document.getElementById('fCostDisplay').textContent='—';
@@ -2150,12 +2213,11 @@ function fillForm(s) {
   document.getElementById('fA271').value=ag.a271||'';
   document.getElementById('fA365').value=ag.a365||'';
   const r = s.repricer||{};
-  document.getElementById('fRepAsins').value=r.asins||'';
   document.getElementById('fRepTotal').value=r.total||'';
-  const repWinPct = r.total > 0 ? ((r.winning/r.total)*100).toFixed(1) : '';
-  const repMatchPct = r.total > 0 ? ((r.matching/r.total)*100).toFixed(1) : '';
-  document.getElementById('fRepWinPct').value=repWinPct;
-  document.getElementById('fRepMatchPct').value=repMatchPct;
+  document.getElementById('fRepWinNum').value=r.winning||'';
+  document.getElementById('fRepWinPct').value=r.winPct||'';
+  document.getElementById('fRepMatchNum').value=r.matching||'';
+  document.getElementById('fRepMatchPct').value=r.matchPct||'';
   document.getElementById('fNotes').value=s.notes||'';
 }
 
@@ -2167,11 +2229,10 @@ async function saveSnap() {
   const avgCost = units > 0 && stockValue > 0 ? +(stockValue/units).toFixed(2) : (+document.getElementById('fCost').value||0);
   
   const repTotal = +document.getElementById('fRepTotal').value||0;
-  const repAsins = +document.getElementById('fRepAsins').value||0;
+  const repWinNum = +document.getElementById('fRepWinNum').value||0;
   const repWinPct = +document.getElementById('fRepWinPct').value||0;
+  const repMatchNum = +document.getElementById('fRepMatchNum').value||0;
   const repMatchPct = +document.getElementById('fRepMatchPct').value||0;
-  const repWinCount = repTotal > 0 ? Math.round((repWinPct/100)*repTotal) : 0;
-  const repMatchCount = repTotal > 0 ? Math.round((repMatchPct/100)*repTotal) : 0;
   
   const s = {
     date,
@@ -2181,7 +2242,7 @@ async function saveSnap() {
     stockValue,
     totalUnits: units,
     ageing: { a0:+document.getElementById('fA0').value||0, a31:+document.getElementById('fA31').value||0, a61:+document.getElementById('fA61').value||0, a91:+document.getElementById('fA91').value||0, a181:+document.getElementById('fA181').value||0, a271:+document.getElementById('fA271').value||0, a365:+document.getElementById('fA365').value||0 },
-    repricer: { asins: repAsins, total: repTotal, matching: repMatchCount, winning: repWinCount },
+    repricer: { total: repTotal, winning: repWinNum, winPct: repWinPct, matching: repMatchNum, matchPct: repMatchPct },
     notes: document.getElementById('fNotes').value,
   };
   if (editIdx !== null) DB[editIdx] = s;
@@ -2228,7 +2289,7 @@ function fmt(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${
 function fmtShort(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${m}`; }
 
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
+// Overlays can only be closed via explicit buttons (save, cancel, x)
 
 function updateLastUpdated() {
   const el = document.getElementById('lastUpdatedDisplay');
