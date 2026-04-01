@@ -5,8 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BDL OA Overview</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script type="module">
+// ══ CHART PLUGIN REGISTRATION ══════════════════════════════════════════════════════════
+Chart.register(ChartDataLabels);
+
 // ══ SUPABASE CONFIG ══════════════════════════════════════════════════════════
 const SUPABASE_URL = 'https://ffbdazepqrsyurhouxif.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmYmRhemVwcXJzeXVyaG91eGlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTM5MjIsImV4cCI6MjA5MDQ2OTkyMn0.BAuodLUDGzO9A7IfoRRn0HZ1MgWOXNPeYKPDBNaNWeg';
@@ -335,7 +339,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .comp-table-wrap{background:var(--s1);border:1px solid var(--border);overflow:hidden}
 .comp-table{width:100%;border-collapse:collapse}
 .comp-table th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--g);padding:14px 16px;text-align:left;border-bottom:2px solid var(--g);background:var(--s2);font-weight:600}
-.comp-table td{padding:14px 16px;font-family:'DM Mono', monospace;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text)}
+.comp-table td{padding:20px 16px;font-family:'DM Mono', monospace;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text)}
 .comp-table tr:last-child td{border-bottom:none}
 .comp-table tr:hover td{background:var(--s2);transition:background 0.15s}
 .comp-table tbody tr{transition:all 0.15s}
@@ -736,7 +740,16 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="card-title">Competitor Overlap Trends</div>
         <div class="card-tag" id="compChartTag">—</div>
       </div>
-      <div class="chart-wrap tall"><canvas id="compChartCanvas" height="400"></canvas></div>
+      <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted2);cursor:pointer">
+          <input type="checkbox" id="compChartShowLines" checked onchange="renderCompChart(filteredSnaps())">
+          <span>Show lines</span>
+        </label>
+        <div style="width:1px;height:20px;background:var(--border)"></div>
+        <div style="font-size:11px;color:var(--muted2);font-family:var(--mono)">Competitors:</div>
+        <div id="compChartFilters" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+      <div class="chart-wrap tall" style="position:relative"><canvas id="compChartCanvas"></canvas></div>
     </div>
   </div>
 
@@ -907,6 +920,7 @@ let chartInstances = {};
 let compFieldCount = 0;
 let chartMetric = 'units';
 let highlightedSeller = null;
+let trackedCompetitors = new Set(); // Track which competitors are visible
 
 function showSyncStatus(state) {
   let el = document.getElementById('syncStatus');
@@ -1089,6 +1103,7 @@ function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0)
   const el = document.getElementById(valId);
   const pill = document.getElementById(pillId);
   const sub = document.getElementById(subId);
+  if (!el || !pill || !sub) return; // Skip if elements don't exist
   el.textContent = curr ? (prefix + (Number.isInteger(curr) ? curr.toLocaleString() : '£'+curr.toFixed(2))) : '—';
   
   let pillHtml = '';
@@ -1119,6 +1134,7 @@ function setKpiDual(valId, pillId, subId, curr, prev, avg, suffix='', upGood=tru
   const el = document.getElementById(valId);
   const pill = document.getElementById(pillId);
   const sub = document.getElementById(subId);
+  if (!el || !pill || !sub) return; // Skip if elements don't exist
   el.textContent = curr !== null ? curr + suffix : '—';
   
   let pillHtml = '';
@@ -1428,25 +1444,28 @@ function setRepKpi(valId, curr, prev, avg, upGood) {
   const pillEl = document.getElementById(pillId);
   const subEl = document.getElementById(subId);
   
-  valEl.textContent = curr ? (Number.isInteger(curr) ? curr.toLocaleString() : curr.toFixed(1) + '%') : '—';
+  if (!valEl || !pillEl || !subEl) return; // Skip if elements don't exist
+  
+  const currNum = parseFloat(curr);
+  valEl.textContent = currNum ? (Number.isInteger(currNum) ? currNum.toLocaleString() : currNum.toFixed(1) + '%') : '—';
   
   let pillHtml = '';
   if (prev && prev !== 0 && prev !== null) {
-    const diff = parseFloat(curr) - parseFloat(prev);
+    const diff = currNum - parseFloat(prev);
     const up = diff > 0;
     const good = upGood ? up : !up;
     const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
     const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
-    const suffix = Number.isInteger(curr) ? '' : '%';
+    const suffix = Number.isInteger(currNum) ? '' : '%';
     pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}${suffix}</span>`;
   }
   if (avg && avg > 0) {
-    const diff = parseFloat(curr) - avg;
+    const diff = currNum - avg;
     const up = diff > 0;
     const good = upGood ? up : !up;
     const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
     const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
-    const suffix = Number.isInteger(curr) ? '' : '%';
+    const suffix = Number.isInteger(currNum) ? '' : '%';
     if (pillHtml) pillHtml += ' ';
     pillHtml += `<span class="pill ${cls}" style="font-size:9px">${arrow} ${Math.abs(diff).toFixed(1)}${suffix}</span>`;
   }
@@ -1592,6 +1611,10 @@ function renderCompTab() {
   sellers.sort((a,b) => b.latest - a.latest);
   sellers = sellers.map((s,i) => ({...s, rank: i+1}));
 
+  // Add unique colors for each seller (matches chart palette)
+  const COMP_COLORS = ['#00f5a0', '#3d9eff', '#ffd166', '#ff8c42', '#ff4d6d', '#c084fc', '#ff6b6b', '#ff99cc', '#66ffcc', '#ffcc00', '#ff00ff', '#00ffff'];
+  sellers = sellers.map((s, idx) => ({ ...s, color: COMP_COLORS[idx % COMP_COLORS.length] }));
+
   if (search) sellers = sellers.filter(s => s.name.toLowerCase().includes(search) || s.sellerId.toLowerCase().includes(search));
 
   // Calculate KPI metrics before filtering
@@ -1685,34 +1708,80 @@ function renderCompTab() {
       <td style="font-weight:700;font-size:18px;color:${progressColor};letter-spacing:.05em;padding:16px">${s.latest.toFixed(1)}%</td>
       <td style="padding:16px">${vsLastHtml}</td>
       <td style="padding:16px">${vsAvgHtml}</td>
-      <td style="padding:16px"><canvas id="${sparkId}" width="120" height="40" class="sparkline-cell" style="vertical-align:middle"></canvas></td>
+      <td style="padding:16px;text-align:center">
+        <canvas id="trend_${s.name.replace(/[^\w]/g,'_')}" width="140" height="50" style="display:block;margin:0 auto"></canvas>
+      </td>
     </tr>`;
   }).join('');
-
+  
+  // Render mini sparklines for ALL data points (respecting date range)
   setTimeout(() => {
     sellers.forEach(s => {
-      const sparkId = 'spark_' + s.name.replace(/[^\w]/g,'_');
+      const sparkId = 'trend_' + s.name.replace(/[^\w]/g,'_');
       const canvas = document.getElementById(sparkId);
       if (!canvas) return;
       destroyChart(sparkId);
+      
+      // Use ALL history data (respects filtered date range from renderCompTab)
+      const allData = s.history;
+      const sparkColor = s.color || '#3d9eff';
+      
+      if (allData.length === 0) return;
+      
+      // Calculate min/max for zoomed Y-axis
+      const validData = allData.filter(v => v !== null);
+      const minVal = Math.min(...validData);
+      const maxVal = Math.max(...validData);
+      const padding = (maxVal - minVal) * 0.1 || 2;
+      
       chartInstances[sparkId] = new Chart(canvas.getContext('2d'), {
         type:'line',
         data:{ 
-          labels: s.history.map((_,i)=>i), 
+          labels: allData.map((_,i)=>i), 
           datasets:[{
-            data: s.history,
-            borderColor: '#3d9eff',
-            backgroundColor: 'rgba(61,158,255,0.1)',
+            data: allData,
+            borderColor: sparkColor,
+            backgroundColor: sparkColor + '33',
             borderWidth: 2,
-            pointRadius: 3,
-            pointBackgroundColor: '#3d9eff',
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            pointBackgroundColor: sparkColor,
             pointBorderColor: '#07090c',
             pointBorderWidth: 1,
             tension: .4,
             fill: true,
           }]
         },
-        options:{ responsive:false, plugins:{legend:{display:false},tooltip:{enabled:false}}, scales:{x:{display:false},y:{display:false, min:0, max:100}}, animation:{duration:400} }
+        options:{ 
+          responsive:false, 
+          interaction: { mode: 'nearest', intersect: false },
+          plugins:{
+            legend:{display:false},
+            tooltip:{
+              enabled: true,
+              backgroundColor: 'rgba(7,9,12,0.98)',
+              titleColor: '#dce6f0',
+              bodyColor: '#dce6f0',
+              borderColor: sparkColor,
+              borderWidth: 1,
+              padding: 8,
+              displayColors: false,
+              callbacks: {
+                title: () => '',
+                label: (context) => `${context.parsed.y.toFixed(1)}%`
+              }
+            }
+          }, 
+          scales:{
+            x:{display:false, type:'linear'},
+            y:{
+              display:false, 
+              min: Math.max(0, minVal - padding), 
+              max: Math.min(100, maxVal + padding)
+            }
+          }, 
+          animation:{duration:0} 
+        }
       });
     });
   }, 50);
@@ -1724,14 +1793,26 @@ function highlightCompetitor(sellerName) {
   renderCompChart(snaps);
 }
 
+function toggleCompetitor(sellerName) {
+  if (trackedCompetitors.has(sellerName)) {
+    trackedCompetitors.delete(sellerName);
+  } else {
+    trackedCompetitors.add(sellerName);
+  }
+}
+
 function renderCompChart(snaps) {
   const ctx = document.getElementById('compChartCanvas');
   if (!ctx) return;
   const chartCtx = ctx.getContext('2d');
   const tag = document.getElementById('compChartTag');
 
+  console.log('renderCompChart called. COMPETITOR_SESSIONS.length:', COMPETITOR_SESSIONS.length);
+  console.log('COMPETITOR_SESSIONS:', COMPETITOR_SESSIONS);
+
   if (COMPETITOR_SESSIONS.length < 2) {
     tag.textContent = 'Need 2+ competitor sessions';
+    console.log('Not enough sessions, showing message');
     chartCtx.fillStyle = '#4a5568'; chartCtx.font = "11px 'DM Mono'"; chartCtx.textAlign='center';
     chartCtx.fillText('Add 2+ competitor sessions to see trends', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
     return;
@@ -1765,52 +1846,168 @@ function renderCompChart(snaps) {
     return;
   }
 
-  const sortedSessions = [...COMPETITOR_SESSIONS].sort((a,b) => a.date.localeCompare(b.date));
-  tag.textContent = `${fmt(sortedSessions[0].date)} → ${fmt(sortedSessions[sortedSessions.length-1].date)} · ${allCompetitors.length} competitors`;
-
-  const colors = ['#3d9eff', '#00f5a0', '#ffd166', '#ff9999', '#ff6b6b', '#ff4444', '#a78bfa', '#ff99ff', '#99ff99', '#ffff99'];
-  const sortedSessions2 = [...COMPETITOR_SESSIONS].sort((a,b) => a.date.localeCompare(b.date));
+  // DEDUPLICATE: Merge sessions with same date into one
+  const mergedSessionMap = {};
+  COMPETITOR_SESSIONS.forEach(session => {
+    if (!mergedSessionMap[session.date]) {
+      mergedSessionMap[session.date] = { date: session.date, competitors: [] };
+    }
+    // Merge competitors for this date
+    session.competitors?.forEach(c => {
+      // Only add if not already in this date
+      if (!mergedSessionMap[session.date].competitors.find(x => x.name === c.name)) {
+        mergedSessionMap[session.date].competitors.push(c);
+      }
+    });
+  });
   
-  const datasets = allCompetitors.map((seller, idx) => {
+  const mergedSessions = Object.values(mergedSessionMap).sort((a,b) => a.date.localeCompare(b.date));
+  
+  tag.textContent = `${fmt(mergedSessions[0].date)} → ${fmt(mergedSessions[mergedSessions.length-1].date)} · ${allCompetitors.length} competitors`;
+
+  // Initialize trackedCompetitors if empty (first load)
+  if (trackedCompetitors.size === 0) {
+    allCompetitors.forEach(s => trackedCompetitors.add(s.name));
+  }
+
+  // Render checkboxes
+  const filterDiv = document.getElementById('compChartFilters');
+  if (filterDiv) {
+    filterDiv.innerHTML = allCompetitors.map((s, idx) => {
+      const COMP_COLORS = ['#00f5a0', '#3d9eff', '#ffd166', '#ff8c42', '#ff4d6d', '#c084fc', '#ff6b6b', '#ff99cc', '#66ffcc', '#ffcc00', '#ff00ff', '#00ffff'];
+      const color = COMP_COLORS[idx % COMP_COLORS.length];
+      const checked = trackedCompetitors.has(s.name) ? 'checked' : '';
+      return `<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:4px 8px;background:var(--s2);border:1px solid var(--border);border-radius:3px">
+        <input type="checkbox" ${checked} onchange="toggleCompetitor('${s.name.replace(/'/g, "\\'")}'); renderCompChart(filteredSnaps())" style="cursor:pointer">
+        <span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px"></span>
+        <span style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${s.name}</span>
+      </label>`;
+    }).join('');
+  }
+
+  const colors = ['#00f5a0', '#3d9eff', '#ffd166', '#ff8c42', '#ff4d6d', '#c084fc', '#ff6b6b', '#ff99cc', '#66ffcc', '#ffcc00', '#ff00ff', '#00ffff'];
+  
+  // Get unique dates from merged sessions
+  const uniqueDates = mergedSessions.map(s => s.date);
+  
+  const showLines = document.getElementById('compChartShowLines')?.checked ?? true;
+  
+  const datasets = allCompetitors
+    .filter(seller => trackedCompetitors.has(seller.name)) // Only show tracked competitors
+    .map((seller, idx) => {
     const isHighlighted = highlightedSeller === seller.name;
     const isDimmed = highlightedSeller && !isHighlighted;
-    const data = sortedSessions2.map(session => {
-      const reading = seller.data.find(d => d.date === session.date);
-      return reading ? reading.pct : null;
-    });
     const color = isDimmed ? '#4a5568' : colors[idx % colors.length];
+    
+    // Create scatter data: {x: dateIndex in uniqueDates, y: percentage}
+    const data = uniqueDates.map((date, dateIdx) => {
+      const reading = seller.data.find(d => d.date === date);
+      return reading ? { x: dateIdx, y: reading.pct } : null;
+    }).filter(d => d !== null);
+    
     return {
       label: seller.name,
       data,
       borderColor: color,
-      backgroundColor: color + (isDimmed ? '08' : '14'),
-      tension: .35,
-      fill: false,
-      pointRadius: isHighlighted ? 5 : 3,
+      backgroundColor: color + (isDimmed ? '33' : '80'),
+      pointRadius: isHighlighted ? 7 : 5,
+      pointHoverRadius: isHighlighted ? 9 : 7,
       pointBackgroundColor: color,
       pointBorderColor: '#07090c',
       pointBorderWidth: isHighlighted ? 2 : 1,
-      spanGaps: true,
-      borderWidth: isHighlighted ? 3 : 2,
+      showLine: showLines, // Toggle line visibility
+      borderWidth: showLines ? (isHighlighted ? 2 : 1) : 0,
+      tension: .3,
+      fill: false,
     };
   });
 
   destroyChart('compChartCanvas');
   chartInstances.compChartCanvas = new Chart(chartCtx, {
-    type: 'line',
+    type: 'scatter',
     data: {
-      labels: sortedSessions2.map(s => fmtShort(s.date)),
       datasets,
     },
     options: {
-      ...chartOpts(),
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        annotation: {
+          annotations: {}
+        },
+        tooltip: {
+          enabled: true,
+          backgroundColor: 'rgba(7,9,12,0.95)',
+          titleColor: '#dce6f0',
+          bodyColor: '#dce6f0',
+          borderColor: '#2a3545',
+          borderWidth: 1,
+          padding: 12,
+          displayColors: false,
+          callbacks: {
+            title: () => '',
+            label: (context) => {
+              const idx = context.datasetIndex;
+              const dataset = datasets[idx];
+              const pointIdx = context.dataIndex;
+              const current = context.parsed.y;
+              const prev = pointIdx > 0 ? dataset.data[pointIdx - 1]?.y : null;
+              const arrow = prev === null ? '—' : (current > prev ? '↑ GAINING' : current < prev ? '↓ LOSING' : '→ FLAT');
+              return `${dataset.label}: ${current.toFixed(1)}%\n${arrow}`;
+            }
+          }
+        },
+        datalabels: {
+          display: true,
+          anchor: 'top',
+          align: 'top',
+          offset: 8,
+          font: { size: 16, weight: 'bold' },
+          color: (context) => {
+            const dataset = context.dataset;
+            const idx = context.dataIndex;
+            const current = dataset.data[idx]?.y;
+            const prev = idx > 0 ? dataset.data[idx - 1]?.y : null;
+            if (prev === null) return 'transparent';
+            return current > prev ? '#00f5a0' : current < prev ? '#ff4d6d' : '#6b7a8d';
+          },
+          formatter: (value, context) => {
+            const idx = context.dataIndex;
+            const dataset = context.dataset;
+            const current = dataset.data[idx]?.y;
+            const prev = idx > 0 ? dataset.data[idx - 1]?.y : null;
+            if (prev === null) return '';
+            return current > prev ? '↑' : current < prev ? '↓' : '→';
+          }
+        }
+      },
       scales: {
-        x: { grid: { color: '#1c2330' } },
+        x: {
+          type: 'linear',
+          position: 'bottom',
+          ticks: {
+            callback: (value) => {
+              const date = uniqueDates[Math.round(value)];
+              return date ? fmtShort(date) : '';
+            },
+            color: '#4a5568',
+            font: { size: 11, family: "'DM Mono'" }
+          },
+          grid: { color: '#1c2330', drawBorder: false },
+          min: -0.5,
+          max: uniqueDates.length - 0.5,
+        },
         y: {
+          ticks: { 
+            callback: v => v + '%',
+            color: '#4a5568',
+            font: { size: 11, family: "'DM Mono'" }
+          },
           grid: { color: '#1c2330' },
-          min: 0,
-          max: 100,
-          ticks: { callback: v => v + '%', color: '#4a5568' },
+          beginAtZero: false,
         }
       }
     }
