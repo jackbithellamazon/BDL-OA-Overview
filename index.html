@@ -208,15 +208,26 @@ window._startupLoad = async function() {
   }
   console.log('=== DATA LOAD END ===');
   if (syncEl) hideSyncStatus();
-  if (DB.length >= 2) {
-    const sorted = [...DB].sort((a,b)=>a.date.localeCompare(b.date));
-    rangeFrom = sorted[sorted.length-2].date;
-    rangeTo = sorted[sorted.length-1].date;
-    const rangeFromEl = document.getElementById('rangeFrom');
-    const rangeToEl = document.getElementById('rangeTo');
-    if (rangeFromEl) rangeFromEl.value = rangeFrom;
-    if (rangeToEl) rangeToEl.value = rangeTo;
+  
+  // Set default to Last 30 days
+  const now = new Date();
+  const d30 = new Date(now);
+  d30.setDate(d30.getDate() - 30);
+  rangeFrom = d30.toISOString().split('T')[0];
+  rangeTo = now.toISOString().split('T')[0];
+  
+  const rangeFromEl = document.getElementById('rangeFrom');
+  const rangeToEl = document.getElementById('rangeTo');
+  if (rangeFromEl) rangeFromEl.value = rangeFrom;
+  if (rangeToEl) rangeToEl.value = rangeTo;
+  
+  // Mark "Last 30d" preset as active
+  const last30Btn = document.querySelector('[onclick*="last30"]');
+  if (last30Btn) {
+    document.querySelectorAll('.range-preset').forEach(b => b.classList.remove('active'));
+    last30Btn.classList.add('active');
   }
+  
   // Only render if DOM elements exist
   try {
     renderAll();
@@ -287,13 +298,13 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .range-preset:hover,.range-preset.active{border-color:var(--g);color:var(--g)}
 .content{grid-column:2;overflow-y:auto;padding:24px 28px}
 .tab-page{display:none}.tab-page.active{display:block}
-.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
-.kpi{background:var(--s1);border:1px solid var(--border);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.kpi{background:var(--s1);border:1px solid var(--border);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
 .kpi:hover{border-color:var(--border2);transform:translateY(-1px)}
 .kpi-stripe{position:absolute;top:0;left:0;right:0;height:3px}
-.kpi-label{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px}
-.kpi-val{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1}
-.kpi-footer{display:flex;align-items:center;gap:6px;margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--muted2)}
+.kpi-label{font-family:var(--mono);font-size:8px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted2);margin-bottom:8px}
+.kpi-val{font-size:24px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.kpi-footer{display:flex;flex-direction:column;gap:3px;margin-top:10px;font-family:var(--mono);font-size:9px;color:var(--muted2)}
 .pill{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;font-family:var(--mono);font-size:10px;font-weight:500}
 .pill.up{background:var(--g2);color:var(--g)}
 .pill.down{background:var(--r2);color:var(--r)}
@@ -308,7 +319,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .card-title{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .card-tag{font-family:var(--mono);font-size:9px;color:var(--muted2);background:var(--s2);padding:3px 8px;border:1px solid var(--border)}
 .chart-wrap{position:relative;height:200px}
-.chart-wrap.tall{height:260px}
+.chart-wrap.tall{height:350px}
 .chart-wrap.sm{height:120px}
 .ageing-list{display:flex;flex-direction:column;gap:11px}
 .ag-row{display:grid;grid-template-columns:72px 1fr 48px 44px;align-items:center;gap:10px}
@@ -404,7 +415,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .tab-page.active>*:nth-child(3){animation-delay:.1s}
 .tab-page.active>*:nth-child(4){animation-delay:.15s}
 @media(max-width:1100px){
-  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .kpi-row{grid-template-columns:repeat(3,1fr)}
   .grid-2,.grid-65{grid-template-columns:1fr}
   .rep-hero{grid-template-columns:1fr}
 }
@@ -461,7 +472,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     display:flex;align-items:center;justify-content:center;
     font-size:20px;font-weight:700;line-height:1;
   }
-  .kpi-row{grid-template-columns:1fr 1fr;gap:10px}
+  .kpi-row{grid-template-columns:repeat(3,1fr);gap:10px}
   .kpi{padding:14px}
   .kpi-val{font-size:22px}
   .grid-2,.grid-65,.grid-3,.rep-hero{grid-template-columns:1fr}
@@ -473,7 +484,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   .ag-row{grid-template-columns:60px 1fr 36px 36px;gap:6px}
   .ag-lbl{font-size:9px}
   .chart-wrap{height:160px}
-  .chart-wrap.tall{height:200px}
+  .chart-wrap.tall{height:280px}
   .overlay{padding:0;align-items:flex-end}
   .modal{max-height:92dvh;border-radius:0;border-bottom:none}
   .form-grid{grid-template-columns:1fr}
@@ -552,12 +563,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   <div class="tab-page active" id="tab-overview">
     <div class="kpi-row">
       <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--g)"></div>
-        <div class="kpi-label">Total ASINs</div>
-        <div class="kpi-val" id="kAsins">—</div>
-        <div class="kpi-footer"><span id="kAsinsPill"></span><span id="kAsinsSub">No data</span></div>
-      </div>
-      <div class="kpi">
         <div class="kpi-stripe" style="background:var(--b)"></div>
         <div class="kpi-label">Total SKUs</div>
         <div class="kpi-val" id="kSkus">—</div>
@@ -571,9 +576,33 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       </div>
       <div class="kpi">
         <div class="kpi-stripe" style="background:var(--y)"></div>
-        <div class="kpi-label">Competitor Overlap</div>
-        <div class="kpi-val" id="kCompOverlap">—</div>
-        <div class="kpi-footer"><span id="kCompOverlapPill"></span><span id="kCompOverlapSub">No data</span></div>
+        <div class="kpi-label">Stock Value</div>
+        <div class="kpi-val" id="kStockValue">—</div>
+        <div class="kpi-footer"><span id="kStockValuePill"></span><span id="kStockValueSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--p)"></div>
+        <div class="kpi-label">Total Units</div>
+        <div class="kpi-val" id="kUnits">—</div>
+        <div class="kpi-footer"><span id="kUnitsPill"></span><span id="kUnitsSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-label">Win BB %</div>
+        <div class="kpi-val" id="kRepWinPct">—</div>
+        <div class="kpi-footer"><span id="kRepWinPctPill"></span><span id="kRepWinPctSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--y)"></div>
+        <div class="kpi-label">Match BB %</div>
+        <div class="kpi-val" id="kRepMatchPct">—</div>
+        <div class="kpi-footer"><span id="kRepMatchPctPill"></span><span id="kRepMatchPctSub">No data</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--r)"></div>
+        <div class="kpi-label">Aged Risk (181+d)</div>
+        <div class="kpi-val" id="kAgedRisk">—</div>
+        <div class="kpi-footer"><span id="kAgedRiskPill"></span><span id="kAgedRiskSub">No data</span></div>
       </div>
     </div>
     <div class="insight-box" id="insightBox">
@@ -593,12 +622,20 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
             <button class="metric-toggle active" onclick="switchChartMetric('units')">Units</button>
             <button class="metric-toggle" onclick="switchChartMetric('asins')">ASINs</button>
             <button class="metric-toggle" onclick="switchChartMetric('skus')">SKUs</button>
+            <button class="metric-toggle" onclick="switchChartMetric('stockvalue')">Stock Value</button>
             <button class="metric-toggle" onclick="switchChartMetric('winbb')">Win BB %</button>
             <button class="metric-toggle" onclick="switchChartMetric('matchbb')">Match BB %</button>
+            <button class="metric-toggle" onclick="switchChartMetric('agedrisk')">Aged Risk %</button>
           </div>
-          <div class="card-tag" id="chartRangeTag">—</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div id="chartTrendBadge"></div>
+            <div class="card-tag" id="chartRangeTag">—</div>
+          </div>
         </div>
         <div class="chart-wrap tall"><canvas id="overviewChart"></canvas></div>
+        <div id="chartAnalysis" style="padding:20px;background:var(--s2);border-radius:4px;margin-top:14px;font-size:13px;line-height:1.7;color:var(--text)">
+          <!-- Analysis will be inserted here -->
+        </div>
       </div>
       <div class="card">
         <div class="card-hd">
@@ -608,6 +645,13 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="ageing-list" id="ageingList">
           <div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:20px 0">No data yet</div>
         </div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title">Stock Ageing Breakdown</div>
+          <div class="card-tag" id="ageingBreakdownTag">01/04/2026 → 13/04/2026</div>
+        </div>
+        <div class="chart-wrap tall"><canvas id="stockAgeingChart"></canvas></div>
       </div>
     </div>
   </div>
@@ -644,18 +688,6 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="kpi-val" id="repKpiWinCov">—</div>
         <div class="kpi-footer"><span id="repKpiWinCovPill"></span><span id="repKpiWinCovSub">No data</span></div>
       </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--g)"></div>
-        <div class="kpi-label">Combined Coverage %</div>
-        <div class="kpi-val" id="repKpiCombined">—</div>
-        <div class="kpi-footer"><span id="repKpiCombinedPill"></span><span id="repKpiCombinedSub">No data</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--r)"></div>
-        <div class="kpi-label">Aged Risk %</div>
-        <div class="kpi-val" id="repKpiAgedRisk">—</div>
-        <div class="kpi-footer"><span id="repKpiAgedRiskPill"></span><span id="repKpiAgedRiskSub">No data</span></div>
-      </div>
     </div>
     <div class="insight-box" id="repInsightBox">
       <div class="insight-hd"><span class="insight-badge">✦ Repricer Analysis</span></div>
@@ -665,13 +697,16 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <div class="card">
       <div class="card-hd">
         <div class="card-title">Buy Box % Trends</div>
-        <div class="card-tag" id="repChartTag">—</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div id="repChartTrendBadge"></div>
+          <div class="card-tag" id="repChartTag">—</div>
+        </div>
       </div>
       <div class="chart-wrap tall"><canvas id="repricerChart"></canvas></div>
     </div>
     <div class="card">
       <div class="card-hd">
-        <div class="card-title">SKU & ASIN Count Trends</div>
+        <div class="card-title">SKU Count Trends</div>
         <div class="card-tag" id="repCountChartTag">—</div>
       </div>
       <div class="chart-wrap tall"><canvas id="repCountChart"></canvas></div>
@@ -1044,12 +1079,49 @@ function filteredSnaps() {
   return d;
 }
 
+// Helper: get 4 comparison snapshots for trend analysis
+function getComparisonSnapshots(snaps) {
+  if (snaps.length < 2) return { current: null, eightDaysAgo: null, monthStart: null, thirtyDaysAgo: null };
+  
+  const current = snaps[snaps.length - 1];
+  const currentDate = new Date(current.date + 'T00:00:00');
+  
+  // 8+ days ago
+  const eightDaysBack = new Date(currentDate);
+  eightDaysBack.setDate(eightDaysBack.getDate() - 8);
+  let eightDaysAgo = snaps.filter(s => new Date(s.date + 'T00:00:00') <= eightDaysBack).pop() || snaps[0];
+  
+  // 1st of current month (if exists and not current), else 1st of previous month
+  const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  let monthStartSnap = snaps.filter(s => {
+    const d = new Date(s.date + 'T00:00:00');
+    return d.getFullYear() === monthStart.getFullYear() && d.getMonth() === monthStart.getMonth() && d.getDate() === 1;
+  })[0];
+  
+  if (!monthStartSnap && currentDate.getDate() > 1) {
+    // Try previous month's 1st
+    const prevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+    monthStartSnap = snaps.filter(s => {
+      const d = new Date(s.date + 'T00:00:00');
+      return d.getFullYear() === prevMonth.getFullYear() && d.getMonth() === prevMonth.getMonth() && d.getDate() === 1;
+    })[0];
+  }
+  
+  // 30 days ago
+  const thirtyDaysBack = new Date(currentDate);
+  thirtyDaysBack.setDate(thirtyDaysBack.getDate() - 30);
+  let thirtyDaysAgo = snaps.filter(s => new Date(s.date + 'T00:00:00') <= thirtyDaysBack).pop();
+  
+  return { current, eightDaysAgo, monthStart: monthStartSnap, thirtyDaysAgo };
+}
+
 function renderAll() {
   const snaps = filteredSnaps();
   renderKpis(snaps);
   renderInsights(snaps);
   renderOverviewChart(snaps);
   renderAgeing(snaps);
+  renderAgingChart(snaps); // Add to Overview
   renderRepricerTab(snaps);
   renderCompTab();
   renderCompChart(snaps);
@@ -1062,7 +1134,7 @@ function renderKpis(snaps) {
   console.log('renderKpis called with snaps:', snaps);
   if (!snaps.length) { 
     console.log('No snaps, setting to —');
-    ['kAsins','kSkus','kCost','kUnits','kCompOverlap'].forEach(id => {
+    ['kAsins','kSkus','kCost','kUnits','kStockValue','kRepWinPct','kRepMatchPct','kAgedRisk'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.textContent = '—';
     }); 
@@ -1076,27 +1148,72 @@ function renderKpis(snaps) {
   const avgAsins = snaps.reduce((sum,s)=>sum+(s.asins||0),0) / snaps.length;
   const avgSkus = snaps.reduce((sum,s)=>sum+(s.skus||0),0) / snaps.length;
   const avgCost = snaps.reduce((sum,s)=>sum+(s.avgCost||0),0) / snaps.length;
+  const avgStockValue = snaps.reduce((sum,s)=>sum+(s.stockValue||0),0) / snaps.length;
+  
+  // Repricer metrics - use stored percentages directly
+  const repWinPct = latest.repricer?.winPct ? parseFloat(latest.repricer.winPct).toFixed(1) : 0;
+  const repMatchPct = latest.repricer?.matchPct ? parseFloat(latest.repricer.matchPct).toFixed(1) : 0;
+  const prevRepWinPct = prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct).toFixed(1) : null;
+  const prevRepMatchPct = prev?.repricer?.matchPct ? parseFloat(prev.repricer.matchPct).toFixed(1) : null;
+  const avgRepWinPct = snaps.filter(s => s.repricer?.winPct).length > 0 
+    ? (snaps.filter(s => s.repricer?.winPct).reduce((sum,s)=>sum+parseFloat(s.repricer.winPct),0) / snaps.filter(s => s.repricer?.winPct).length).toFixed(1) 
+    : 0;
+  const avgRepMatchPct = snaps.filter(s => s.repricer?.matchPct).length > 0 
+    ? (snaps.filter(s => s.repricer?.matchPct).reduce((sum,s)=>sum+parseFloat(s.repricer.matchPct),0) / snaps.filter(s => s.repricer?.matchPct).length).toFixed(1) 
+    : 0;
+  
+  // Aged risk (181+ days)
+  const ag = latest.ageing || {};
+  const totalUnits = (ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const agedUnits = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const agedRiskPct = totalUnits > 0 ? ((agedUnits / totalUnits) * 100).toFixed(1) : 0;
+  const prevAg = prev?.ageing || {};
+  const prevTotalUnits = (prevAg.a0||0)+(prevAg.a31||0)+(prevAg.a61||0)+(prevAg.a91||0)+(prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+  const prevAgedUnits = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+  const prevAgedRiskPct = prevTotalUnits > 0 ? ((prevAgedUnits / prevTotalUnits) * 100).toFixed(1) : null;
+  const avgAgedRiskPct = snaps.filter(s => {
+    const a = s.ageing||{}; 
+    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    return tot > 0;
+  }).reduce((sum,s) => {
+    const a = s.ageing||{};
+    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    const aged = (a.a181||0)+(a.a271||0)+(a.a365||0);
+    return sum + (tot > 0 ? (aged/tot)*100 : 0);
+  }, 0) / snaps.filter(s => {
+    const a = s.ageing||{}; 
+    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+    return tot > 0;
+  }).length;
   
   setKpi('kAsins','kAsinsPill','kAsinsSub', latest.asins, prev?.asins, '', true, avgAsins);
   setKpi('kSkus','kSkusPill','kSkusSub', latest.skus, prev?.skus, '', true, avgSkus);
   setKpi('kCost','kCostPill','kCostSub', latest.avgCost, prev?.avgCost, '£', false, avgCost);
   setKpi('kUnits','kUnitsPill','kUnitsSub', latest.totalUnits, prev?.totalUnits, '', true, avgUnits);
+  setKpi('kStockValue','kStockValuePill','kStockValueSub', latest.stockValue, prev?.stockValue, '£', true, avgStockValue);
+  setKpiPercent('kRepWinPct','kRepWinPctPill','kRepWinPctSub', repWinPct, prevRepWinPct, true, avgRepWinPct);
+  setKpiPercent('kRepMatchPct','kRepMatchPctPill','kRepMatchPctSub', repMatchPct, prevRepMatchPct, true, avgRepMatchPct);
+  setKpiPercent('kAgedRisk','kAgedRiskPill','kAgedRiskSub', agedRiskPct, prevAgedRiskPct, false, avgAgedRiskPct);
   
-  // Competitor overlap pressure = average overlap % across all competitors (from COMPETITOR_SESSIONS)
-  const latestCompSession = COMPETITOR_SESSIONS.length > 0 ? COMPETITOR_SESSIONS[COMPETITOR_SESSIONS.length - 1] : null;
-  const prevCompSession = COMPETITOR_SESSIONS.length > 1 ? COMPETITOR_SESSIONS[COMPETITOR_SESSIONS.length - 2] : null;
+  // Update bottom bar chart
+  const winRate = latest.repricer?.winPct ? parseFloat(latest.repricer.winPct) : 0;
+  const matchRate = latest.repricer?.matchPct ? parseFloat(latest.repricer.matchPct) : 0;
+  const stockHealth = 100 - parseFloat(agedRiskPct); // Inverse: lower aged = healthier
   
-  const compOverlapLatest = latestCompSession && latestCompSession.competitors && latestCompSession.competitors.length > 0
-    ? (latestCompSession.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / latestCompSession.competitors.length).toFixed(1)
-    : null;
-  const compOverlapPrev = prevCompSession && prevCompSession.competitors && prevCompSession.competitors.length > 0
-    ? (prevCompSession.competitors.reduce((sum,c)=>sum+(c.pct||0),0) / prevCompSession.competitors.length).toFixed(1)
-    : null;
-  const compOverlapAvg = COMPETITOR_SESSIONS.length > 0
-    ? (COMPETITOR_SESSIONS.reduce((sum,s) => sum + (s.competitors && s.competitors.length > 0 ? (s.competitors.reduce((cs,c)=>cs+(c.pct||0),0)/s.competitors.length) : 0), 0) / COMPETITOR_SESSIONS.length)
-    : 0;
+  const barWin = document.getElementById('barWin');
+  const barMatch = document.getElementById('barMatch');
+  const barStock = document.getElementById('barStock');
+  const barWinText = document.getElementById('barWinText');
+  const barMatchText = document.getElementById('barMatchText');
+  const barStockText = document.getElementById('barStockText');
   
-  setKpiDual('kCompOverlap','kCompOverlapPill','kCompOverlapSub', compOverlapLatest, compOverlapPrev, compOverlapAvg, '%', false);
+  if (barWin) barWin.style.width = Math.min(winRate * 5, 100) + '%';
+  if (barMatch) barMatch.style.width = Math.min(matchRate * 5, 100) + '%';
+  if (barStock) barStock.style.width = Math.min(stockHealth * 1, 100) + '%';
+  
+  if (barWinText) barWinText.textContent = winRate.toFixed(1) + '%';
+  if (barMatchText) barMatchText.textContent = matchRate.toFixed(1) + '%';
+  if (barStockText) barStockText.textContent = stockHealth.toFixed(0) + '%';
 }
 
 function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0) {
@@ -1104,7 +1221,20 @@ function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0)
   const pill = document.getElementById(pillId);
   const sub = document.getElementById(subId);
   if (!el || !pill || !sub) return; // Skip if elements don't exist
-  el.textContent = curr ? (prefix + (Number.isInteger(curr) ? curr.toLocaleString() : '£'+curr.toFixed(2))) : '—';
+  
+  // Format the value properly
+  let displayVal = '—';
+  if (curr) {
+    if (prefix === '£') {
+      // Money: format with commas
+      displayVal = '£' + (Number.isInteger(curr) ? curr.toLocaleString() : curr.toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+    } else if (Number.isInteger(curr)) {
+      displayVal = prefix + curr.toLocaleString();
+    } else {
+      displayVal = prefix + curr.toFixed(2);
+    }
+  }
+  el.textContent = displayVal;
   
   let pillHtml = '';
   if (prev && prev !== 0) {
@@ -1127,7 +1257,39 @@ function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0)
     pillHtml += `<span class="pill ${cls}" style="font-size:9px">${arrow} ${Math.abs(pct)}% vs avg</span>`;
   }
   pill.innerHTML = pillHtml;
-  sub.textContent = !prev ? 'First snapshot' : 'vs period';
+  sub.textContent = !prev ? 'First snapshot' : '';
+}
+
+function setKpiPercent(valId, pillId, subId, curr, prev, upGood=true, avg=0) {
+  const el = document.getElementById(valId);
+  const pill = document.getElementById(pillId);
+  const sub = document.getElementById(subId);
+  if (!el || !pill || !sub) return; // Skip if elements don't exist
+  el.textContent = curr ? (curr + '%') : '—';
+  
+  let pillHtml = '';
+  const currNum = parseFloat(curr);
+  if (prev && prev !== 0 && prev !== null) {
+    const prevNum = parseFloat(prev);
+    const diff = currNum - prevNum;
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}pp vs last</span>`;
+  }
+  if (avg && avg > 0) {
+    const avgNum = parseFloat(avg);
+    const diff = currNum - avgNum;
+    const up = diff > 0;
+    const good = upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
+    if (pillHtml) pillHtml += ' ';
+    pillHtml += `<span class="pill ${cls}" style="font-size:9px">${arrow} ${Math.abs(diff).toFixed(1)}pp vs avg</span>`;
+  }
+  pill.innerHTML = pillHtml;
+  sub.textContent = !prev ? 'First snapshot' : '';
 }
 
 function setKpiDual(valId, pillId, subId, curr, prev, avg, suffix='', upGood=true) {
@@ -1156,7 +1318,7 @@ function setKpiDual(valId, pillId, subId, curr, prev, avg, suffix='', upGood=tru
     pillHtml += `<span class="pill ${cls}" style="font-size:9px">${arrow} ${Math.abs(diff).toFixed(1)} vs avg</span>`;
   }
   pill.innerHTML = pillHtml;
-  sub.textContent = !prev ? 'First period' : 'vs period';
+  sub.textContent = !prev ? 'First period' : '';
 }
 
 const AG_BUCKETS = [
@@ -1173,15 +1335,42 @@ function renderAgeing(snaps) {
   const list = document.getElementById('ageingList');
   const tag = document.getElementById('ageingTotalTag');
   if (!snaps.length) { list.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:20px 0">No data</div>'; return; }
-  const ag = snaps[snaps.length-1].ageing || {};
+  
+  const latest = snaps[snaps.length-1];
+  const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
+  const ag = latest.ageing || {};
+  const prevAg = prev?.ageing || {};
+  
   const total = AG_BUCKETS.reduce((s,b) => s + (ag[b.key]||0), 0) || 1;
-  tag.textContent = total + ' units';
+  tag.textContent = total + ' SKUs';
+  
   list.innerHTML = AG_BUCKETS.map(b => {
     const cnt = ag[b.key]||0;
+    const prevCnt = prevAg[b.key]||0;
     const pct = ((cnt/total)*100).toFixed(1);
-    return `<div class="ag-row"><div class="ag-lbl">${b.label}</div><div class="ag-track"><div class="ag-fill" style="width:${pct}%;background:${b.color}"></div></div><div class="ag-cnt" style="color:${b.color}">${cnt}</div><div class="ag-pct">${pct}%</div></div>`;
+    
+    // Show trend for ALL brackets
+    let trendHtml = '';
+    if (prev) {
+      const diff = cnt - prevCnt;
+      if (diff !== 0) {
+        const arrow = diff > 0 ? '↑' : '↓';
+        // Critical brackets (180+d): up is bad (red), down is good (green)
+        const isCritical = b.key === 'a181' || b.key === 'a271' || b.key === 'a365';
+        const color = isCritical ? (diff > 0 ? 'var(--r)' : 'var(--g)') : (diff > 0 ? 'var(--g)' : 'var(--r)');
+        trendHtml = `<span style="font-size:9px;color:${color};margin-left:4px">${arrow} ${Math.abs(diff)}</span>`;
+      }
+    }
+    
+    // Highlight critical aged brackets
+    const isCritical = b.key === 'a181' || b.key === 'a271' || b.key === 'a365';
+    const bgStyle = isCritical ? 'background:rgba(255,77,109,.1);border-left:2px solid var(--r)' : '';
+    const labelStyle = isCritical ? 'font-weight:600;color:var(--r)' : '';
+    
+    return `<div class="ag-row" style="${bgStyle}"><div class="ag-lbl" style="${labelStyle}">${b.label}</div><div class="ag-track"><div class="ag-fill" style="width:${pct}%;background:${b.color}"></div></div><div class="ag-cnt" style="color:${b.color}">${cnt}${trendHtml}</div><div class="ag-pct">${pct}%</div></div>`;
   }).join('');
 }
+
 
 function renderInsights(snaps) {
   const box = document.getElementById('insightText');
@@ -1198,10 +1387,28 @@ function renderInsights(snaps) {
   const fresh = ag.a0||0;
   const freshPct = ((fresh/totalUnits)*100).toFixed(1);
   const r = latest.repricer || {};
-  const winPct = r.total ? ((r.winning/r.total)*100).toFixed(1) : 0;
-  const matchPct = r.total ? ((r.matching/r.total)*100).toFixed(1) : 0;
+  const winPct = r.winPct ? +r.winPct : 0;
+  const matchPct = r.matchPct ? +r.matchPct : 0;
 
   dateEl.textContent = 'Based on snapshot: ' + fmt(latest.date);
+
+  // Build trend bars for metrics (if 2+ snapshots)
+  let barsHtml = '';
+  if (snaps.length >= 2) {
+    const prevAg = prev.ageing || {};
+    const prevTotal = AG_BUCKETS.reduce((s,b) => s+(prevAg[b.key]||0),0)||1;
+    
+    const asinDiff = latest.asins - prev.asins;
+    const skuDiff = latest.skus - prev.skus;
+    const costDiff = latest.avgCost - prev.avgCost;
+    const unitsDiff = latest.totalUnits - prev.totalUnits;
+    const stockValDiff = (latest.stockValue||0) - (prev.stockValue||0);
+    const winDiff = winPct - (prev.repricer?.winPct || 0);
+    const matchDiff = matchPct - (prev.repricer?.matchPct || 0);
+    
+    // Bars removed - no visual trend indicators in AI Analysis
+    barsHtml = '';
+  }
 
   let main = '';
   if (snaps.length === 1) {
@@ -1232,30 +1439,55 @@ function renderInsights(snaps) {
     const prevOver180pct = ((prevOver180/prevTotal)*100).toFixed(1);
     const over180change = parseFloat(over180pct) - parseFloat(prevOver180pct);
 
-    main = `Since your last snapshot on <strong>${fmt(prev.date)}</strong>, your catalogue has `;
-    if (asinDiff > 0) main += `<strong style="color:var(--g)">grown by ${asinDiff} ASINs</strong>`;
-    else if (asinDiff < 0) main += `<strong style="color:var(--r)">shrunk by ${Math.abs(asinDiff)} ASINs</strong>`;
-    else main += `held steady on ASINs`;
-    main += ` and `;
-    if (skuDiff > 0) main += `<strong style="color:var(--g)">added ${skuDiff} SKUs</strong>. `;
-    else if (skuDiff < 0) main += `<strong style="color:var(--r)">dropped ${Math.abs(skuDiff)} SKUs</strong>. `;
-    else main += `held the same SKU count. `;
-    if (over180change > 2) main += `<span class="danger">Your 180d+ stock has increased from ${prevOver180pct}% to ${over180pct}%</span> — this is costing you cash flow. `;
-    else if (over180change < -2) main += `<strong style="color:var(--g)">You've reduced 180d+ stock from ${prevOver180pct}% down to ${over180pct}%</strong> — good clearance work. `;
-    else main += `Your 180d+ ageing stock is holding steady at <strong>${over180pct}%</strong>. `;
+    main = `Since your last snapshot on <strong>${fmt(prev.date)}</strong>, your SKU count has `;
+    if (skuDiff > 0) main += `<strong style="color:var(--g)">expanded by ${skuDiff} new SKUs</strong>`;
+    else if (skuDiff < 0) main += `<strong style="color:var(--r)">contracted by ${Math.abs(skuDiff)} SKUs</strong>`;
+    else main += `remained stable at ${latest.skus} SKUs`;
+    main += `. You're now managing <strong>${latest.skus} SKU variants</strong> across your catalogue. `;
+    if (over180change > 2) main += `<span class="danger">⚠ Your 180d+ aged stock has worsened from ${prevOver180pct}% to ${over180pct}%</span> — prioritize clearance. `;
+    else if (over180change < -2) main += `<strong style="color:var(--g)">✓ You've successfully cleared aged stock from ${prevOver180pct}% down to ${over180pct}%</strong> — keep this momentum. `;
+    else main += `Your aged inventory (180d+) is stable at <strong>${over180pct}%</strong>. `;
   }
-  box.innerHTML = main;
+  box.innerHTML = barsHtml + main;
 
   const bullets = [];
-  if (over180 > 0 && parseFloat(over180pct) > 5) bullets.push(`<span class="danger">${over180} units are 181d+ old (${over180pct}% of stock)</span> — clear them to recover cash`);
-  if (r.total > 0) {
-    const combined = ((r.winning+r.matching)/r.total*100).toFixed(1);
-    bullets.push(`Repricer has you <strong>matching or winning BB on ${combined}% of SKUs</strong> — winning on ${winPct}%, matching on ${matchPct}%`);
-    if (winPct < 15) bullets.push(`<span class="warn">Win rate below 15%</span> — review your repricer floor prices`);
+  
+  // Aged inventory
+  if (over180 > 0 && parseFloat(over180pct) > 5) {
+    bullets.push(`<strong style="color:var(--r)">Aged Stock Alert:</strong> ${over180} units (${over180pct}%) are 181+ days old. Run clearance promos or consider removal to free up capital.`);
   }
+  
+  // Repricer health
+  if (r.total > 0) {
+    const winning = ((r.winning/r.total)*100).toFixed(1);
+    const matching = ((r.matching/r.total)*100).toFixed(1);
+    const combined = (parseFloat(winning) + parseFloat(matching)).toFixed(1);
+    
+    if (combined > 35) {
+      bullets.push(`<strong style="color:var(--g)">Strong BB Coverage:</strong> ${combined}% coverage (${winning}% win, ${matching}% match) — maintaining good competitive position.`);
+    } else if (combined < 20) {
+      bullets.push(`<strong style="color:var(--r)">Low BB Coverage:</strong> Only ${combined}% coverage — you're largely invisible. Lower your floor prices to improve visibility.`);
+    } else {
+      bullets.push(`<strong style="color:var(--muted2)">BB Coverage:</strong> ${combined}% (${winning}% win, ${matching}% match) — decent, room to improve.`);
+    }
+    
+    if (winning < 10) {
+      bullets.push(`<strong style="color:var(--r)">Low Win Rate:</strong> ${winning}% is very low. Floor prices may be too high. Test lower prices on fast-moving SKUs.`);
+    }
+  }
+  
+  // Catalogue trends
   if (snaps.length >= 3) {
     const asinTrend = snaps.slice(-3).map(s=>s.asins);
-    if (asinTrend[2] > asinTrend[1] && asinTrend[1] > asinTrend[0]) bullets.push(`<strong style="color:var(--g)">ASIN catalogue growing 3 snapshots running</strong> — positive sourcing momentum`);
+    const skuTrend = snaps.slice(-3).map(s=>s.skus);
+    
+    if (asinTrend[2] > asinTrend[1] && asinTrend[1] > asinTrend[0]) {
+      bullets.push(`<strong style="color:var(--g)">ASIN Growth:</strong> Up 3 snapshots in a row — good sourcing momentum.`);
+    }
+    
+    if (skuTrend[2] > skuTrend[1] && skuTrend[1] > skuTrend[0]) {
+      bullets.push(`<strong style="color:var(--g)">SKU Expansion:</strong> Variant growth trending positive — increases search visibility.`);
+    }
   }
 
   bulls.innerHTML = bullets.map(b => `<div class="insight-bullet">${b}</div>`).join('');
@@ -1272,8 +1504,11 @@ function renderOverviewChart(snaps) {
   destroyChart('overviewChart');
   const ctx = document.getElementById('overviewChart').getContext('2d');
   const tag = document.getElementById('chartRangeTag');
+  const trendBadge = document.getElementById('chartTrendBadge');
+  
   if (snaps.length < 2) {
     tag.textContent = 'Need 2+ snapshots';
+    if (trendBadge) trendBadge.innerHTML = '';
     ctx.fillStyle = '#4a5568'; ctx.font = "11px 'DM Mono'"; ctx.textAlign='center';
     ctx.fillText('Add 2+ snapshots to see trend', ctx.canvas.width/2, ctx.canvas.height/2);
     return;
@@ -1283,48 +1518,127 @@ function renderOverviewChart(snaps) {
   let datasets = [];
   let yMin = 0, yMax = 100;
   let yLabel = '';
+  let latest = snaps[snaps.length-1];
+  let prev = snaps[snaps.length-2];
+  let trend = null;
+  let trendDir = null;
+  let trendColor = null;
 
   if (chartMetric === 'units') {
     const data = snaps.map(s=>s.totalUnits);
     const max = Math.max(...data);
-    yMin = 0; yMax = Math.ceil(max * 1.1);
+    const min = Math.min(...data);
+    const range = max - min;
+    // Smart padding: tighter padding for small ranges
+    const padding = range < 100 ? range * 0.25 : range < 500 ? range * 0.2 : range * 0.1;
+    yMin = Math.max(0, Math.floor(min - padding));
+    yMax = Math.ceil(max + padding);
     yLabel = 'Units';
     datasets.push({ label:'Units', data, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    trend = Math.abs(latest.totalUnits - prev.totalUnits);
+    trendDir = latest.totalUnits >= prev.totalUnits ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--g)' : 'var(--r)';
   } else if (chartMetric === 'asins') {
     const data = snaps.map(s=>s.asins);
     const max = Math.max(...data);
     yMin = 0; yMax = Math.ceil(max * 1.1);
     yLabel = 'ASINs';
     datasets.push({ label:'ASINs', data, borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    trend = Math.abs(latest.asins - prev.asins);
+    trendDir = latest.asins >= prev.asins ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--g)' : 'var(--r)';
   } else if (chartMetric === 'skus') {
     const data = snaps.map(s=>s.skus);
     const max = Math.max(...data);
     yMin = 0; yMax = Math.ceil(max * 1.1);
     yLabel = 'SKUs';
     datasets.push({ label:'SKUs', data, borderColor:'#3d9eff', backgroundColor:'rgba(61,158,255,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#3d9eff', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    trend = Math.abs(latest.skus - prev.skus);
+    trendDir = latest.skus >= prev.skus ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--g)' : 'var(--r)';
   } else if (chartMetric === 'winbb') {
-    const data = snaps.map(s=>{ const r=s.repricer||{}; return r.total ? +((r.winning/r.total)*100).toFixed(1) : 0; });
-    const max = Math.max(...data, 100);
-    const min = Math.min(...data, 0);
-    yMin = Math.max(0, Math.floor(min - 5));
-    yMax = Math.min(100, Math.ceil(max + 5));
+    const data = snaps.map(s=>{ const r=s.repricer||{}; return r.winPct ? +r.winPct : 0; });
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    const range = max - min || 1;
+    // Smart zoom for percentage data - tighter padding
+    const padding = range < 2 ? 1.5 : range < 5 ? 1 : 0.5;
+    yMin = Math.max(0, min - padding);
+    yMax = max + padding; // Don't cap at 100 - let it zoom tight
     yLabel = '% Win BB';
     datasets.push({ label:'Winning BB %', data, borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    const latestWin = latest.repricer?.winPct ? +latest.repricer.winPct : 0;
+    const prevWin = prev.repricer?.winPct ? +prev.repricer.winPct : 0;
+    trend = Math.abs(latestWin - prevWin).toFixed(1);
+    trendDir = latestWin >= prevWin ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--g)' : 'var(--r)';
   } else if (chartMetric === 'matchbb') {
-    const data = snaps.map(s=>{ const r=s.repricer||{}; return r.total ? +((r.matching/r.total)*100).toFixed(1) : 0; });
+    const data = snaps.map(s=>{ const r=s.repricer||{}; return r.matchPct ? +r.matchPct : 0; });
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    const range = max - min || 1;
+    // Smart zoom for percentage data - tighter padding
+    const padding = range < 2 ? 1.5 : range < 5 ? 1 : 0.5;
+    yMin = Math.max(0, min - padding);
+    yMax = max + padding; // Don't cap at 100 - let it zoom tight
+    yLabel = '% Match BB';
+    datasets.push({ label:'Matching BB %', data, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    const latestMatch = latest.repricer?.matchPct ? +latest.repricer.matchPct : 0;
+    const prevMatch = prev.repricer?.matchPct ? +prev.repricer.matchPct : 0;
+    trend = Math.abs(latestMatch - prevMatch).toFixed(1);
+    trendDir = latestMatch >= prevMatch ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--g)' : 'var(--r)';
+  } else if (chartMetric === 'stockvalue') {
+    const data = snaps.map(s=>s.stockValue||0);
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    const range = max - min;
+    yMin = Math.max(0, Math.floor(min - range * 0.15));
+    yMax = Math.ceil(max + range * 0.15);
+    yLabel = 'Stock Value (£)';
+    datasets.push({ label:'Stock Value', data, borderColor:'#c084fc', backgroundColor:'rgba(192,132,252,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#c084fc', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    trend = Math.abs(latest.stockValue - prev.stockValue);
+    trendDir = latest.stockValue >= prev.stockValue ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--g)' : 'var(--r)';
+  } else if (chartMetric === 'agedrisk') {
+    const calcAgedRisk = (snap) => {
+      const ag = snap.ageing || {};
+      const totalUnits = (ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+      const agedUnits = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+      return totalUnits > 0 ? +((agedUnits/totalUnits)*100).toFixed(1) : 0;
+    };
+    const data = snaps.map(calcAgedRisk);
     const max = Math.max(...data, 100);
     const min = Math.min(...data, 0);
     yMin = Math.max(0, Math.floor(min - 5));
     yMax = Math.min(100, Math.ceil(max + 5));
-    yLabel = '% Match BB';
-    datasets.push({ label:'Matching BB %', data, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    yLabel = '% Aged Risk (181+d)';
+    datasets.push({ label:'Aged Risk %', data, borderColor:'#ff6b35', backgroundColor:'rgba(255,107,53,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ff6b35', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    const latestAged = calcAgedRisk(latest);
+    const prevAged = calcAgedRisk(prev);
+    trend = Math.abs(latestAged - prevAged).toFixed(1);
+    trendDir = latestAged > prevAged ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--r)' : 'var(--g)'; // Inverted: up is bad, down is good
+  }
+
+  // Add trend badge
+  if (trendBadge && trend !== null) {
+    const arrow = trendDir === 'up' ? '↑' : '↓';
+    const label = chartMetric === 'agedrisk' ? (trendDir === 'up' ? 'WORSENING' : 'IMPROVING') : (trendDir === 'up' ? 'UP' : 'DOWN');
+    const suffix = (chartMetric.includes('bb') || chartMetric === 'agedrisk') ? 'pp' : '';
+    trendBadge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:${trendColor};color:#07090c;border-radius:3px;font-weight:600;font-size:11px;font-family:var(--mono);">${arrow} ${label} ${trend}${suffix}</span>`;
   }
 
   const opts = chartOpts();
+  opts.scales.y.beginAtZero = false;
   opts.scales.y.min = yMin;
   opts.scales.y.max = yMax;
-  if (chartMetric.includes('bb')) {
+  delete opts.scales.y.ticks.min;
+  delete opts.scales.y.ticks.max;
+  if (chartMetric.includes('bb') || chartMetric === 'agedrisk') {
     opts.scales.y.ticks.callback = v => v + '%';
+  } else if (chartMetric === 'stockvalue') {
+    opts.scales.y.ticks.callback = v => '£' + (v/1000).toFixed(0) + 'k';
   }
 
   chartInstances.overviewChart = new Chart(ctx, {
@@ -1335,13 +1649,348 @@ function renderOverviewChart(snaps) {
     },
     options: opts
   });
+  
+  // Generate detailed analysis below chart
+  const analysis = document.getElementById('chartAnalysis');
+  if (!analysis) return;
+  
+  const comparisons = getComparisonSnapshots(snaps);
+  let analysisHtml = generateMetricAnalysis(chartMetric, comparisons, snaps);
+  analysis.innerHTML = analysisHtml || '<div style="color:var(--muted)">Add more snapshots to see detailed analysis.</div>';
+}
+
+function generateMetricAnalysis(metric, comps, allSnaps) {
+  if (!comps.current) return '';
+  
+  const curr = comps.current;
+  const prev = allSnaps[allSnaps.length - 2] || null;
+  
+  let html = '';
+  
+  if (metric === 'units') {
+    const currVal = curr.totalUnits || 0;
+    const prevVal = prev?.totalUnits || 0;
+    const eightVal = comps.eightDaysAgo?.totalUnits || 0;
+    const monthVal = comps.monthStart?.totalUnits || 0;
+    const thirtyVal = comps.thirtyDaysAgo?.totalUnits || 0;
+    
+    const diffPrev = currVal - prevVal;
+    const pctPrev = prevVal > 0 ? ((diffPrev / prevVal) * 100).toFixed(1) : 0;
+    const arrow1 = diffPrev > 0 ? '↑' : diffPrev < 0 ? '↓' : '→';
+    const color1 = diffPrev > 0 ? 'var(--g)' : diffPrev < 0 ? 'var(--r)' : 'var(--muted2)';
+    
+    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} Units ${diffPrev > 0 ? '+' : ''}${diffPrev} (${pctPrev}%)</strong><br>`;
+    html += `Compared to your last snapshot (${fmt(prev?.date || 'N/A')}), units have ${diffPrev > 0 ? 'grown' : diffPrev < 0 ? 'declined' : 'remained steady'} by ${Math.abs(diffPrev)} units. You're currently holding <strong>${currVal.toLocaleString()} units</strong>. `;
+    
+    if (curr.stockValue && prev?.stockValue) {
+      const svDiff = curr.stockValue - prev.stockValue;
+      const avgPrice = prevVal > 0 ? prev.stockValue / prevVal : 0;
+      const avgPriceNew = currVal > 0 ? curr.stockValue / currVal : 0;
+      const priceDiff = avgPriceNew - avgPrice;
+      html += `Stock value ${svDiff > 0 ? 'rose' : 'fell'} by £${Math.abs(svDiff).toLocaleString()}, with average unit price shifting from £${avgPrice.toFixed(2)} to £${avgPriceNew.toFixed(2)}. `;
+      
+      if (diffPrev < 0 && svDiff > 0) {
+        html += `<strong>Key insight:</strong> You sold ${Math.abs(diffPrev)} units but inventory value increased. You're strategically selling lower-ticket items while restocking with mid/high-ticket products — a strong mix shift for profit margins.`;
+      } else if (diffPrev > 0 && svDiff > 0 && avgPriceNew > avgPrice) {
+        html += `<strong>Key insight:</strong> Both units and value grew with higher average prices. You're aggressively restocking premium items — watch cash flow to ensure this pace is sustainable.`;
+      } else if (diffPrev < 0 && svDiff < 0) {
+        html += `<strong>Key insight:</strong> Both units and value declined, indicating strong sell-through. You're converting inventory into cash faster than buying new stock.`;
+      }
+    }
+    html += `</div>`;
+    
+    // 8+ days comparison
+    if (comps.eightDaysAgo && comps.eightDaysAgo !== curr) {
+      const diffEight = currVal - eightVal;
+      const pctEight = eightVal > 0 ? ((diffEight / eightVal) * 100).toFixed(1) : 0;
+      const daysLabel = comps.eightDaysAgo?.date ? `since ${fmt(comps.eightDaysAgo.date)}` : 'in recent period';
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">📊 Over the past 8+ days (${daysLabel}):</strong><br>`;
+      html += `Units have ${diffEight > 0 ? 'grown' : diffEight < 0 ? 'declined' : 'remained flat'} by ${Math.abs(diffEight)} units (${pctEight}%). `;
+      
+      if (curr.stockValue && comps.eightDaysAgo.stockValue) {
+        const svEight = curr.stockValue - comps.eightDaysAgo.stockValue;
+        const pctSVEight = comps.eightDaysAgo.stockValue > 0 ? ((svEight / comps.eightDaysAgo.stockValue) * 100).toFixed(1) : 0;
+        html += `Stock value has ${svEight > 0 ? 'increased' : 'decreased'} by £${Math.abs(svEight).toLocaleString()} (${pctSVEight}%). `;
+        
+        if (diffEight < 0 && svEight > 0) {
+          html += `Strong sell-through: You've sold ${Math.abs(diffEight)} units while restocking with higher-value products. You're converting low-margin inventory into cash while building premium stock — excellent business velocity.`;
+        } else if (diffEight > 0 && svEight > 0) {
+          html += `Aggressive restocking: Both units and value are growing. Your inventory is expanding faster than sales. Ensure this purchasing pace is sustainable and aligns with demand forecasts.`;
+        } else if (diffEight < 0 && svEight < 0) {
+          html += `Net inventory reduction: Both units and value declined. Strong sell-through indicates good product-market fit. Watch for potential stockouts on fast movers.`;
+        } else if (diffEight > 0 && svEight < 0) {
+          html += `Inventory mix shift: More units but lower total value suggests you're stocking cheaper items or clearing out premium inventory.`;
+        }
+      }
+      html += `</div>`;
+    }
+    
+    // Month-start comparison (if available and 8+ days away)
+    if (comps.monthStart && comps.monthStart !== curr && comps.monthStart !== comps.eightDaysAgo) {
+      const monthVal = comps.monthStart?.totalUnits || 0;
+      const diffMonth = currVal - monthVal;
+      const pctMonth = monthVal > 0 ? ((diffMonth / monthVal) * 100).toFixed(1) : 0;
+      const daysDiff = Math.floor((new Date(curr.date) - new Date(comps.monthStart.date)) / (1000 * 60 * 60 * 24));
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">📅 Month-to-Date (${fmt(comps.monthStart?.date || 'N/A')} → Today, ${daysDiff} days)</strong><br>`;
+      html += `Units have ${diffMonth > 0 ? 'grown' : diffMonth < 0 ? 'declined' : 'remained steady'} by ${Math.abs(diffMonth)} (${pctMonth}%) since the start of the month. `;
+      
+      if (curr.stockValue && comps.monthStart.stockValue) {
+        const svMonth = curr.stockValue - comps.monthStart.stockValue;
+        const pctSVMonth = comps.monthStart.stockValue > 0 ? ((svMonth / comps.monthStart.stockValue) * 100).toFixed(1) : 0;
+        const avgPriceMonth = monthVal > 0 ? comps.monthStart.stockValue / monthVal : 0;
+        const avgPriceCurr = currVal > 0 ? curr.stockValue / currVal : 0;
+        
+        html += `Stock value has ${svMonth > 0 ? 'increased' : 'decreased'} by £${Math.abs(svMonth).toLocaleString()} (${pctSVMonth}%). Average unit price shifted from £${avgPriceMonth.toFixed(2)} to £${avgPriceCurr.toFixed(2)}. `;
+        
+        if (diffMonth < 0 && svMonth > 0) {
+          html += `<strong>Month narrative:</strong> You've maintained strong sales velocity — sold ${Math.abs(diffMonth)} units — while upgrading your inventory mix to higher-value items. This is ideal: converting low-margin inventory to cash while building high-margin stock for future sales.`;
+        } else if (diffMonth > 0 && svMonth > 0) {
+          html += `<strong>Month narrative:</strong> Month-long growth in both units and value shows aggressive inventory building. Verify your sales are growing proportionally to support this expansion pace and ensure cash flow remains healthy.`;
+        } else if (diffMonth < 0 && svMonth < 0) {
+          html += `<strong>Month narrative:</strong> Net inventory reduction across the month indicates strong sell-through. You're moving stock faster than restocking, which is healthy if demand remains steady throughout the month.`;
+        } else if (diffMonth > 0 && svMonth < 0) {
+          html += `<strong>Month narrative:</strong> More units but lower total value suggests inventory mix shift — you're stocking cheaper items or clearing premium products. Verify this aligns with your sourcing strategy.`;
+        }
+      }
+      html += `</div>`;
+    }
+    
+    // 30-day comparison (if available)
+    if (comps.thirtyDaysAgo && comps.thirtyDaysAgo !== curr) {
+      const thirtyVal = comps.thirtyDaysAgo?.totalUnits || 0;
+      const diffThirty = currVal - thirtyVal;
+      const pctThirty = thirtyVal > 0 ? ((diffThirty / thirtyVal) * 100).toFixed(1) : 0;
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">📈 Last 30 Days (${fmt(comps.thirtyDaysAgo?.date || 'N/A')} → Today)</strong><br>`;
+      html += `Over the full 30-day window, units have ${diffThirty > 0 ? 'grown' : diffThirty < 0 ? 'declined' : 'remained flat'} by ${Math.abs(diffThirty)} (${pctThirty}%). `;
+      
+      if (curr.stockValue && comps.thirtyDaysAgo.stockValue) {
+        const svThirty = curr.stockValue - comps.thirtyDaysAgo.stockValue;
+        const pctSVThirty = comps.thirtyDaysAgo.stockValue > 0 ? ((svThirty / comps.thirtyDaysAgo.stockValue) * 100).toFixed(1) : 0;
+        
+        html += `Total inventory value has ${svThirty > 0 ? 'increased' : 'decreased'} by £${Math.abs(svThirty).toLocaleString()} (${pctSVThirty}%). `;
+        
+        if (Math.abs(diffThirty) < 50) {
+          html += `<strong>30-day picture:</strong> Inventory is remarkably balanced. You're buying and selling at nearly the same pace, indicating mature, steady-state operations. This stability is excellent for cash flow planning.`;
+        } else if (diffThirty < -100) {
+          html += `<strong>30-day picture:</strong> Significant inventory reduction over 30 days shows strong sell-through momentum. You're converting stock to cash efficiently. Ensure you're restocking fast enough to meet ongoing demand without stockouts.`;
+        } else if (diffThirty > 100) {
+          html += `<strong>30-day picture:</strong> Substantial inventory growth indicates aggressive expansion. Monitor this purchasing pace carefully — ensure sales growth matches this inventory investment for healthy ROI.`;
+        }
+      }
+      html += `</div>`;
+    }
+  
+  } else if (metric === 'skus') {
+    const currVal = curr.skus || 0;
+    const prevVal = prev?.skus || 0;
+    const diffPrev = currVal - prevVal;
+    const pctPrev = prevVal > 0 ? ((diffPrev / prevVal) * 100).toFixed(1) : 0;
+    const arrow1 = diffPrev > 0 ? '↑' : diffPrev < 0 ? '↓' : '→';
+    const color1 = diffPrev > 0 ? 'var(--g)' : diffPrev < 0 ? 'var(--r)' : 'var(--muted2)';
+    
+    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} SKUs ${diffPrev > 0 ? '+' : ''}${diffPrev}</strong><br>`;
+    html += `Compared to your last snapshot (${fmt(prev?.date || 'N/A')}), you've ${diffPrev > 0 ? 'added' : diffPrev < 0 ? 'removed' : 'maintained'} ${Math.abs(diffPrev)} SKU variants. `;
+    html += `You now have ${currVal} total SKUs in your catalogue. `;
+    html += `${diffPrev > 0 ? 'More SKUs expand your product range and search visibility.' : diffPrev < 0 ? 'Fewer SKUs indicate consolidation or product removal.' : 'Your SKU count remains consistent.'}`;
+    html += `</div>`;
+    
+    if (comps.eightDaysAgo && comps.eightDaysAgo !== curr) {
+      const diffEight = currVal - comps.eightDaysAgo.skus;
+      const pctEight = comps.eightDaysAgo.skus > 0 ? ((diffEight / comps.eightDaysAgo.skus) * 100).toFixed(1) : 0;
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">Over the past 8+ days (since ${fmt(comps.eightDaysAgo?.date || 'N/A')}):</strong><br>`;
+      html += `SKU count has ${diffEight > 0 ? 'grown' : diffEight < 0 ? 'shrunk' : 'stayed flat'} by ${Math.abs(diffEight)} variants (${pctEight}%). `;
+      html += `${diffEight > 0 ? 'Sustained SKU growth suggests active sourcing and product expansion.' : diffEight < 0 ? 'SKU reduction could indicate pruning underperformers.' : 'Stable SKU count shows consistent product range.'}`;
+      html += `</div>`;
+    }
+    
+    // Month-start comparison
+    if (comps.monthStart && comps.monthStart !== curr && comps.monthStart !== comps.eightDaysAgo) {
+      const diffMonth = currVal - comps.monthStart.skus;
+      const pctMonth = comps.monthStart.skus > 0 ? ((diffMonth / comps.monthStart.skus) * 100).toFixed(1) : 0;
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">Since the 1st of the month (${fmt(comps.monthStart?.date || 'N/A')}):</strong><br>`;
+      html += `SKU count has ${diffMonth > 0 ? 'expanded' : diffMonth < 0 ? 'contracted' : 'remained stable'} by ${Math.abs(diffMonth)} variants (${pctMonth}%). `;
+      html += `${diffMonth > 0 ? 'Month-long growth indicates consistent product development and catalog expansion.' : diffMonth < 0 ? 'SKU consolidation suggests you\'re focusing on core products.' : 'Static SKU count shows disciplined product management.'}`;
+      html += `</div>`;
+    }
+    
+    // 30-day comparison
+    if (comps.thirtyDaysAgo && comps.thirtyDaysAgo !== curr) {
+      const diffThirty = currVal - comps.thirtyDaysAgo.skus;
+      const pctThirty = comps.thirtyDaysAgo.skus > 0 ? ((diffThirty / comps.thirtyDaysAgo.skus) * 100).toFixed(1) : 0;
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">Last 30 days (${fmt(comps.thirtyDaysAgo?.date || 'N/A')} → Today):</strong><br>`;
+      html += `SKU catalog has ${diffThirty > 0 ? 'grown' : diffThirty < 0 ? 'shrunk' : 'remained steady'} by ${Math.abs(diffThirty)} variants (${pctThirty}%) over the past month. `;
+      html += `${Math.abs(diffThirty) > 20 ? 'This significant ' : 'This modest '} ${diffThirty > 0 ? 'expansion' : 'reduction'} over 30 days shows your sourcing and product selection strategy.`;
+      html += `</div>`;
+    }
+    
+  } else if (metric === 'stockvalue') {
+    const currVal = curr.stockValue || 0;
+    const prevVal = prev?.stockValue || 0;
+    const diffPrev = currVal - prevVal;
+    const pctPrev = prevVal > 0 ? ((diffPrev / prevVal) * 100).toFixed(1) : 0;
+    const arrow1 = diffPrev > 0 ? '↑' : diffPrev < 0 ? '↓' : '→';
+    const color1 = diffPrev > 0 ? 'var(--g)' : diffPrev < 0 ? 'var(--r)' : 'var(--muted2)';
+    
+    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} Stock Value £${diffPrev > 0 ? '+' : ''}${(diffPrev/1000).toFixed(1)}k (${pctPrev}%)</strong><br>`;
+    html += `Compared to ${fmt(prev?.date || 'N/A')}, your inventory value has ${diffPrev > 0 ? 'increased' : diffPrev < 0 ? 'decreased' : 'remained flat'} by £${Math.abs(diffPrev).toLocaleString()}.`;
+    
+    if (curr.totalUnits && prev?.totalUnits) {
+      const avgPricePrev = prevVal / prev.totalUnits;
+      const avgPriceCurr = currVal / curr.totalUnits;
+      html += ` Average unit value shifted from £${avgPricePrev.toFixed(2)} to £${avgPriceCurr.toFixed(2)}. `;
+      if (avgPriceCurr > avgPricePrev) {
+        html += `You're restocking with higher-value (mid/high-ticket) items.`;
+      } else {
+        html += `You're moving premium inventory while restocking with lower-value items.`;
+      }
+    }
+    html += `</div>`;
+    
+    if (comps.eightDaysAgo && comps.eightDaysAgo !== curr) {
+      const diffEight = currVal - (comps.eightDaysAgo?.stockValue || 0);
+      const pctEight = (comps.eightDaysAgo?.stockValue || 0) > 0 ? ((diffEight / (comps.eightDaysAgo.stockValue || 1)) * 100).toFixed(1) : 0;
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">Over the past 8+ days (since ${fmt(comps.eightDaysAgo?.date || 'N/A')}):</strong><br>`;
+      html += `Stock value has ${diffEight > 0 ? 'grown' : diffEight < 0 ? 'declined' : 'remained steady'} by £${Math.abs(diffEight).toLocaleString()} (${pctEight}%). `;
+      
+      if (curr.totalUnits && comps.eightDaysAgo?.totalUnits) {
+        const unitsDiff = curr.totalUnits - comps.eightDaysAgo.totalUnits;
+        if (diffEight > 0 && unitsDiff > 0) {
+          html += `Both units and value are up — you're aggressively restocking.`;
+        } else if (diffEight > 0 && unitsDiff < 0) {
+          html += `Value up but units down — you're selling lower-ticket items and restocking premium products.`;
+        } else if (diffEight < 0 && unitsDiff < 0) {
+          html += `Both down — you're achieving good sell-through. Inventory is turning over faster than restocking.`;
+        } else if (diffEight < 0 && unitsDiff > 0) {
+          html += `Units up but value down — you're holding more lower-ticket inventory.`;
+        }
+      }
+      html += `</div>`;
+    }
+    
+    // Month-start comparison
+    if (comps.monthStart && comps.monthStart !== curr && comps.monthStart !== comps.eightDaysAgo) {
+      const monthVal = comps.monthStart?.stockValue || 0;
+      const diffMonth = currVal - monthVal;
+      const pctMonth = monthVal > 0 ? ((diffMonth / monthVal) * 100).toFixed(1) : 0;
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">Since the 1st of the month (${fmt(comps.monthStart?.date || 'N/A')}):</strong><br>`;
+      html += `Inventory value has ${diffMonth > 0 ? 'increased' : diffMonth < 0 ? 'decreased' : 'remained flat'} by £${Math.abs(diffMonth).toLocaleString()} (${pctMonth}%). `;
+      
+      if (curr.totalUnits && comps.monthStart?.totalUnits) {
+        const unitsDiff = curr.totalUnits - comps.monthStart.totalUnits;
+        const avgPriceMonth = comps.monthStart.totalUnits > 0 ? monthVal / comps.monthStart.totalUnits : 0;
+        const avgPriceCurr = curr.totalUnits > 0 ? currVal / curr.totalUnits : 0;
+        html += `Average unit value has ${avgPriceCurr > avgPriceMonth ? 'increased' : 'decreased'} from £${avgPriceMonth.toFixed(2)} to £${avgPriceCurr.toFixed(2)}. `;
+        html += `${unitsDiff < 0 && diffMonth < 0 ? 'Strong sell-through with balanced restocking.' : unitsDiff > 0 && diffMonth > 0 ? 'Aggressive inventory build throughout the month.' : 'Mixed pattern of restocking and sales.'}`;
+      }
+      html += `</div>`;
+    }
+    
+    // 30-day comparison
+    if (comps.thirtyDaysAgo && comps.thirtyDaysAgo !== curr) {
+      const thirtyVal = comps.thirtyDaysAgo?.stockValue || 0;
+      const diffThirty = currVal - thirtyVal;
+      const pctThirty = thirtyVal > 0 ? ((diffThirty / thirtyVal) * 100).toFixed(1) : 0;
+      
+      html += `<div style="margin-bottom:16px"><strong style="color:var(--muted2)">Last 30 days (${fmt(comps.thirtyDaysAgo?.date || 'N/A')} → Today):</strong><br>`;
+      html += `Stock value has ${diffThirty > 0 ? 'grown' : diffThirty < 0 ? 'declined' : 'remained steady'} by £${Math.abs(diffThirty).toLocaleString()} (${pctThirty}%) over the past month. `;
+      
+      if (curr.totalUnits && comps.thirtyDaysAgo?.totalUnits) {
+        const unitsDiff = curr.totalUnits - comps.thirtyDaysAgo.totalUnits;
+        const avgPrice30 = comps.thirtyDaysAgo.totalUnits > 0 ? thirtyVal / comps.thirtyDaysAgo.totalUnits : 0;
+        const avgPriceCurr = curr.totalUnits > 0 ? currVal / curr.totalUnits : 0;
+        html += `Average unit value changed from £${avgPrice30.toFixed(2)} to £${avgPriceCurr.toFixed(2)}. `;
+        html += `Over 30 days, this reflects your overall sourcing mix and sell-through velocity on different product tiers.`;
+      }
+      html += `</div>`;
+    }
+    
+  } else if (metric === 'winbb') {
+    const currVal = curr.repricer?.winPct ? +curr.repricer.winPct : 0;
+    const prevVal = prev?.repricer?.winPct ? +prev.repricer.winPct : 0;
+    const diffPrev = currVal - prevVal;
+    const arrow1 = diffPrev > 0 ? '↑' : diffPrev < 0 ? '↓' : '→';
+    const color1 = diffPrev > 0 ? 'var(--g)' : diffPrev < 0 ? 'var(--r)' : 'var(--muted2)';
+    
+    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} Win Rate ${diffPrev > 0 ? '+' : ''}${diffPrev.toFixed(1)}pp</strong><br>`;
+    html += `Compared to ${fmt(prev?.date || 'N/A')}, your buy box win rate has ${diffPrev > 0 ? 'improved' : diffPrev < 0 ? 'declined' : 'remained flat'} to ${currVal.toFixed(1)}%. `;
+    if (currVal < 12) html += `At ${currVal.toFixed(1)}%, you're below optimal. `;
+    else if (currVal > 15) html += `At ${currVal.toFixed(1)}%, you're in a strong competitive position. `;
+    html += `</div>`;
+    
+    if (comps.eightDaysAgo && comps.eightDaysAgo !== curr) {
+      const diffEight = currVal - (comps.eightDaysAgo?.repricer?.winPct ? +comps.eightDaysAgo.repricer.winPct : 0);
+      html += `<div><strong style="color:var(--muted2)">Over the past 8+ days:</strong><br>`;
+      html += `Win rate has ${diffEight > 0 ? 'improved' : diffEight < 0 ? 'declined' : 'remained stable'} by ${Math.abs(diffEight).toFixed(1)}pp. ${diffEight > 0 ? 'Your repricing strategy is becoming more competitive.' : diffEight < 0 ? 'Competitors may be adjusting prices or your floor prices need review.' : 'Your competitive position is consistent.'}`;
+      html += `</div>`;
+    }
+    
+  } else if (metric === 'matchbb') {
+    const currVal = curr.repricer?.matchPct ? +curr.repricer.matchPct : 0;
+    const prevVal = prev?.repricer?.matchPct ? +prev.repricer.matchPct : 0;
+    const diffPrev = currVal - prevVal;
+    const arrow1 = diffPrev > 0 ? '↑' : diffPrev < 0 ? '↓' : '→';
+    const color1 = diffPrev > 0 ? 'var(--g)' : diffPrev < 0 ? 'var(--r)' : 'var(--muted2)';
+    
+    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} Match Rate ${diffPrev > 0 ? '+' : ''}${diffPrev.toFixed(1)}pp</strong><br>`;
+    html += `Compared to ${fmt(prev?.date || 'N/A')}, your buy box match rate has ${diffPrev > 0 ? 'improved' : diffPrev < 0 ? 'declined' : 'remained flat'} to ${currVal.toFixed(1)}%. `;
+    if (curr.repricer?.winPct) {
+      const combined = currVal + curr.repricer.winPct;
+      html += `Combined with your ${curr.repricer.winPct.toFixed(1)}% win rate, your total buy box coverage is ${combined.toFixed(1)}%. `;
+    }
+    html += `</div>`;
+    
+    if (comps.eightDaysAgo && comps.eightDaysAgo !== curr) {
+      const diffEight = currVal - (comps.eightDaysAgo?.repricer?.matchPct ? +comps.eightDaysAgo.repricer.matchPct : 0);
+      html += `<div><strong style="color:var(--muted2)">Over the past 8+ days:</strong><br>`;
+      html += `Match rate has ${diffEight > 0 ? 'improved' : diffEight < 0 ? 'declined' : 'remained stable'} by ${Math.abs(diffEight).toFixed(1)}pp to ${currVal.toFixed(1)}%. This is your defensive position when you can't win.`;
+      html += `</div>`;
+    }
+    
+  } else if (metric === 'agedrisk') {
+    const calcAged = (s) => {
+      const ag = s?.ageing || {};
+      const total = (ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+      const aged = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+      return total > 0 ? +((aged/total)*100).toFixed(1) : 0;
+    };
+    
+    const currVal = calcAged(curr);
+    const prevVal = calcAged(prev);
+    const diffPrev = currVal - prevVal;
+    const arrow1 = diffPrev > 0 ? '↑' : diffPrev < 0 ? '↓' : '→';
+    const color1 = diffPrev > 0 ? 'var(--r)' : diffPrev < 0 ? 'var(--g)' : 'var(--muted2)';
+    
+    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} Aged Risk (181+d) ${diffPrev > 0 ? '+' : ''}${diffPrev.toFixed(1)}pp</strong><br>`;
+    html += `Compared to ${fmt(prev?.date || 'N/A')}, your aged inventory risk has ${diffPrev > 0 ? 'worsened' : diffPrev < 0 ? 'improved' : 'remained flat'} to ${currVal.toFixed(1)}%. `;
+    const ag = curr.ageing || {};
+    const agedUnits = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+    html += `You have ${agedUnits} units at 181+ days. ${currVal > 10 ? 'This is concerning — prioritize clearance.' : 'This is manageable.'}`;
+    html += `</div>`;
+    
+    if (comps.eightDaysAgo && comps.eightDaysAgo !== curr) {
+      const diffEight = currVal - calcAged(comps.eightDaysAgo);
+      html += `<div><strong style="color:var(--muted2)">Over the past 8+ days:</strong><br>`;
+      html += `Aged risk has ${diffEight > 0 ? 'worsened' : diffEight < 0 ? 'improved' : 'remained steady'} by ${Math.abs(diffEight).toFixed(1)}pp. ${diffEight < 0 ? 'Your clearance efforts are working.' : diffEight > 0 ? 'More inventory is aging into the 180+ bracket.' : 'No significant change.'}`;
+      html += `</div>`;
+    }
+  }
+  
+  return html;
 }
 
 function renderRepricerTab(snaps) {
   console.log('renderRepricerTab called with snaps:', snaps);
   if (!snaps.length) {
     console.log('No snaps, clearing repricer KPIs');
-    ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch','repKpiWinCov','repKpiCombined','repKpiAgedRisk'].forEach(id => document.getElementById(id).textContent = '—');
+    ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch','repKpiWinCov'].forEach(id => document.getElementById(id).textContent = '—');
     return;
   }
   
@@ -1399,29 +2048,109 @@ function renderRepricerTab(snaps) {
   setRepKpi('repKpiWin', wPct, prev?.repricer?.total ? ((prev.repricer.winning/prev.repricer.total)*100).toFixed(1) : null, avgWin, true);
   setRepKpi('repKpiMatch', mPct, prev?.repricer?.total ? ((prev.repricer.matching/prev.repricer.total)*100).toFixed(1) : null, avgMatch, true);
   setRepKpi('repKpiWinCov', winCov, prev?.repricer?.total ? ((prev.repricer.winning/prev.repricer.total)*100).toFixed(1) : null, avgWinCov, true);
-  setRepKpi('repKpiCombined', combinedCov, prev?.repricer?.total ? (((prev.repricer.winning+prev.repricer.matching)/prev.repricer.total)*100).toFixed(1) : null, avgCombined, true);
-  setRepKpi('repKpiAgedRisk', agedRiskPct, prevAgedRisk, avgAgedRiskVal, false);
   
-  // Insights
+  // Insights - NEW: Prominent visual bars + extensive detailed breakdown
   const ri = document.getElementById('repInsightText');
   const rb = document.getElementById('repInsightBullets');
-  let rtxt = '';
   
-  if (snaps.length === 1) {
-    rtxt = `Baseline: <strong>${wPct}% winning</strong>, <strong>${mPct}% matching</strong> across ${r.total||0} SKUs. Aged risk: <strong>${agedRiskPct}%</strong>.`;
-  } else {
-    const pr = prev?.repricer||{}; 
-    const pwPct = prev?.repricer?.total ? ((pr.winning/pr.total)*100).toFixed(1) : null;
-    const wDiff = pwPct ? (parseFloat(wPct)-parseFloat(pwPct)).toFixed(1) : null;
-    if (wDiff) {
-      const wColor = wDiff >= 0 ? 'var(--g)' : 'var(--r)';
-      rtxt = `Win rate <strong style="color:${wColor}">${wDiff>=0?'↑':' ↓'} ${Math.abs(wDiff)}pp</strong> (${pwPct}% → ${wPct}%). `;
-      if (wDiff < -5) rtxt += `<span class="danger">⚠ Drop signals aggression or high floors.</span>`;
-      if (wDiff > 5) rtxt += `<strong style="color:var(--g)">✓ Strong improvement.</strong>`;
+  if (snaps.length < 2) {
+    ri.innerHTML = `Baseline: <strong>${wPct}% winning</strong>, <strong>${mPct}% matching</strong> across ${r.total||0} SKUs. Aged risk: <strong>${agedRiskPct}%</strong>.`;
+    rb.innerHTML = '';
+    return;
+  }
+  
+  // Calculate all trends
+  const pr = prev?.repricer||{}; 
+  const pwPct = prev?.repricer?.winPct ? +prev.repricer.winPct : null;
+  const pmPct = prev?.repricer?.matchPct ? +prev.repricer.matchPct : null;
+  const prevStockValue = prev?.stockValue || 0;
+  const prevAg = prev?.ageing||{};
+  const prevTotalUnits = (prevAg.a0||0)+(prevAg.a31||0)+(prevAg.a61||0)+(prevAg.a91||0)+(prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+  const prevAgedUnits = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+  const prevAgedRiskPctCalc = prevTotalUnits > 0 ? ((prevAgedUnits/prevTotalUnits)*100).toFixed(1) : null;
+  
+  const wDiff = pwPct !== null ? (parseFloat(wPct) - parseFloat(pwPct)).toFixed(1) : null;
+  const mDiff = pmPct !== null ? (parseFloat(mPct) - parseFloat(pmPct)).toFixed(1) : null;
+  const svDiff = latest.stockValue - prevStockValue;
+  
+  // Build CLEAN metric trend bars
+  let barsHtml = '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">';
+  
+  if (wDiff !== null) {
+    const wGood = parseFloat(wDiff) > 0;
+    const wColor = wGood ? 'var(--g)' : 'var(--r)';
+    const wArrow = parseFloat(wDiff) > 0 ? '↑' : '↓';
+    barsHtml += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--s2);border-left:3px solid ${wColor};border-radius:2px;font-family:var(--mono);font-size:12px"><span style="color:${wColor};font-weight:700;min-width:110px">${wArrow} Win Rate ${Math.abs(wDiff)}pp</span><span style="color:var(--muted2)">${pwPct}% → ${wPct}%</span></div>`;
+  }
+  
+  if (mDiff !== null) {
+    const mGood = parseFloat(mDiff) > 0;
+    const mColor = mGood ? 'var(--g)' : 'var(--r)';
+    const mArrow = parseFloat(mDiff) > 0 ? '↑' : '↓';
+    barsHtml += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--s2);border-left:3px solid ${mColor};border-radius:2px;font-family:var(--mono);font-size:12px"><span style="color:${mColor};font-weight:700;min-width:110px">${mArrow} Match Rate ${Math.abs(mDiff)}pp</span><span style="color:var(--muted2)">${pmPct}% → ${mPct}%</span></div>`;
+  }
+  
+  if (svDiff !== 0) {
+    const svGood = svDiff > 0;
+    const svColor = svGood ? 'var(--g)' : 'var(--r)';
+    const svArrow = svDiff > 0 ? '↑' : '↓';
+    barsHtml += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--s2);border-left:3px solid ${svColor};border-radius:2px;font-family:var(--mono);font-size:12px"><span style="color:${svColor};font-weight:700;min-width:110px">${svArrow} Stock Value £${Math.abs(svDiff).toLocaleString()}</span><span style="color:var(--muted2)">£${prevStockValue.toLocaleString()} → £${latest.stockValue.toLocaleString()}</span></div>`;
+  }
+  
+  barsHtml += '</div>';
+  ri.innerHTML = barsHtml;
+  
+  // Detailed breakdown with CONCISE insights
+  let bullets = [];
+  
+  // WIN RATE analysis
+  if (wDiff !== null) {
+    const wDiffNum = parseFloat(wDiff);
+    if (wDiffNum > 2) {
+      bullets.push(`<strong style="color:var(--g)">↑ Win Rate +${wDiffNum}pp</strong> Strong improvement — your repricing is working. You're winning the buy box more often, driving higher visibility and traffic. Keep floor prices competitive and monitor weekly to maintain this edge.`);
+    } else if (wDiffNum > 0) {
+      bullets.push(`<strong style="color:var(--g)">↑ Win Rate +${wDiffNum}pp</strong> Modest gains — repricing logic is slightly more competitive. You're at ${wPct}%. Consider testing lower floor prices to capture more buy box placements.`);
+    } else if (wDiffNum < -2) {
+      bullets.push(`<strong style="color:var(--r)">↓ Win Rate ${wDiffNum}pp</strong> Significant decline — competitors are outpricing you or your floors are too high. At ${wPct}%, you're losing visibility. Lower prices immediately if margins allow, or evaluate if these SKUs are worth keeping.`);
+    } else if (wDiffNum < 0) {
+      bullets.push(`<strong style="color:var(--r)">↓ Win Rate ${wDiffNum}pp</strong> Declining to ${wPct}% — review competitor prices and repricing settings. Falling win rates kill sales momentum. Act now to reverse the trend.`);
+    } else {
+      bullets.push(`<strong style="color:var(--muted2)">→ Win Rate Flat</strong> Stable at ${wPct}%. No major market shift, but if you're below 12%, test lower prices to increase volume.`);
     }
   }
-  ri.innerHTML = rtxt;
-  rb.innerHTML = '';
+  
+  // MATCH RATE analysis
+  if (mDiff !== null) {
+    const mDiffNum = parseFloat(mDiff);
+    if (mDiffNum > 1) {
+      bullets.push(`<strong style="color:var(--g)">↑ Match Rate +${mDiffNum}pp</strong> Excellent — you're matching the buy box more often. This keeps you visible without impacting margins. Combined with your ${wPct}% win rate, your total buy box coverage is strong at ${(parseFloat(wPct)+parseFloat(mPct)).toFixed(1)}%.`);
+    } else if (mDiffNum > 0) {
+      bullets.push(`<strong style="color:var(--g)">↑ Match Rate +${mDiffNum}pp</strong> Steady improvement to ${mPct}%. Your pricing logic is well-tuned. This defensive position ensures you stay visible when you can't win.`);
+    } else if (mDiffNum < -1) {
+      bullets.push(`<strong style="color:var(--r)">↓ Match Rate ${mDiffNum}pp</strong> Concerning decline to ${mPct}% — competitors are undercutting you. You're losing match coverage fast. Review repricing algorithm: are you matching quickly enough? Act now.`);
+    } else if (mDiffNum < 0) {
+      bullets.push(`<strong style="color:var(--r)">↓ Match Rate ${mDiffNum}pp</strong> Down to ${mPct}%. Don't let match erode — it's your insurance when you can't win. Review algorithm settings and competitor tactics.`);
+    } else {
+      bullets.push(`<strong style="color:var(--muted2)">→ Match Rate Stable</strong> At ${mPct}%. Combined buy box coverage (win + match) is ${(parseFloat(wPct)+parseFloat(mPct)).toFixed(1)}%. This is what drives your conversions.`);
+    }
+  }
+  
+  // STOCK VALUE analysis
+  if (svDiff > 20000) {
+    bullets.push(`<strong style="color:var(--g)">↑ Stock Value +£${(svDiff/1000).toFixed(1)}k</strong> Major buying activity — you're growing inventory. Ensure repricer is tuned to sell through efficiently. High inventory = high working capital. Monitor sell-through closely to avoid aged stock problems.`);
+  } else if (svDiff > 5000) {
+    bullets.push(`<strong style="color:var(--g)">↑ Stock Value +£${(svDiff/1000).toFixed(1)}k</strong> Healthy growth from sourcing activity. Ensure repricer moves this inventory profitably. Track turnover rates alongside value — growth only works if items sell fast.`);
+  } else if (svDiff < -20000) {
+    bullets.push(`<strong style="color:var(--g)">↓ Stock Value £${(Math.abs(svDiff)/1000).toFixed(1)}k</strong> Excellent sell-through — you're converting efficiently and freeing capital. Your repricing strategy is working well. Maintain optimal stock levels to keep capturing demand without dead stock.`);
+  } else if (svDiff < -5000) {
+    bullets.push(`<strong style="color:var(--g)">↓ Stock Value £${(Math.abs(svDiff)/1000).toFixed(1)}k</strong> Good turnover — capital is moving through business, not sitting idle. Keep this momentum but ensure high-demand SKUs don't run out.`);
+  } else if (svDiff < 0) {
+    bullets.push(`<strong style="color:var(--muted2)">↓ Stock Value £${(Math.abs(svDiff)/1000).toFixed(1)}k</strong> Modest decrease — normal fluctuation with steady sell-through. No major action needed.`);
+  } else {
+    bullets.push(`<strong style="color:var(--muted2)">→ Stock Value Flat</strong> You're buying roughly as fast as you're selling. Stable equilibrium. Monitor if this is intentional or if you need to adjust sourcing.`);
+  }
+  
+  rb.innerHTML = bullets.map(b => `<div class="insight-bullet" style="color:inherit;line-height:1.6">${b}</div>`).join('');
   
   // Render 3 charts
   renderRepricerPercentChart(snaps);
@@ -1471,7 +2200,7 @@ function setRepKpi(valId, curr, prev, avg, upGood) {
   }
   
   pillEl.innerHTML = pillHtml;
-  subEl.textContent = !prev && !avg ? 'First snapshot' : 'vs period';
+  subEl.textContent = !prev && !avg ? 'First snapshot' : '';
 }
 
 function renderRepricerPercentChart(snaps) {
@@ -1479,9 +2208,11 @@ function renderRepricerPercentChart(snaps) {
   if (!ctx) return;
   const chartCtx = ctx.getContext('2d');
   const tag = document.getElementById('repChartTag');
+  const trendBadge = document.getElementById('repChartTrendBadge');
   
   if (snaps.length < 2) {
     tag.textContent = 'Need 2+ snapshots';
+    if (trendBadge) trendBadge.innerHTML = '';
     chartCtx.fillStyle='#4a5568'; chartCtx.font="11px 'DM Mono'"; chartCtx.textAlign='center';
     chartCtx.fillText('Add 2+ snapshots to see trend', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
     return;
@@ -1489,17 +2220,48 @@ function renderRepricerPercentChart(snaps) {
   
   tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
   
+  // Calculate trend
+  const latest = snaps[snaps.length-1];
+  const prev = snaps[snaps.length-2];
+  const latestWin = latest.repricer?.winPct ? +latest.repricer.winPct : 0;
+  const prevWin = prev.repricer?.winPct ? +prev.repricer.winPct : 0;
+  const winDiff = Math.abs(latestWin - prevWin).toFixed(1);
+  const winDir = latestWin >= prevWin ? 'up' : 'down';
+  const winColor = winDir === 'up' ? 'var(--g)' : 'var(--r)';
+  
+  if (trendBadge) {
+    const arrow = winDir === 'up' ? '↑' : '↓';
+    trendBadge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:${winColor};color:#07090c;border-radius:3px;font-weight:600;font-size:11px;font-family:var(--mono)">${arrow} ${winDir.toUpperCase()} ${winDiff}pp</span>`;
+  }
+  
+  // Smart zoom for percentage data
+  const winData = snaps.map(s=>s.repricer?.winPct ? +s.repricer.winPct : 0);
+  const matchData = snaps.map(s=>s.repricer?.matchPct ? +s.repricer.matchPct : 0);
+  const allData = [...winData, ...matchData];
+  const max = Math.max(...allData);
+  const min = Math.min(...allData);
+  const range = max - min || 1;
+  const padding = range < 2 ? 1.5 : range < 5 ? 1 : 0.5;
+  const yMin = Math.max(0, min - padding);
+  const yMax = max + padding;
+  
   destroyChart('repricerChart');
+  const opts = chartOpts();
+  opts.scales.y.beginAtZero = false;
+  opts.scales.y.min = yMin;
+  opts.scales.y.max = yMax;
+  opts.scales.y.ticks.callback = v => v + '%';
+  
   chartInstances.repricerChart = new Chart(chartCtx, {
     type:'line',
     data:{
       labels: snaps.map(s=>fmtShort(s.date)),
       datasets:[
-        { label:'Win BB %', data:snaps.map(s=>{ const r=s.repricer||{}; return r.total?+((r.winning/r.total)*100).toFixed(1):0; }), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
-        { label:'Match BB %', data:snaps.map(s=>{ const r=s.repricer||{}; return r.total?+((r.matching/r.total)*100).toFixed(1):0; }), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'Win BB %', data:winData, borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
+        { label:'Match BB %', data:matchData, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 },
       ]
     },
-    options: {...chartOpts(), ...{scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}, min:0, max:100, ticks:{callback:v=>v+'%'}}}}}
+    options: opts
   });
 }
 
@@ -1536,26 +2298,29 @@ function renderRepricerCountChart(snaps) {
 }
 
 function renderAgingChart(snaps) {
-  const ctx = document.getElementById('agingChart');
-  if (!ctx) return;
-  const chartCtx = ctx.getContext('2d');
-  const tag = document.getElementById('agingChartTag');
+  // Try both canvas IDs - one for Overview, one for Repricer
+  const ctxOverview = document.getElementById('stockAgeingChart');
+  const ctxRepricer = document.getElementById('agingChart');
+  
+  if (!ctxOverview && !ctxRepricer) return;
   
   if (snaps.length < 2) {
-    tag.textContent = 'Need 2+ snapshots';
-    chartCtx.fillStyle='#4a5568'; chartCtx.font="11px 'DM Mono'"; chartCtx.textAlign='center';
-    chartCtx.fillText('Add 2+ snapshots to see trend', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    const tag = document.getElementById('ageingBreakdownTag') || document.getElementById('agingChartTag');
+    if (tag) tag.textContent = 'Need 2+ snapshots';
     return;
   }
   
-  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
+  const tag = document.getElementById('ageingBreakdownTag') || document.getElementById('agingChartTag');
+  if (tag) tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
   
   const bucketColors = ['#00f5a0', '#3d9eff', '#ffd166', '#ff9999', '#ff6b6b', '#ff4444', '#cc0000'];
   const bucketLabels = ['0–30d', '31–60d', '61–90d', '91–180d', '181–270d', '271–365d', '365+'];
   const bucketKeys = ['a0', 'a31', 'a61', 'a91', 'a181', 'a271', 'a365'];
   
   destroyChart('agingChart');
-  chartInstances.agingChart = new Chart(chartCtx, {
+  destroyChart('stockAgeingChart');
+  
+  const chartData = {
     type:'line',
     data:{
       labels: snaps.map(s=>fmtShort(s.date)),
@@ -1566,14 +2331,36 @@ function renderAgingChart(snaps) {
         backgroundColor: bucketColors[idx] + '20',
         tension: .35,
         fill: false,
-        pointRadius: 4,
+        pointRadius: 5,
         pointBackgroundColor: bucketColors[idx],
         pointBorderColor: '#07090c',
-        pointBorderWidth: 1,
+        pointBorderWidth: 2
       }))
     },
-    options: {...chartOpts(), ...{scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}}}}}
-  });
+    options: {
+      ...chartOpts(),
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => v }
+        }
+      }
+    }
+  };
+  
+  // Render to Overview chart if it exists
+  if (ctxOverview) {
+    const chartCtx = ctxOverview.getContext('2d');
+    chartInstances.stockAgeingChart = new Chart(chartCtx, chartData);
+  }
+  
+  // Render to Repricer chart if it exists
+  if (ctxRepricer) {
+    const chartCtx = ctxRepricer.getContext('2d');
+    chartInstances.agingChart = new Chart(chartCtx, chartData);
+  }
 }
 
 function renderCompTab() {
@@ -1694,8 +2481,12 @@ function renderCompTab() {
       ? `<div style="display:flex;align-items:center;gap:6px;color:${diffAvgColor};font-weight:700;font-size:13px"><strong style="font-size:18px;color:${diffAvgColor}">${diffAvg>0?'↑':(diffAvg<0?'↓':'→')}</strong> ${Math.abs(diffAvg).toFixed(1)}pp</div>`
       : '<div style="color:var(--muted2);font-size:12px">—</div>';
 
-    // Current value color - show if winning/gaining
-    const progressColor = s.latest > 40 ? 'var(--g)' : s.latest > 25 ? 'var(--y)' : 'var(--text)';
+    // Current value color based on thresholds: green 35-50%, blue >50%, yellow up to 35%, red <15%
+    let progressColor = 'var(--text)';
+    if (s.latest > 50) progressColor = 'var(--g)'; // blue for >50%
+    else if (s.latest >= 35) progressColor = '#00f5a0'; // green for 35-50%
+    else if (s.latest >= 15) progressColor = 'var(--y)'; // yellow for 15-35%
+    else progressColor = 'var(--r)'; // red for <15%
 
     // Sparkline
     const sparkId = 'spark_' + s.name.replace(/[^\w]/g,'_');
@@ -2620,6 +3411,48 @@ function chartOpts() {
 
 function fmt(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
 function fmtShort(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${day}/${m}`; }
+
+// Get comparison snapshots for detailed analysis
+function getComparisonSnapshots(snaps) {
+  if (!snaps.length) return { current: null, eightDaysAgo: null, monthStart: null, thirtyDaysAgo: null };
+  
+  const current = snaps[snaps.length - 1];
+  const currentDate = new Date(current.date + 'T00:00:00Z');
+  
+  let last8days = null;
+  let monthStart = null;
+  let last30days = null;
+  
+  // Find snapshots for comparison
+  for (let i = snaps.length - 2; i >= 0; i--) {
+    const snap = snaps[i];
+    const snapDate = new Date(snap.date + 'T00:00:00Z');
+    const daysDiff = Math.floor((currentDate - snapDate) / (1000 * 60 * 60 * 24));
+    
+    // 8+ days away
+    if (!last8days && daysDiff >= 8) {
+      last8days = snap;
+    }
+    
+    // 1st of month if 8+ days away
+    if (!monthStart) {
+      const snapDay = parseInt(snap.date.split('-')[2]);
+      if (snapDay === 1 && daysDiff >= 8) {
+        monthStart = snap;
+      }
+    }
+    
+    // 30 days ago
+    if (!last30days && daysDiff >= 30) {
+      last30days = snap;
+    }
+    
+    // Stop if we found all
+    if (last8days && monthStart && last30days) break;
+  }
+  
+  return { current, eightDaysAgo: last8days, monthStart, thirtyDaysAgo: last30days };
+}
 
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
 
