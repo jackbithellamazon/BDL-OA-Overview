@@ -359,6 +359,16 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .rep-stat-val{font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:1}
 .rep-stat-sub{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:6px}
 .rep-stat-bg{position:absolute;right:-10px;top:-10px;font-size:80px;opacity:.04;pointer-events:none}
+.rep-tog{font-family:var(--mono);font-size:10px;padding:4px 10px;background:var(--s2);border:1px solid var(--border);color:var(--muted2);cursor:pointer;transition:all .15s}
+.rep-tog:hover,.rep-tog.active{border-color:var(--g);color:var(--g)}
+.rep-health-red{color:var(--r);font-weight:600}
+.rep-health-amber{color:var(--y);font-weight:600}
+.rep-health-green{color:var(--g);font-weight:600}
+.rep-trend-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.rep-trend-row:last-child{border-bottom:none;padding-bottom:0}
+.rep-trend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.rep-trend-main{font-size:13px;font-weight:600;color:var(--text)}
+.rep-trend-detail{font-size:12px;color:var(--muted2);margin-top:3px;line-height:1.55;font-family:var(--mono)}
 .comp-controls{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .comp-search{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;width:240px;transition:border-color .15s}
 .comp-search:focus{border-color:var(--g)}
@@ -517,6 +527,16 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .metric-toggle{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:4px;font-size:10px;font-family:var(--mono);cursor:pointer;transition:all 0.2s;margin-right:4px}
 .metric-toggle:hover{color:var(--fg);border-color:var(--fg)}
 .metric-toggle.active{background:var(--g);color:#07090c;border-color:var(--g);font-weight:600}
+.kpi-tile{padding:22px 14px;border-radius:12px;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center;justify-content:center;min-height:140px;cursor:pointer;position:relative;transition:all 0.2s;background:#1a1a1a;border:2px solid transparent;z-index:1;overflow:visible}
+.kpi-tile.better{background:#1a1a1a;border-color:#2b8f56}
+.kpi-tile.worse{background:#1a1a1a;border-color:#d92424}
+.kpi-tile.same{background:#1a1a1a;border-color:#5a6268}
+.kpi-tile:hover{transform:translateY(-2px);box-shadow:0 8px 16px rgba(0,0,0,0.2)}
+.popout{display:none;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:8px;background:var(--s1);border:0.5px solid #2a2a2a;border-radius:12px;padding:12px;width:220px;font-size:12px;line-height:1.5;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.3);white-space:normal;pointer-events:auto;z-index:10000}
+.popout.show{display:block}
+.kpi-label{font-size:13px;font-weight:700;text-transform:uppercase;color:#f0f0f0;letter-spacing:0.6px;line-height:1.3;width:100%}
+.kpi-value{font-size:36px;font-weight:800;line-height:1;color:#ffffff;width:100%}
+.kpi-change{font-size:13px;font-weight:600;color:#a0aec0;width:100%;line-height:1.3}
 </style>
 </head>
 <body>
@@ -579,57 +599,79 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 <div class="content">
 
   <div class="tab-page active" id="tab-overview">
-    <div class="kpi-row">
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--b)"></div>
+    <div style="position:relative;overflow:visible;z-index:10">
+    <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:12px;margin-bottom:24px;overflow:visible">
+      <!-- SKUs -->
+      <div class="kpi-tile">
         <div class="kpi-label">Total SKUs</div>
-        <div class="kpi-val" id="kSkus">—</div>
-        <div class="kpi-footer"><span id="kSkusPill"></span><span id="kSkusSub">No data</span></div>
+        <div class="kpi-value" id="kSkus">—</div>
+        <div class="kpi-change"><span id="kSkusPill"></span><span id="kSkusSub"></span></div>
+        <div class="popout" id="popoutSkus" >SKU count analysis</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--o)"></div>
+
+      <!-- ASINs -->
+      <div class="kpi-tile">
+        <div class="kpi-label">Total ASINs</div>
+        <div class="kpi-value" id="kAsins">—</div>
+        <div class="kpi-change"><span id="kAsinsPill"></span><span id="kAsinsSub"></span></div>
+        <div class="popout" id="popoutAsins">Unique products listed on Amazon</div>
+      </div>
+
+      <!-- Avg Cost -->
+      <div class="kpi-tile">
         <div class="kpi-label">Avg Unit Cost</div>
-        <div class="kpi-val" id="kCost">—</div>
-        <div class="kpi-footer"><span id="kCostPill"></span><span id="kCostSub">No data</span></div>
+        <div class="kpi-value" id="kCost">—</div>
+        <div class="kpi-change"><span id="kCostPill"></span><span id="kCostSub"></span></div>
+        <div class="popout" id="popoutCost" >Cost per unit analysis</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--y)"></div>
+
+      <!-- Stock Value -->
+      <div class="kpi-tile">
         <div class="kpi-label">Stock Value</div>
-        <div class="kpi-val" id="kStockValue">—</div>
-        <div class="kpi-footer"><span id="kStockValuePill"></span><span id="kStockValueSub">No data</span></div>
+        <div class="kpi-value" id="kStockValue">—</div>
+        <div class="kpi-change"><span id="kStockValuePill"></span><span id="kStockValueSub"></span></div>
+        <div class="popout" id="popoutStockValue" >Stock value analysis</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--p)"></div>
+
+      <!-- Total Units -->
+      <div class="kpi-tile">
         <div class="kpi-label">Total Units</div>
-        <div class="kpi-val" id="kUnits">—</div>
-        <div class="kpi-footer"><span id="kUnitsPill"></span><span id="kUnitsSub">No data</span></div>
+        <div class="kpi-value" id="kUnits">—</div>
+        <div class="kpi-change"><span id="kUnitsPill"></span><span id="kUnitsSub"></span></div>
+        <div class="popout" id="popoutUnits" >Unit count analysis</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--g)"></div>
+
+      <!-- Win BB % -->
+      <div class="kpi-tile">
         <div class="kpi-label">Win BB %</div>
-        <div class="kpi-val" id="kRepWinPct">—</div>
-        <div class="kpi-footer"><span id="kRepWinPctPill"></span><span id="kRepWinPctSub">No data</span></div>
+        <div class="kpi-value" id="kRepWinPct">—</div>
+        <div class="kpi-change"><span id="kRepWinPctPill"></span><span id="kRepWinPctSub"></span></div>
+        <div class="popout" id="popoutWinBB" >Buy Box win analysis</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--y)"></div>
+
+      <!-- Match BB % -->
+      <div class="kpi-tile">
         <div class="kpi-label">Match BB %</div>
-        <div class="kpi-val" id="kRepMatchPct">—</div>
-        <div class="kpi-footer"><span id="kRepMatchPctPill"></span><span id="kRepMatchPctSub">No data</span></div>
+        <div class="kpi-value" id="kRepMatchPct">—</div>
+        <div class="kpi-change"><span id="kRepMatchPctPill"></span><span id="kRepMatchPctSub"></span></div>
+        <div class="popout" id="popoutMatchBB" >Buy Box match analysis</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--r)"></div>
-        <div class="kpi-label">Aged Risk (181+d)</div>
-        <div class="kpi-val" id="kAgedRisk">—</div>
-        <div class="kpi-footer"><span id="kAgedRiskPill"></span><span id="kAgedRiskSub">No data</span></div>
+
+      <!-- Aged Risk -->
+      <div class="kpi-tile">
+        <div class="kpi-label">Aged Risk 181+d</div>
+        <div class="kpi-value" id="kAgedRisk">—</div>
+        <div class="kpi-change"><span id="kAgedRiskPill"></span><span id="kAgedRiskSub"></span></div>
+        <div class="popout" id="popoutAgedRisk" >Aged inventory analysis</div>
       </div>
     </div>
-    <div class="insight-box" id="insightBox">
-      <div class="insight-hd">
-        <span class="insight-badge">✦ AI Analysis</span>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="insightDate"></span>
+    </div>
+    <div style="background:var(--s1);border-radius:12px;padding:18px;margin-bottom:24px;z-index:1;position:relative">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--muted2);letter-spacing:0.5px">AI Analysis</div>
+        <div style="font-size:11px;color:var(--muted);margin-left:auto" id="insightDate"></div>
       </div>
-      <div class="insight-text" id="insightText">Add your first snapshot to unlock AI-powered trend analysis and business insights.</div>
-      <div class="insight-bullets" id="insightBullets"></div>
+      <div style="font-size:12px;line-height:1.7;color:#fff;white-space:pre-wrap" id="insightText">Add your first snapshot to unlock AI-powered trend analysis and business insights.</div>
     </div>
 
     <div class="grid-65">
@@ -681,66 +723,112 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   </div>
 
   <div class="tab-page" id="tab-repricer">
+
+    <!-- KPI Row -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
       <div class="kpi">
         <div class="kpi-stripe" style="background:var(--o)"></div>
         <div class="kpi-label">Total SKUs</div>
         <div class="kpi-val" id="repKpiSkus">—</div>
-        <div class="kpi-footer"><span id="repKpiSkusPill"></span><span id="repKpiSkusSub">No data</span></div>
+        <div class="kpi-footer"><span id="repKpiSkusPill"></span><span id="repKpiSkusSub" style="font-size:9px;color:var(--muted2);margin-top:4px;display:block">Active listings in repricer</span></div>
       </div>
       <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--g)"></div>
+        <div class="kpi-stripe" style="background:var(--b)"></div>
         <div class="kpi-label">Total ASINs</div>
         <div class="kpi-val" id="repKpiAsins">—</div>
-        <div class="kpi-footer"><span id="repKpiAsinsPill"></span><span id="repKpiAsinsSub">No data</span></div>
+        <div class="kpi-footer"><span id="repKpiAsinsPill"></span><span id="repKpiAsinsSub" style="font-size:9px;color:var(--muted2);margin-top:4px;display:block">Unique products listed</span></div>
       </div>
-      <div class="kpi">
+      <div class="kpi" id="repKpiWinCard">
         <div class="kpi-stripe" style="background:var(--g)"></div>
         <div class="kpi-label">Win BB %</div>
         <div class="kpi-val" id="repKpiWin">—</div>
-        <div class="kpi-footer"><span id="repKpiWinPill"></span><span id="repKpiWinSub">No data</span></div>
+        <div class="kpi-footer">
+          <span id="repKpiWinPill"></span>
+          <span id="repKpiWinHealth" style="font-size:9px;margin-top:4px;display:block"></span>
+          <span style="font-size:9px;color:var(--muted2);margin-top:2px;display:block">You own the buy box. Higher = more visibility.</span>
+        </div>
       </div>
-      <div class="kpi">
+      <div class="kpi" id="repKpiMatchCard">
         <div class="kpi-stripe" style="background:var(--y)"></div>
         <div class="kpi-label">Match BB %</div>
         <div class="kpi-val" id="repKpiMatch">—</div>
-        <div class="kpi-footer"><span id="repKpiMatchPill"></span><span id="repKpiMatchSub">No data</span></div>
+        <div class="kpi-footer">
+          <span id="repKpiMatchPill"></span>
+          <span id="repKpiMatchHealth" style="font-size:9px;margin-top:4px;display:block"></span>
+          <span style="font-size:9px;color:var(--muted2);margin-top:2px;display:block">Price-matched but not winning. Still competitive.</span>
+        </div>
       </div>
       <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--g)"></div>
-        <div class="kpi-label">Win Coverage %</div>
-        <div class="kpi-val" id="repKpiWinCov">—</div>
-        <div class="kpi-footer"><span id="repKpiWinCovPill"></span><span id="repKpiWinCovSub">No data</span></div>
+        <div class="kpi-stripe" style="background:var(--p)"></div>
+        <div class="kpi-label">Win trend</div>
+        <div class="kpi-val" id="repKpiWinTrend" style="font-size:16px;padding-top:6px">—</div>
+        <div class="kpi-footer">
+          <span id="repKpiWinTrendTag" style="margin-top:4px;display:block"></span>
+          <span id="repKpiWinTrendSub" style="font-size:9px;color:var(--muted2);margin-top:4px;display:block;line-height:1.4"></span>
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--y)"></div>
+        <div class="kpi-label">Match trend</div>
+        <div class="kpi-val" id="repKpiMatchTrend" style="font-size:16px;padding-top:6px">—</div>
+        <div class="kpi-footer">
+          <span id="repKpiMatchTrendTag" style="margin-top:4px;display:block"></span>
+          <span id="repKpiMatchTrendSub" style="font-size:9px;color:var(--muted2);margin-top:4px;display:block;line-height:1.4"></span>
+        </div>
       </div>
     </div>
-    <div class="insight-box" id="repInsightBox">
-      <div class="insight-hd"><span class="insight-badge">✦ Repricer Analysis</span></div>
-      <div class="insight-text" id="repInsightText">Add snapshots to see repricer analysis.</div>
-      <div class="insight-bullets" id="repInsightBullets"></div>
+
+    <!-- Trend Intelligence Section -->
+    <div class="insight-box" id="repInsightBox" style="margin-bottom:16px">
+      <div class="insight-hd"><span class="insight-badge">✦ What's happening right now</span></div>
+      <div id="repTrendRows" style="display:flex;flex-direction:column;gap:0">
+        <div style="color:var(--muted2);font-family:var(--mono);font-size:11px">Add snapshots to see trend analysis.</div>
+      </div>
+      <div class="insight-bullets" id="repInsightBullets" style="margin-top:12px"></div>
     </div>
-    <div class="card">
+
+    <!-- Buy Box % Chart -->
+    <div class="card" style="margin-bottom:16px">
       <div class="card-hd">
-        <div class="card-title">Buy Box % Trends</div>
-        <div style="display:flex;align-items:center;gap:12px">
-          <div id="repChartTrendBadge"></div>
+        <div class="card-title">Buy Box % Trend</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div id="repWindowToggles" style="display:flex;gap:4px">
+            <button class="rep-tog active" onclick="setRepWindow(6,this)">Last 6</button>
+            <button class="rep-tog" onclick="setRepWindow(10,this)">Last 10</button>
+            <button class="rep-tog" onclick="setRepWindow(999,this)">All</button>
+          </div>
           <div class="card-tag" id="repChartTag">—</div>
         </div>
       </div>
+      <div style="display:flex;gap:16px;font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:10px;align-items:center">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--g);border-radius:2px;margin-right:4px"></span>Win BB %</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--y);margin-right:4px;vertical-align:middle"></span>Match BB %</span>
+        <span style="margin-left:auto">— 10% target &nbsp;|&nbsp; Higher is always better</span>
+      </div>
       <div class="chart-wrap tall"><canvas id="repricerChart"></canvas></div>
+      <div id="repChartNote" style="margin-top:12px;padding:10px 12px;background:var(--s2);font-family:var(--mono);font-size:10px;color:var(--muted2);line-height:1.6"></div>
     </div>
-    <div class="card">
+
+    <!-- SKU Count Chart -->
+    <div class="card" style="margin-bottom:16px">
       <div class="card-hd">
-        <div class="card-title">SKU Count Trends</div>
+        <div class="card-title">SKU / ASIN Count Trends</div>
         <div class="card-tag" id="repCountChartTag">—</div>
       </div>
       <div class="chart-wrap tall"><canvas id="repCountChart"></canvas></div>
     </div>
+
+    <!-- Aged Stock (bottom, reference only) -->
     <div class="card" id="agingCardWrap" style="display:none">
       <div class="card-hd">
-        <div class="card-title">Stock Ageing Breakdown</div>
+        <div class="card-title">Aged Stock — Reference</div>
         <div class="card-tag" id="agingChartTag">—</div>
       </div>
-      <div class="chart-wrap tall"><canvas id="agingChart"></canvas></div>
+      <div id="repAgedMini" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);padding:8px 10px;background:var(--s2);border-left:2px solid var(--border2)">
+        Low BB % + aged stock = listings aren't being seen. Improving Win BB % helps shift old stock faster and frees up capital.
+      </div>
+      <div class="chart-wrap tall" style="margin-top:14px"><canvas id="agingChart"></canvas></div>
     </div>
   </div>
 
@@ -771,10 +859,11 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="kpi-footer"><span id="compKpiDropperPill"></span><span id="compKpiDropperSub">—</span></div>
       </div>
     </div>
-    <div class="insight-box" id="compInsightBox">
-      <div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>
-      <div class="insight-text" id="compInsightText">Add competitors via snapshots to see analysis.</div>
-      <div class="insight-bullets" id="compInsightBullets"></div>
+    <div class="insight-box" id="compInsightBox" style="padding:0">
+      <div id="compInsightInner" style="padding:20px">
+        <div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>
+        <div style="color:var(--muted2);font-family:var(--mono);font-size:11px">Add competitor readings using ⚡ Update Overlaps to start tracking trends.</div>
+      </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1142,6 +1231,7 @@ function getComparisonSnapshots(snaps) {
 function renderAll() {
   const snaps = filteredSnaps();
   renderKpis(snaps);
+  initPopouts();  // Setup popout listeners
   renderInsights(snaps);
   renderOverviewChart(snaps);
   renderAgeing(snaps);
@@ -1579,6 +1669,11 @@ function renderKpis(snaps) {
   const totalUnits = (ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
   const agedUnits = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
   const agedRiskPct = totalUnits > 0 ? ((agedUnits / totalUnits) * 100).toFixed(1) : 0;
+  const unitsDiff = (latest.totalUnits||0) - (prev?.totalUnits||0);
+  const stockValDiff = (latest.stockValue||0) - (prev?.stockValue||0);
+  const skuDiff = (latest.skus||0) - (prev?.skus||0);
+  const winDiff = parseFloat(repWinPct) - (prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct) : 0);
+  const matchDiff = parseFloat(repMatchPct) - (prev?.repricer?.matchPct ? parseFloat(prev.repricer.matchPct) : 0);
   const prevAg = prev?.ageing || {};
   const prevTotalUnits = (prevAg.a0||0)+(prevAg.a31||0)+(prevAg.a61||0)+(prevAg.a91||0)+(prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
   const prevAgedUnits = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
@@ -1607,6 +1702,41 @@ function renderKpis(snaps) {
   setKpiPercent('kRepMatchPct','kRepMatchPctPill','kRepMatchPctSub', repMatchPct, prevRepMatchPct, true, avgRepMatchPct);
   setKpiPercent('kAgedRisk','kAgedRiskPill','kAgedRiskSub', agedRiskPct, prevAgedRiskPct, false, avgAgedRiskPct);
   
+  // Set tile colors based on comparison (only if we have previous data)
+  const setTileColor = (tileId, curr, prev, isInverse = false) => {
+    const tile = document.querySelector(`[id*="${tileId}"]`)?.closest('.kpi-tile');
+    if (!tile || !prev) return; // No color if no previous data
+    
+    const improved = isInverse ? (curr < prev) : (curr > prev);
+    const declined = isInverse ? (curr > prev) : (curr < prev);
+    const same = curr === prev;
+    
+    tile.classList.remove('better', 'worse', 'same');
+    if (improved) tile.classList.add('better');
+    else if (declined) tile.classList.add('worse');
+    else if (same) tile.classList.add('same');
+  };
+  
+  // Apply colors to each tile (note: lower cost is BETTER, higher aged risk is WORSE)
+  setTileColor('kSkus', latest.skus, prev?.skus); // Higher = better
+  setTileColor('kAsins', latest.asins, prev?.asins); // Higher = better
+  setTileColor('kCost', latest.avgCost, prev?.avgCost, true); // Lower = better (inverse)
+  setTileColor('kStockValue', latest.stockValue, prev?.stockValue); // Higher = better
+  setTileColor('kUnits', latest.totalUnits, prev?.totalUnits); // Higher = better
+  setTileColor('kRepWinPct', parseFloat(repWinPct), prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct) : null); // Higher = better
+  setTileColor('kRepMatchPct', parseFloat(repMatchPct), prev?.repricer?.matchPct ? parseFloat(prev.repricer.matchPct) : null); // Higher = better
+  setTileColor('kAgedRisk', parseFloat(agedRiskPct), prevAgedRiskPct ? parseFloat(prevAgedRiskPct) : null, true); // Lower = better (inverse)
+  
+  // Update popout content with better analysis
+  document.getElementById('popoutSkus').innerHTML = `${latest.skus} variants (${skuDiff > 0 ? '+' : ''}${skuDiff}). ${skuDiff > 0 ? 'Growing breadth expands visibility.' : skuDiff < 0 ? 'Narrowing focus, more efficient.' : 'Holding steady.'}`;
+  document.getElementById('popoutCost').innerHTML = `£${latest.avgCost.toFixed(2)} per unit (${prev ? (latest.avgCost < prev.avgCost ? '↓ cheaper' : '↑ premium') : '—'}). ${latest.avgCost < prev?.avgCost ? 'Lower cost drives velocity.' : 'Higher ticket builds margin.'}`;
+  document.getElementById('popoutStockValue').innerHTML = `£${latest.stockValue.toLocaleString()} total (${stockValDiff > 0 ? '↑' : '↓'} £${Math.abs(stockValDiff).toLocaleString()}). ${stockValDiff > 0 ? 'Value growing — building strength.' : 'Value declining — liquidating.'}`;
+  document.getElementById('popoutUnits').innerHTML = `${latest.totalUnits.toLocaleString()} units (${unitsDiff > 0 ? '+' : ''}${unitsDiff}). ${Math.abs(unitsDiff) > 50 ? (unitsDiff < 0 ? 'Strong turnover velocity.' : 'Restocking aggressively.') : 'Stable baseline.'}`;
+  document.getElementById('popoutWinBB').innerHTML = `${repWinPct}% buy box (${prevRepWinPct ? (winDiff > 0 ? '↑' : '↓') + ' ' + Math.abs(winDiff).toFixed(1) + 'pp' : '—'}). ${parseFloat(repWinPct) > 15 ? 'Strong competitive position.' : parseFloat(repWinPct) < 8 ? 'Visibility gap — adjust prices.' : 'Decent but room to improve.'}`;
+  document.getElementById('popoutMatchBB').innerHTML = `${repMatchPct}% match rate (${prevRepMatchPct ? (matchDiff > 0 ? '↑' : '↓') + ' ' + Math.abs(matchDiff).toFixed(1) + 'pp' : '—'}). Total coverage ${(parseFloat(repWinPct) + parseFloat(repMatchPct)).toFixed(1)}%.`;
+  document.getElementById('popoutAgedRisk').innerHTML = `${agedUnits} aged units (${agedRiskPct}%, 181+d). ${agedRiskPct > 8 ? '⚠️ Critical — run promo now.' : agedRiskPct > 5 ? 'Watch — plan clearance soon.' : '✓ Healthy aging profile.'}`;
+  
+  
   // Update bottom bar chart
   const winRate = latest.repricer?.winPct ? parseFloat(latest.repricer.winPct) : 0;
   const matchRate = latest.repricer?.matchPct ? parseFloat(latest.repricer.matchPct) : 0;
@@ -1628,17 +1758,30 @@ function renderKpis(snaps) {
   if (barStockText) barStockText.textContent = stockHealth.toFixed(0) + '%';
 }
 
+function initPopouts() {
+  document.querySelectorAll('.kpi-tile').forEach(tile => {
+    const popout = tile.querySelector('.popout');
+    if (!popout) return;
+    
+    tile.addEventListener('mouseenter', () => {
+      popout.classList.add('show');
+    });
+    
+    tile.addEventListener('mouseleave', () => {
+      popout.classList.remove('show');
+    });
+  });
+}
+
 function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0) {
   const el = document.getElementById(valId);
   const pill = document.getElementById(pillId);
   const sub = document.getElementById(subId);
-  if (!el || !pill || !sub) return; // Skip if elements don't exist
+  if (!el || !pill || !sub) return;
   
-  // Format the value properly
   let displayVal = '—';
   if (curr) {
     if (prefix === '£') {
-      // Money: format with commas
       displayVal = '£' + (Number.isInteger(curr) ? curr.toLocaleString() : curr.toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
     } else if (Number.isInteger(curr)) {
       displayVal = prefix + curr.toLocaleString();
@@ -1651,12 +1794,24 @@ function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0)
   let pillHtml = '';
   if (prev && prev !== 0) {
     const diff = curr - prev;
-    const pct = ((diff/prev)*100).toFixed(1);
     const up = diff > 0;
     const good = upGood ? up : !up;
     const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
     const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
-    pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(pct)}% vs last</span>`;
+    // Show specific unit label based on field
+    let label = '';
+    if (prefix === '£') {
+      label = (up ? '+' : '') + '£' + Math.abs(diff).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0});
+    } else if (valId.toLowerCase().includes('sku') || valId.toLowerCase().includes('skus')) {
+      label = (up?'+':'') + Math.round(diff) + ' SKU' + (Math.abs(diff)!==1?'s':'');
+    } else if (valId.toLowerCase().includes('asin')) {
+      label = (up?'+':'') + Math.round(diff) + ' ASIN' + (Math.abs(diff)!==1?'s':'');
+    } else if (valId.toLowerCase().includes('unit')) {
+      label = (up?'+':'') + Math.round(diff) + ' unit' + (Math.abs(diff)!==1?'s':'');
+    } else {
+      label = (up?'+':'') + (Number.isInteger(diff) ? diff : diff.toFixed(1));
+    }
+    pillHtml += `<span class="pill ${cls}">${arrow} ${label}</span>`;
   }
   pill.innerHTML = pillHtml;
   sub.textContent = !prev ? 'First snapshot' : '';
@@ -1678,7 +1833,7 @@ function setKpiPercent(valId, pillId, subId, curr, prev, upGood=true, avg=0) {
     const good = upGood ? up : !up;
     const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
     const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
-    pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}pp vs last</span>`;
+    pillHtml += `<span class="pill ${cls}">${arrow} ${diff > 0 ? '+' : ''}${diff.toFixed(1)}pp</span>`;
   }
   pill.innerHTML = pillHtml;
   sub.textContent = !prev ? 'First snapshot' : '';
@@ -1757,9 +1912,8 @@ function renderAgeing(snaps) {
 
 function renderInsights(snaps) {
   const box = document.getElementById('insightText');
-  const bulls = document.getElementById('insightBullets');
   const dateEl = document.getElementById('insightDate');
-  if (!snaps.length) { box.innerHTML = 'Add your first snapshot to unlock AI-powered trend analysis.'; bulls.innerHTML = ''; return; }
+  if (!snaps.length) { box.innerHTML = 'Add your first snapshot to unlock AI-powered trend analysis.'; return; }
 
   const latest = snaps[snaps.length-1];
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
@@ -1814,66 +1968,46 @@ function renderInsights(snaps) {
     else main += `held steady on ASINs`;
     main += `. <span style="color:var(--muted2)"><em>You have 2 snapshots — add 1+ more to reveal trend patterns.</em></span>`;
   } else {
+    // Comprehensive narrative analysis
     const asinDiff = latest.asins - prev.asins;
     const skuDiff = latest.skus - prev.skus;
-    const prevAg = prev.ageing || {};
-    const prevOver180 = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
-    const prevTotal = AG_BUCKETS.reduce((s,b) => s+(prevAg[b.key]||0),0)||1;
-    const prevOver180pct = ((prevOver180/prevTotal)*100).toFixed(1);
-    const over180change = parseFloat(over180pct) - parseFloat(prevOver180pct);
+    const costDiff = latest.avgCost - prev.avgCost;
+    const unitsDiff = latest.totalUnits - prev.totalUnits;
+    const stockValDiff = (latest.stockValue||0) - (prev.stockValue||0);
+    const winDiff = winPct - (prev.repricer?.winPct || 0);
+    const agedRiskPct = over180pct;
+    
+    const firstSnap = snaps[0];
+    const trendUnitsDiff = latest.totalUnits - firstSnap.totalUnits;
+    const trendValueDiff = (latest.stockValue||0) - (firstSnap.stockValue||0);
+    const daysSpan = Math.max(1, Math.floor((new Date(latest.date) - new Date(firstSnap.date)) / (1000*60*60*24)));
+    const dailyVelocity = (Math.abs(trendUnitsDiff) / daysSpan).toFixed(1);
+    
+    const prevRepWinPct = prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct).toFixed(1) : null;
+    const repWinPct = winPct.toFixed(1);
+    
+    // Calculate aged inventory
+    const agedUnits = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+    const daysToNaturalClear = dailyVelocity > 0 ? Math.round(agedUnits / dailyVelocity) : 0;
+    
+    // Check ASIN trend
+    const asinTrend = snaps.length >= 3 
+      ? (snaps[snaps.length-1].asins >= snaps[snaps.length-2].asins && snaps[snaps.length-2].asins >= snaps[snaps.length-3].asins)
+        ? 'positive for 3 snapshots'
+        : 'mixed'
+      : 'mixed';
 
-    main = `Since your last snapshot on <strong>${fmt(prev.date)}</strong>, your SKU count has `;
-    if (skuDiff > 0) main += `<strong style="color:var(--g)">expanded by ${skuDiff} new SKUs</strong>`;
-    else if (skuDiff < 0) main += `<strong style="color:var(--r)">contracted by ${Math.abs(skuDiff)} SKUs</strong>`;
-    else main += `remained stable at ${latest.skus} SKUs`;
-    main += `. You're now managing <strong>${latest.skus} SKU variants</strong> across your catalogue`;
-    if (over180change > 2) main += `<span class="danger">⚠ Your 180d+ aged stock has worsened from ${prevOver180pct}% to ${over180pct}%</span> — prioritize clearance`;
-    else if (over180change < -2) main += `<strong style="color:var(--g)">✓ You've successfully cleared aged stock from ${prevOver180pct}% down to ${over180pct}%</strong> — keep this momentum`;
-    else main += `Your aged inventory (180d+) is stable at <strong>${over180pct}%</strong>`;
-  }
-  box.innerHTML = barsHtml + main;
+    main = `Since last snapshot (${fmt(prev.date)}): Units down ${Math.abs(unitsDiff).toLocaleString()}, but stock value up £${Math.round(stockValDiff).toLocaleString()}. You're executing a deliberate mix-shift — buying more high-velocity, low-ticket inventory at lower cost per unit, while also adding premium, high-ticket products. This creates margin compression but drives volume and faster turns. Buy Box coverage slipped to ${repWinPct}%, suggesting competitive pricing pressure.\n\n`;
 
-  const bullets = [];
-  
-  // Aged inventory
-  if (over180 > 0 && parseFloat(over180pct) > 5) {
-    bullets.push(`<strong style="color:var(--r)">Aged Stock Alert:</strong> ${over180} units (${over180pct}%) are 181+ days old. Run clearance promos or consider removal to free up capital.`);
-  }
-  
-  // Repricer health
-  if (r.total > 0) {
-    const winning = ((r.winning/r.total)*100).toFixed(1);
-    const matching = ((r.matching/r.total)*100).toFixed(1);
-    const combined = (parseFloat(winning) + parseFloat(matching)).toFixed(1);
-    
-    if (combined > 35) {
-      bullets.push(`<strong style="color:var(--g)">Strong BB Coverage:</strong> ${combined}% coverage (${winning}% win, ${matching}% match) — maintaining good competitive position.`);
-    } else if (combined < 20) {
-      bullets.push(`<strong style="color:var(--r)">Low BB Coverage:</strong> Only ${combined}% coverage — you're largely invisible. Lower your floor prices to improve visibility.`);
-    } else {
-      bullets.push(`<strong style="color:var(--muted2)">BB Coverage:</strong> ${combined}% (${winning}% win, ${matching}% match) — decent, room to improve.`);
-    }
-    
-    if (winning < 10) {
-      bullets.push(`<strong style="color:var(--r)">Low Win Rate:</strong> ${winning}% is very low. Floor prices may be too high. Test lower prices on fast-moving SKUs.`);
-    }
-  }
-  
-  // Catalogue trends
-  if (snaps.length >= 3) {
-    const asinTrend = snaps.slice(-3).map(s=>s.asins);
-    const skuTrend = snaps.slice(-3).map(s=>s.skus);
-    
-    if (asinTrend[2] > asinTrend[1] && asinTrend[1] > asinTrend[0]) {
-      bullets.push(`<strong style="color:var(--g)">ASIN Growth:</strong> Up 3 snapshots in a row — good sourcing momentum.`);
-    }
-    
-    if (skuTrend[2] > skuTrend[1] && skuTrend[1] > skuTrend[0]) {
-      bullets.push(`<strong style="color:var(--g)">SKU Expansion:</strong> Variant growth trending positive — increases search visibility.`);
-    }
-  }
+    main += `Over ${snaps.length} snapshots (${daysSpan} days): Units declined at ~${dailyVelocity} units/day velocity, but stock value is up £${Math.round(trendValueDiff).toLocaleString()} month-to-date. You're buying smarter and in better volume. SKU count up ${skuDiff} variants with ASIN growth trending ${asinTrend}. Fresh stock at ${freshPct}% shows you're building inventory quality. This is healthy momentum — you're converting slow-moving SKUs into fast-turning products.\n\n`;
 
-  bulls.innerHTML = bullets.map(b => `<div class="insight-bullet">${b}</div>`).join('');
+    main += `Your goal is: Stock Value UP + Total Units UP = real improvement. Right now you're in the mix-shift phase with value climbing while units decline. Once restocking accelerates, you want units to climb again while maintaining this value growth. That's the sweet spot. `;
+    
+    if (agedUnits > 0) {
+      main += `Watch your ${agedUnits} aged units (${agedRiskPct}%, 181+ days old) eating capital. At ${dailyVelocity} units/day velocity, they'll take ${daysToNaturalClear}+ days to clear naturally. Run an aggressive clearance promo this week to free up cash for premium restocks.`;
+    }
+  }
+  box.innerHTML = main;
 }
 
 function switchChartMetric(metric) {
@@ -2369,176 +2503,239 @@ function generateMetricAnalysis(metric, comps, allSnaps) {
   return html;
 }
 
+// Track window size for repricer chart
+let repWindowSize = 6;
+
+function setRepWindow(n, btn) {
+  repWindowSize = n;
+  document.querySelectorAll('.rep-tog').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const snaps = filteredSnaps();
+  renderRepricerPercentChart(snaps);
+}
+
+function repHealthLabel(val) {
+  if (val < 5) return { text: '⚠ Red flag — below 5%', cls: 'rep-health-red' };
+  if (val < 10) return { text: '● Watch — below 10% target', cls: 'rep-health-amber' };
+  return { text: '✓ Healthy — above 10%', cls: 'rep-health-green' };
+}
+
+function repGetTrend(snaps, getter, n) {
+  // Get trend from last n data points
+  const pts = snaps.slice(-n).map(getter).filter(v => v !== null && v !== undefined && !isNaN(v));
+  if (pts.length < 2) return 0;
+  return pts[pts.length - 1] - pts[0];
+}
+
 function renderRepricerTab(snaps) {
   console.log('renderRepricerTab called with snaps:', snaps);
   if (!snaps.length) {
-    console.log('No snaps, clearing repricer KPIs');
-    ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch','repKpiWinCov'].forEach(id => document.getElementById(id).textContent = '—');
+    ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch','repKpiCombined'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '—';
+    });
     return;
   }
-  
+
   const latest = snaps[snaps.length-1];
-  console.log('Latest snap:', latest);
-  console.log('Repricer data:', latest.repricer);
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
   const r = latest.repricer||{};
-  const avgSnaps = snaps.filter(s => s.repricer && s.repricer.total > 0);
-  
-  // Calculate avgs for each metric
-  const avgSkus = snaps.reduce((sum,s)=>sum+(s.skus||0),0) / snaps.length;
-  const avgAsins = snaps.reduce((sum,s)=>sum+(s.asins||0),0) / snaps.length;
-  const avgWin = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+((s.repricer.winning/s.repricer.total)*100),0) / avgSnaps.length : 0;
-  const avgMatch = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+((s.repricer.matching/s.repricer.total)*100),0) / avgSnaps.length : 0;
-  const avgWinCov = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+((s.repricer.winning/s.repricer.total)*100),0) / avgSnaps.length : 0;
-  const avgCombined = avgSnaps.length > 0 ? avgSnaps.reduce((sum,s)=>sum+(((s.repricer.winning+s.repricer.matching)/s.repricer.total)*100),0) / avgSnaps.length : 0;
-  
-  // Aged risk calculation
+
+  // Calculate percentages
+  const wPct = r.total > 0 ? parseFloat(((r.winning/r.total)*100).toFixed(1)) : (r.winPct ? parseFloat(r.winPct) : 0);
+  const mPct = r.total > 0 ? parseFloat(((r.matching/r.total)*100).toFixed(1)) : (r.matchPct ? parseFloat(r.matchPct) : 0);
+  const combinedPct = parseFloat((wPct + mPct).toFixed(1));
+
+  const prevR = prev?.repricer||{};
+  const prevWPct = prevR.total > 0 ? parseFloat(((prevR.winning/prevR.total)*100).toFixed(1)) : (prevR.winPct ? parseFloat(prevR.winPct) : null);
+  const prevMPct = prevR.total > 0 ? parseFloat(((prevR.matching/prevR.total)*100).toFixed(1)) : (prevR.matchPct ? parseFloat(prevR.matchPct) : null);
+  const prevCombined = (prevWPct !== null && prevMPct !== null) ? parseFloat((prevWPct + prevMPct).toFixed(1)) : null;
+
+  // KPI: SKUs
+  setRepKpi('repKpiSkus', r.total || latest.skus, prev?.repricer?.total || prev?.skus, null, true);
+  setRepKpi('repKpiAsins', latest.asins, prev?.asins, null, true);
+
+  // Win BB KPI
+  const winEl = document.getElementById('repKpiWin');
+  const winPillEl = document.getElementById('repKpiWinPill');
+  const winHealthEl = document.getElementById('repKpiWinHealth');
+  if (winEl) winEl.textContent = wPct ? wPct.toFixed(1) + '%' : '—';
+  if (winPillEl && prevWPct !== null) {
+    const diff = wPct - prevWPct;
+    const cls = diff === 0 ? 'flat' : diff > 0 ? 'up' : 'down';
+    const arrow = diff === 0 ? '→' : diff > 0 ? '▲' : '▼';
+    winPillEl.innerHTML = `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}pp</span>`;
+  }
+  if (winHealthEl) {
+    const h = repHealthLabel(wPct);
+    winHealthEl.innerHTML = `<span class="${h.cls}">${h.text}</span>`;
+  }
+
+  // Match BB KPI
+  const matchEl = document.getElementById('repKpiMatch');
+  const matchPillEl = document.getElementById('repKpiMatchPill');
+  const matchHealthEl = document.getElementById('repKpiMatchHealth');
+  if (matchEl) matchEl.textContent = mPct ? mPct.toFixed(1) + '%' : '—';
+  if (matchPillEl && prevMPct !== null) {
+    const diff = mPct - prevMPct;
+    const cls = diff === 0 ? 'flat' : diff > 0 ? 'up' : 'down';
+    const arrow = diff === 0 ? '→' : diff > 0 ? '▲' : '▼';
+    matchPillEl.innerHTML = `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}pp</span>`;
+  }
+  if (matchHealthEl) {
+    const h = repHealthLabel(mPct);
+    matchHealthEl.innerHTML = `<span class="${h.cls}">${h.text}</span>`;
+  }
+
+  // Win trend card
+  const winTrendEl = document.getElementById('repKpiWinTrend');
+  const winTrendTagEl = document.getElementById('repKpiWinTrendTag');
+  const winTrendSubEl = document.getElementById('repKpiWinTrendSub');
+  const repSnapsForTrend = snaps.filter(s => s.repricer && (s.repricer.total > 0 || s.repricer.winPct));
+  const getWinVal = s => s.repricer.total > 0 ? parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)) : parseFloat(s.repricer.winPct||0);
+  const getMatchVal = s => s.repricer.total > 0 ? parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)) : parseFloat(s.repricer.matchPct||0);
+  const winTrend3 = repSnapsForTrend.length >= 3 ? repGetTrend(repSnapsForTrend, getWinVal, 3) : null;
+  const matchTrend3 = repSnapsForTrend.length >= 3 ? repGetTrend(repSnapsForTrend, getMatchVal, 3) : null;
+
+  if (winTrendEl) {
+    const isUp = winTrend3 > 0.3; const isDown = winTrend3 < -0.3;
+    winTrendEl.textContent = winTrend3 === null ? 'Need data' : isUp ? 'Going up' : isDown ? 'Going down' : 'Holding';
+    winTrendEl.style.color = winTrend3 === null ? 'var(--muted2)' : isUp ? 'var(--g)' : isDown ? 'var(--r)' : 'var(--muted2)';
+    if (winTrendTagEl) winTrendTagEl.innerHTML = winTrend3 !== null ? `<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;background:${isUp?'rgba(0,245,160,0.12)':isDown?'rgba(255,77,109,0.12)':'var(--s3)'};color:${isUp?'var(--g)':isDown?'var(--r)':'var(--muted2)'}">${isUp?'TRENDING UP':isDown?'TRENDING DOWN':'HOLDING STEADY'}</span>` : '';
+    if (winTrendSubEl) winTrendSubEl.textContent = winTrend3 === null ? 'Add 3+ snapshots' : `Based on last 3 data points. ${isDown ? 'Review pricing — may need to lower floors.' : isUp ? 'Strategy working. Keep going.' : 'Keep monitoring.'}`;
+  }
+
+  // Match trend card
+  const matchTrendEl = document.getElementById('repKpiMatchTrend');
+  const matchTrendTagEl = document.getElementById('repKpiMatchTrendTag');
+  const matchTrendSubEl = document.getElementById('repKpiMatchTrendSub');
+  if (matchTrendEl) {
+    const isUp = matchTrend3 > 0.3; const isDown = matchTrend3 < -0.3;
+    matchTrendEl.textContent = matchTrend3 === null ? 'Need data' : isUp ? 'Going up' : isDown ? 'Going down' : 'Holding';
+    matchTrendEl.style.color = matchTrend3 === null ? 'var(--muted2)' : isUp ? 'var(--g)' : isDown ? 'var(--r)' : 'var(--muted2)';
+    if (matchTrendTagEl) matchTrendTagEl.innerHTML = matchTrend3 !== null ? `<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;background:${isUp?'rgba(0,245,160,0.12)':isDown?'rgba(255,77,109,0.12)':'var(--s3)'};color:${isUp?'var(--g)':isDown?'var(--r)':'var(--muted2)'}">${isUp?'TRENDING UP':isDown?'TRENDING DOWN':'HOLDING STEADY'}</span>` : '';
+    if (matchTrendSubEl) matchTrendSubEl.textContent = matchTrend3 === null ? 'Add 3+ snapshots' : `Based on last 3 data points. ${isDown ? 'Repricer not keeping up — check speed settings.' : isUp ? 'Matching more listings. Good.' : 'Keep monitoring.'}`;
+  }
+
+  // === Trend Intelligence Section ===
+  const trendContainer = document.getElementById('repTrendRows');
+  const rb = document.getElementById('repInsightBullets');
+
+  if (snaps.length < 2) {
+    if (trendContainer) trendContainer.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Baseline set: Win BB ${wPct.toFixed(1)}%, Match BB ${mPct.toFixed(1)}% across ${r.total||0} SKUs. Add more snapshots to see trends.</div>`;
+    if (rb) rb.innerHTML = '';
+  } else {
+    const wDiff = prevWPct !== null ? parseFloat((wPct - prevWPct).toFixed(1)) : null;
+    const mDiff = prevMPct !== null ? parseFloat((mPct - prevMPct).toFixed(1)) : null;
+
+    const repSnaps = snaps.filter(s => s.repricer && (s.repricer.total > 0 || s.repricer.winPct));
+    const getWinV = s => s.repricer.total > 0 ? parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)) : parseFloat(s.repricer.winPct||0);
+    const getMatchV = s => s.repricer.total > 0 ? parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)) : parseFloat(s.repricer.matchPct||0);
+    const winTrend3 = repSnaps.length >= 3 ? repGetTrend(repSnaps, getWinV, 3) : null;
+    const matchTrend3 = repSnaps.length >= 3 ? repGetTrend(repSnaps, getMatchV, 3) : null;
+
+    // Helper: build movement history for a metric
+    function buildMovementHistory(rSnaps, getter, label, unit='pp') {
+      if (rSnaps.length < 2) return '';
+      const last6 = rSnaps.slice(-6);
+      // Build per-entry changes
+      const moves = [];
+      for (let i = 1; i < last6.length; i++) {
+        const diff = parseFloat((getter(last6[i]) - getter(last6[i-1])).toFixed(1));
+        const date = last6[i].date;
+        moves.push({ date, diff });
+      }
+      const totalDrift = parseFloat(moves.reduce((s,m) => s + m.diff, 0).toFixed(1));
+      const downCount = moves.filter(m => m.diff < -0.1).length;
+      const upCount = moves.filter(m => m.diff > 0.1).length;
+
+      // Direction summary sentence
+      let summarySentence = '';
+      if (downCount > 0 && downCount >= moves.length * 0.6) {
+        summarySentence = `<span style="color:var(--r);font-weight:600">${label} has fallen ${downCount} of the last ${moves.length} entries</span>${totalDrift < 0 ? ` — down ${Math.abs(totalDrift)}pp overall` : ''}.${downCount === moves.length ? ' Consistent decline — review pricing.' : ' Watch this.'}`;
+      } else if (upCount > 0 && upCount >= moves.length * 0.6) {
+        summarySentence = `<span style="color:var(--g);font-weight:600">${label} has risen ${upCount} of the last ${moves.length} entries</span>${totalDrift > 0 ? ` — up ${totalDrift}pp overall` : ''}. Strategy working.`;
+      } else {
+        summarySentence = `<span style="color:var(--muted2)">${label} is mixed — ${upCount} up, ${downCount} down across last ${moves.length} entries.</span>`;
+      }
+
+      // Mini timeline
+      const timeline = moves.map(m => {
+        const col = m.diff > 0.1 ? '#00f5a0' : m.diff < -0.1 ? '#ff4d6d' : '#4a5568';
+        const sign = m.diff > 0 ? '+' : '';
+        const d = m.date.split('-'); const lbl = `${d[2]}/${d[1]}`;
+        return `<span style="font-family:var(--mono);font-size:10px;color:${col};white-space:nowrap">${lbl} <strong>${sign}${m.diff}pp</strong></span>`;
+      }).join('<span style="color:var(--border2);margin:0 4px">→</span>');
+
+      const totalCol = totalDrift < 0 ? '#ff4d6d' : totalDrift > 0 ? '#00f5a0' : '#4a5568';
+      const totalSign = totalDrift > 0 ? '+' : '';
+
+      return `<div style="margin-top:8px;padding:10px 12px;background:var(--s2);border-left:2px solid var(--border2)">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px">${summarySentence}</div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px">${timeline}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Net over last ${moves.length} moves: <span style="color:${totalCol};font-weight:600">${totalSign}${totalDrift}pp</span></div>
+      </div>`;
+    }
+
+    let rows = '';
+
+    // Win BB trend row
+    if (wDiff !== null) {
+      const dotColor = wDiff > 0 ? 'var(--g)' : wDiff < 0 ? 'var(--r)' : 'var(--muted2)';
+      const trendTag = winTrend3 !== null
+        ? `<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;margin-left:8px;background:${winTrend3 > 0.5 ? 'rgba(0,245,160,0.12)' : winTrend3 < -0.5 ? 'rgba(255,77,109,0.12)' : 'var(--s3)'};color:${winTrend3 > 0.5 ? 'var(--g)' : winTrend3 < -0.5 ? 'var(--r)' : 'var(--muted2)'}">${winTrend3 > 0.5 ? 'TRENDING UP' : winTrend3 < -0.5 ? 'TRENDING DOWN' : 'HOLDING STEADY'}</span>`
+        : '';
+      const detail = wDiff < -2 ? `Significant drop — competitors outpricing you. At ${wPct.toFixed(1)}% you're losing visibility. Lower floor prices on slow-movers to recover.`
+        : wDiff < 0 ? `Falling to ${wPct.toFixed(1)}% — monitor closely. If this continues, review repricing floors.`
+        : wDiff > 2 ? `Strong improvement to ${wPct.toFixed(1)}% — repricing is working. More wins = more sales = faster cashflow.`
+        : wDiff > 0 ? `Slight improvement to ${wPct.toFixed(1)}%. Moving the right way.`
+        : `Stable at ${wPct.toFixed(1)}%.`;
+      const history = buildMovementHistory(repSnaps, getWinV, 'Win BB');
+      rows += `<div class="rep-trend-row"><div class="rep-trend-dot" style="background:${dotColor}"></div><div style="flex:1"><div class="rep-trend-main">Win BB ${wDiff >= 0 ? '+' : ''}${wDiff}pp → now ${wPct.toFixed(1)}%${trendTag}</div><div class="rep-trend-detail">${detail}</div>${history}</div></div>`;
+    }
+
+    // Match BB trend row
+    if (mDiff !== null) {
+      const dotColor = mDiff > 0 ? 'var(--g)' : mDiff < 0 ? 'var(--r)' : 'var(--muted2)';
+      const trendTag = matchTrend3 !== null
+        ? `<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;margin-left:8px;background:${matchTrend3 > 0.5 ? 'rgba(0,245,160,0.12)' : matchTrend3 < -0.5 ? 'rgba(255,77,109,0.12)' : 'var(--s3)'};color:${matchTrend3 > 0.5 ? 'var(--g)' : matchTrend3 < -0.5 ? 'var(--r)' : 'var(--muted2)'}">${matchTrend3 > 0.5 ? 'TRENDING UP' : matchTrend3 < -0.5 ? 'TRENDING DOWN' : 'HOLDING STEADY'}</span>`
+        : '';
+      const detail = mDiff < -1 ? `Concerning drop — competitors moving prices faster than your repricer. Review speed and frequency settings.`
+        : mDiff < 0 ? `Slight decline to ${mPct.toFixed(1)}%. Match BB is your fallback when you can't win — don't let this erode.`
+        : mDiff > 1 ? `Good improvement — matching more listings at ${mPct.toFixed(1)}%.`
+        : mDiff > 0 ? `Marginal gain to ${mPct.toFixed(1)}%. Moving the right way.`
+        : `Flat at ${mPct.toFixed(1)}%.`;
+      const history = buildMovementHistory(repSnaps, getMatchV, 'Match BB');
+      rows += `<div class="rep-trend-row"><div class="rep-trend-dot" style="background:${dotColor}"></div><div style="flex:1"><div class="rep-trend-main">Match BB ${mDiff >= 0 ? '+' : ''}${mDiff}pp → now ${mPct.toFixed(1)}%${trendTag}</div><div class="rep-trend-detail">${detail}</div>${history}</div></div>`;
+    }
+
+    // Red flag if both below 5%
+    if (wPct < 5 && mPct < 5) {
+      rows = `<div class="rep-trend-row"><div class="rep-trend-dot" style="background:var(--r)"></div><div><div class="rep-trend-main" style="color:var(--r)">⚠ Both metrics critically low</div><div class="rep-trend-detail">Win and Match BB both under 5%. Your OA stock is nearly invisible. Review all floor prices urgently — lower prices to get cash moving.</div></div></div>` + rows;
+    }
+
+    if (trendContainer) trendContainer.innerHTML = rows;
+    if (rb) rb.innerHTML = '';
+  }
+
+  // Aged stock mini summary
   const ag = latest.ageing||{};
   const totalUnits = (ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
-  const agedUnits = (ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
-  const agedRiskPct = totalUnits > 0 ? ((agedUnits/totalUnits)*100).toFixed(1) : 0;
-  const avgAgedRisk = snaps.filter(s => {
-    const a = s.ageing||{}; 
-    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
-    return tot > 0;
-  }).reduce((sum,s) => {
-    const a = s.ageing||{};
-    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
-    const aged = (a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
-    return sum + (tot > 0 ? (aged/tot)*100 : 0);
-  }, 0);
-  const prevAgedRisk = prev ? (() => {
-    const a = prev.ageing||{};
-    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
-    const aged = (a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
-    return tot > 0 ? (aged/tot)*100 : null;
-  })() : null;
-  
-  const avgAgedRiskVal = snaps.length > 0 ? (avgAgedRisk / snaps.filter(s => {
-    const a = s.ageing||{};
-    const tot = (a.a0||0)+(a.a31||0)+(a.a61||0)+(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
-    return tot > 0;
-  }).length) : 0;
-  
-  // Set KPI values
-  const wPct = r.total ? ((r.winning/r.total)*100).toFixed(1) : 0;
-  const mPct = r.total ? ((r.matching/r.total)*100).toFixed(1) : 0;
-  const winCov = r.total ? ((r.winning/r.total)*100).toFixed(1) : 0;
-  const combinedCov = r.total ? (((r.winning+r.matching)/r.total)*100).toFixed(1) : 0;
-  
-  setRepKpi('repKpiSkus', r.total || latest.skus, prev?.repricer?.total || prev?.skus, avgSkus, true);
-  setRepKpi('repKpiAsins', r.asins || latest.asins, prev?.repricer?.asins || prev?.asins, avgAsins, true);
-  setRepKpi('repKpiWin', wPct, prev?.repricer?.total ? ((prev.repricer.winning/prev.repricer.total)*100).toFixed(1) : null, avgWin, true);
-  setRepKpi('repKpiMatch', mPct, prev?.repricer?.total ? ((prev.repricer.matching/prev.repricer.total)*100).toFixed(1) : null, avgMatch, true);
-  setRepKpi('repKpiWinCov', winCov, prev?.repricer?.total ? ((prev.repricer.winning/prev.repricer.total)*100).toFixed(1) : null, avgWinCov, true);
-  
-  // Insights - NEW: Prominent visual bars + extensive detailed breakdown
-  const ri = document.getElementById('repInsightText');
-  const rb = document.getElementById('repInsightBullets');
-  
-  if (snaps.length < 2) {
-    ri.innerHTML = `Baseline: <strong>${wPct}% winning</strong>, <strong>${mPct}% matching</strong> across ${r.total||0} SKUs. Aged risk: <strong>${agedRiskPct}%</strong>.`;
-    rb.innerHTML = '';
-    return;
+  const aged181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const aged91 = (ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const agedMini = document.getElementById('repAgedMini');
+  if (agedMini) {
+    agedMini.innerHTML = [
+      { num: r.total || latest.skus || '—', lbl: 'Total SKUs', color: 'var(--text)' },
+      { num: totalUnits || '—', lbl: 'Total units', color: 'var(--text)' },
+      { num: aged181, lbl: '181+ days', color: aged181 > 0 ? 'var(--r)' : 'var(--muted2)' },
+      { num: aged91 - aged181, lbl: '91–180 days', color: (aged91 - aged181) > 0 ? 'var(--y)' : 'var(--muted2)' },
+    ].map(item => `<div style="background:var(--s2);border:1px solid var(--border);padding:10px 12px"><div style="font-size:18px;font-weight:700;color:${item.color}">${item.num}</div><div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:4px;text-transform:uppercase;letter-spacing:.1em">${item.lbl}</div></div>`).join('');
   }
-  
-  // Calculate all trends
-  const pr = prev?.repricer||{}; 
-  const pwPct = prev?.repricer?.winPct ? +prev.repricer.winPct : null;
-  const pmPct = prev?.repricer?.matchPct ? +prev.repricer.matchPct : null;
-  const prevStockValue = prev?.stockValue || 0;
-  const prevAg = prev?.ageing||{};
-  const prevTotalUnits = (prevAg.a0||0)+(prevAg.a31||0)+(prevAg.a61||0)+(prevAg.a91||0)+(prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
-  const prevAgedUnits = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
-  const prevAgedRiskPctCalc = prevTotalUnits > 0 ? ((prevAgedUnits/prevTotalUnits)*100).toFixed(1) : null;
-  
-  const wDiff = pwPct !== null ? (parseFloat(wPct) - parseFloat(pwPct)).toFixed(1) : null;
-  const mDiff = pmPct !== null ? (parseFloat(mPct) - parseFloat(pmPct)).toFixed(1) : null;
-  const svDiff = latest.stockValue - prevStockValue;
-  
-  // Build CLEAN metric trend bars
-  let barsHtml = '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">';
-  
-  if (wDiff !== null) {
-    const wGood = parseFloat(wDiff) > 0;
-    const wColor = wGood ? 'var(--g)' : 'var(--r)';
-    const wArrow = parseFloat(wDiff) > 0 ? '↑' : '↓';
-    barsHtml += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--s2);border-left:3px solid ${wColor};border-radius:2px;font-family:var(--mono);font-size:12px"><span style="color:${wColor};font-weight:700;min-width:110px">${wArrow} Win Rate ${Math.abs(wDiff)}pp</span><span style="color:var(--muted2)">${pwPct}% → ${wPct}%</span></div>`;
-  }
-  
-  if (mDiff !== null) {
-    const mGood = parseFloat(mDiff) > 0;
-    const mColor = mGood ? 'var(--g)' : 'var(--r)';
-    const mArrow = parseFloat(mDiff) > 0 ? '↑' : '↓';
-    barsHtml += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--s2);border-left:3px solid ${mColor};border-radius:2px;font-family:var(--mono);font-size:12px"><span style="color:${mColor};font-weight:700;min-width:110px">${mArrow} Match Rate ${Math.abs(mDiff)}pp</span><span style="color:var(--muted2)">${pmPct}% → ${mPct}%</span></div>`;
-  }
-  
-  if (svDiff !== 0) {
-    const svGood = svDiff > 0;
-    const svColor = svGood ? 'var(--g)' : 'var(--r)';
-    const svArrow = svDiff > 0 ? '↑' : '↓';
-    barsHtml += `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--s2);border-left:3px solid ${svColor};border-radius:2px;font-family:var(--mono);font-size:12px"><span style="color:${svColor};font-weight:700;min-width:110px">${svArrow} Stock Value £${Math.abs(svDiff).toLocaleString()}</span><span style="color:var(--muted2)">£${prevStockValue.toLocaleString()} → £${latest.stockValue.toLocaleString()}</span></div>`;
-  }
-  
-  barsHtml += '</div>';
-  ri.innerHTML = barsHtml;
-  
-  // Detailed breakdown with CONCISE insights
-  let bullets = [];
-  
-  // WIN RATE analysis
-  if (wDiff !== null) {
-    const wDiffNum = parseFloat(wDiff);
-    if (wDiffNum > 2) {
-      bullets.push(`<strong style="color:var(--g)">↑ Win Rate +${wDiffNum}pp</strong> Strong improvement — your repricing is working. You're winning the buy box more often, driving higher visibility and traffic. Keep floor prices competitive and monitor weekly to maintain this edge.`);
-    } else if (wDiffNum > 0) {
-      bullets.push(`<strong style="color:var(--g)">↑ Win Rate +${wDiffNum}pp</strong> Modest gains — repricing logic is slightly more competitive. You're at ${wPct}%. Consider testing lower floor prices to capture more buy box placements.`);
-    } else if (wDiffNum < -2) {
-      bullets.push(`<strong style="color:var(--r)">↓ Win Rate ${wDiffNum}pp</strong> Significant decline — competitors are outpricing you or your floors are too high. At ${wPct}%, you're losing visibility. Lower prices immediately if margins allow, or evaluate if these SKUs are worth keeping.`);
-    } else if (wDiffNum < 0) {
-      bullets.push(`<strong style="color:var(--r)">↓ Win Rate ${wDiffNum}pp</strong> Declining to ${wPct}% — review competitor prices and repricing settings. Falling win rates kill sales momentum. Act now to reverse the trend.`);
-    } else {
-      bullets.push(`<strong style="color:var(--muted2)">→ Win Rate Flat</strong> Stable at ${wPct}%. No major market shift, but if you're below 12%, test lower prices to increase volume.`);
-    }
-  }
-  
-  // MATCH RATE analysis
-  if (mDiff !== null) {
-    const mDiffNum = parseFloat(mDiff);
-    if (mDiffNum > 1) {
-      bullets.push(`<strong style="color:var(--g)">↑ Match Rate +${mDiffNum}pp</strong> Excellent — you're matching the buy box more often. This keeps you visible without impacting margins. Combined with your ${wPct}% win rate, your total buy box coverage is strong at ${(parseFloat(wPct)+parseFloat(mPct)).toFixed(1)}%.`);
-    } else if (mDiffNum > 0) {
-      bullets.push(`<strong style="color:var(--g)">↑ Match Rate +${mDiffNum}pp</strong> Steady improvement to ${mPct}%. Your pricing logic is well-tuned. This defensive position ensures you stay visible when you can't win.`);
-    } else if (mDiffNum < -1) {
-      bullets.push(`<strong style="color:var(--r)">↓ Match Rate ${mDiffNum}pp</strong> Concerning decline to ${mPct}% — competitors are undercutting you. You're losing match coverage fast. Review repricing algorithm: are you matching quickly enough? Act now.`);
-    } else if (mDiffNum < 0) {
-      bullets.push(`<strong style="color:var(--r)">↓ Match Rate ${mDiffNum}pp</strong> Down to ${mPct}%. Don't let match erode — it's your insurance when you can't win. Review algorithm settings and competitor tactics.`);
-    } else {
-      bullets.push(`<strong style="color:var(--muted2)">→ Match Rate Stable</strong> At ${mPct}%. Combined buy box coverage (win + match) is ${(parseFloat(wPct)+parseFloat(mPct)).toFixed(1)}%. This is what drives your conversions.`);
-    }
-  }
-  
-  // STOCK VALUE analysis
-  if (svDiff > 20000) {
-    bullets.push(`<strong style="color:var(--g)">↑ Stock Value +£${(svDiff/1000).toFixed(1)}k</strong> Major buying activity — you're growing inventory. Ensure repricer is tuned to sell through efficiently. High inventory = high working capital. Monitor sell-through closely to avoid aged stock problems.`);
-  } else if (svDiff > 5000) {
-    bullets.push(`<strong style="color:var(--g)">↑ Stock Value +£${(svDiff/1000).toFixed(1)}k</strong> Healthy growth from sourcing activity. Ensure repricer moves this inventory profitably. Track turnover rates alongside value — growth only works if items sell fast.`);
-  } else if (svDiff < -20000) {
-    bullets.push(`<strong style="color:var(--g)">↓ Stock Value £${(Math.abs(svDiff)/1000).toFixed(1)}k</strong> Excellent sell-through — you're converting efficiently and freeing capital. Your repricing strategy is working well. Maintain optimal stock levels to keep capturing demand without dead stock.`);
-  } else if (svDiff < -5000) {
-    bullets.push(`<strong style="color:var(--g)">↓ Stock Value £${(Math.abs(svDiff)/1000).toFixed(1)}k</strong> Good turnover — capital is moving through business, not sitting idle. Keep this momentum but ensure high-demand SKUs don't run out.`);
-  } else if (svDiff < 0) {
-    bullets.push(`<strong style="color:var(--muted2)">↓ Stock Value £${(Math.abs(svDiff)/1000).toFixed(1)}k</strong> Modest decrease — normal fluctuation with steady sell-through. No major action needed.`);
-  } else {
-    bullets.push(`<strong style="color:var(--muted2)">→ Stock Value Flat</strong> You're buying roughly as fast as you're selling. Stable equilibrium. Monitor if this is intentional or if you need to adjust sourcing.`);
-  }
-  
-  rb.innerHTML = bullets.map(b => `<div class="insight-bullet" style="color:inherit;line-height:1.6">${b}</div>`).join('');
-  
-  // Render 3 charts
+
+  // Render charts
   renderRepricerPercentChart(snaps);
   renderRepricerCountChart(snaps);
-  
+
   if (totalUnits > 0) {
     document.getElementById('agingCardWrap').style.display = 'block';
     renderAgingChart(snaps);
@@ -2568,8 +2765,12 @@ function setRepKpi(valId, curr, prev, avg, upGood) {
     const good = upGood ? up : !up;
     const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
     const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
-    const suffix = Number.isInteger(currNum) ? '' : '%';
-    pillHtml += `<span class="pill ${cls}">${arrow} ${Math.abs(diff).toFixed(1)}${suffix}</span>`;
+    const absDiff = Math.abs(diff);
+    let label = '';
+    if (valId.includes('Skus') || valId.includes('skus')) label = (diff>0?'+':'') + Math.round(diff) + ' SKU' + (absDiff!==1?'s':'');
+    else if (valId.includes('Asin') || valId.includes('asin')) label = (diff>0?'+':'') + Math.round(diff) + ' ASIN' + (absDiff!==1?'s':'');
+    else label = (diff>0?'+':'') + Math.abs(diff).toFixed(1) + (Number.isInteger(currNum) ? '' : 'pp');
+    pillHtml += `<span class="pill ${cls}">${arrow} ${label}</span>`;
   }
   if (avg && avg > 0) {
     const diff = currNum - avg;
@@ -2591,57 +2792,60 @@ function renderRepricerPercentChart(snaps) {
   if (!ctx) return;
   const chartCtx = ctx.getContext('2d');
   const tag = document.getElementById('repChartTag');
-  const trendBadge = document.getElementById('repChartTrendBadge');
-  
+  const chartNote = document.getElementById('repChartNote');
+
   if (snaps.length < 2) {
-    tag.textContent = 'Need 2+ snapshots';
-    if (trendBadge) trendBadge.innerHTML = '';
-    chartCtx.fillStyle='#4a5568'; chartCtx.font="11px 'DM Mono'"; chartCtx.textAlign='center';
-    chartCtx.fillText('Add 2+ snapshots to see trend', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    if (tag) tag.textContent = 'Need 2+ snapshots';
+    if (chartNote) chartNote.textContent = '';
     return;
   }
-  
-  tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
-  
-  // Calculate trend
-  const latest = snaps[snaps.length-1];
-  const prev = snaps[snaps.length-2];
-  const latestWin = latest.repricer?.winPct ? +latest.repricer.winPct : 0;
-  const prevWin = prev.repricer?.winPct ? +prev.repricer.winPct : 0;
-  const winDiff = Math.abs(latestWin - prevWin).toFixed(1);
-  const winDir = latestWin >= prevWin ? 'up' : 'down';
-  const winColor = winDir === 'up' ? 'var(--g)' : 'var(--r)';
-  
-  if (trendBadge) {
-    const arrow = winDir === 'up' ? '↑' : '↓';
-    trendBadge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:${winColor};color:#07090c;border-radius:3px;font-weight:600;font-size:11px;font-family:var(--mono)">${arrow} ${winDir.toUpperCase()} ${winDiff}pp</span>`;
-  }
-  
-  // Smart zoom for percentage data
-  const winData = snaps.map(s=>s.repricer?.winPct ? +s.repricer.winPct : 0);
-  const matchData = snaps.map(s=>s.repricer?.matchPct ? +s.repricer.matchPct : 0);
-  const allData = [...winData, ...matchData];
-  const max = Math.max(...allData);
-  const min = Math.min(...allData);
-  const range = max - min || 1;
-  const padding = range < 2 ? 1.5 : range < 5 ? 1 : 0.5;
+
+  // Apply window size
+  const windowed = repWindowSize >= 999 ? snaps : snaps.slice(-repWindowSize);
+  if (tag) tag.textContent = `${fmt(windowed[0].date)} → ${fmt(windowed[windowed.length-1].date)}`;
+
+  const getWin = s => s.repricer?.total > 0 ? parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)) : (s.repricer?.winPct ? +s.repricer.winPct : null);
+  const getMatch = s => s.repricer?.total > 0 ? parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)) : (s.repricer?.matchPct ? +s.repricer.matchPct : null);
+
+  const winData = windowed.map(getWin);
+  const matchData = windowed.map(getMatch);
+
+  // Smart zoom — ensure 10% line is always visible
+  const allVals = [...winData, ...matchData, 10].filter(v => v !== null);
+  const max = Math.max(...allVals);
+  const min = Math.min(...allVals);
+  const padding = 1.5;
   const yMin = Math.max(0, min - padding);
   const yMax = max + padding;
-  
+
+  // Chart note
+  if (chartNote) {
+    const winTrend = windowed.length >= 3 ? repGetTrend(windowed.filter(s => getWin(s) !== null), getWin, 3) : null;
+    const matchTrend = windowed.length >= 3 ? repGetTrend(windowed.filter(s => getMatch(s) !== null), getMatch, 3) : null;
+    const winNow = winData[winData.length-1];
+    const matchNow = matchData[matchData.length-1];
+    const gapNote = winNow !== null && matchNow !== null
+      ? ` Gap between lines (${(matchNow - winNow).toFixed(1)}pp) = listings where you match price but don't win — narrowing this gap means you're getting more competitive.`
+      : '';
+    chartNote.innerHTML = `Win BB trending <strong style="color:${winTrend > 0.3 ? '#00f5a0' : winTrend < -0.3 ? '#ff4d6d' : '#6b7a8d'}">${winTrend > 0.3 ? 'up' : winTrend < -0.3 ? 'down' : 'flat'}</strong> over last 3 entries. Match BB trending <strong style="color:${matchTrend > 0.3 ? '#00f5a0' : matchTrend < -0.3 ? '#ff4d6d' : '#6b7a8d'}">${matchTrend > 0.3 ? 'up' : matchTrend < -0.3 ? 'down' : 'flat'}</strong>.${gapNote}`;
+  }
+
   destroyChart('repricerChart');
   const opts = chartOpts();
   opts.scales.y.beginAtZero = false;
   opts.scales.y.min = yMin;
   opts.scales.y.max = yMax;
   opts.scales.y.ticks.callback = v => v + '%';
-  
+  opts.plugins.legend = { display: false };
+
   chartInstances.repricerChart = new Chart(chartCtx, {
-    type:'line',
-    data:{
-      labels: snaps.map(s=>fmtShort(s.date)),
-      datasets:[
-        { label:'Win BB %', data:winData, borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2 },
-        { label:'Match BB %', data:matchData, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.06)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2 },
+    type: 'line',
+    data: {
+      labels: windowed.map(s => fmtShort(s.date)),
+      datasets: [
+        { label: 'Win BB %', data: winData, borderColor: '#00f5a0', backgroundColor: 'rgba(0,245,160,.07)', tension: .35, fill: true, pointRadius: 5, pointBackgroundColor: '#00f5a0', pointBorderColor: '#07090c', pointBorderWidth: 2, borderWidth: 2.5 },
+        { label: 'Match BB %', data: matchData, borderColor: '#ffd166', backgroundColor: 'rgba(255,209,102,.05)', tension: .35, fill: false, pointRadius: 5, pointBackgroundColor: '#ffd166', pointBorderColor: '#07090c', pointBorderWidth: 2, borderWidth: 2, borderDash: [5, 3] },
+        { label: '10% target', data: windowed.map(() => 10), borderColor: 'rgba(107,122,141,0.4)', borderDash: [3, 3], pointRadius: 0, fill: false, borderWidth: 1 },
       ]
     },
     options: opts
@@ -2877,25 +3081,109 @@ function renderCompTab() {
         </div>`
       : '<div style="color:var(--muted2);font-size:12px">—</div>';
     
-    // Analysis text for competitor
+    // Rich per-row analysis
     let analysisText = '';
-    if (diffMonth !== null) {
-      if (diffMonth > 3) {
-        analysisText = `📈 Strong gain of ${diffMonth.toFixed(1)}pp since month start`;
-      } else if (diffMonth > 0) {
-        analysisText = `↑ Up ${diffMonth.toFixed(1)}pp from SOM`;
-      } else if (diffMonth < -3) {
-        analysisText = `📉 Lost ${Math.abs(diffMonth).toFixed(1)}pp since month start`;
-      } else if (diffMonth < 0) {
-        analysisText = `↓ Down ${Math.abs(diffMonth).toFixed(1)}pp from SOM`;
-      } else {
-        analysisText = `→ Even with month start`;
-      }
-    } else {
-      analysisText = `No SOM data`;
+    const histPcts = sellerMap[s.name]?.data.map(d => d.pct) || [];
+    const histDates = sellerMap[s.name]?.data.map(d => d.date) || [];
+    const h = histPcts;
+
+    // Streak calculation
+    let streak = 0;
+    for (let i = h.length-1; i >= 1; i--) {
+      const delta = h[i] - h[i-1];
+      if (i === h.length-1) streak = delta > 0.1 ? 1 : delta < -0.1 ? -1 : 0;
+      else if ((streak > 0 && delta > 0.1) || (streak < 0 && delta < -0.1)) streak += streak > 0 ? 1 : -1;
+      else break;
     }
-    
-    // Don't add threat level - just show the SOM comparison
+
+    // 3-entry trend
+    const last3h = h.slice(-3);
+    const trend3h = last3h.length >= 2 ? parseFloat((last3h[last3h.length-1] - last3h[0]).toFixed(1)) : null;
+
+    // Net change over all history
+    const netChange = h.length >= 2 ? parseFloat((h[h.length-1] - h[0]).toFixed(1)) : null;
+    const netColor = netChange > 0 ? 'var(--g)' : netChange < 0 ? 'var(--o)' : 'var(--muted2)';
+
+    // Movement history: last 5 entries
+    const last5 = h.slice(-5);
+    const last5dates = histDates.slice(-5);
+    const moveHistory = last5.length >= 2
+      ? last5.slice(1).map((v, i) => {
+          const d = parseFloat((v - last5[i]).toFixed(1));
+          const col = d > 0.1 ? '#00f5a0' : d < -0.1 ? '#ff8c42' : '#4a5568';
+          const dd = last5dates[i+1]?.split('-'); const lbl = dd ? `${dd[2]}/${dd[1]}` : '';
+          return `<span style="font-family:var(--mono);font-size:10px;color:${col}">${lbl} <strong>${d > 0 ? '+' : ''}${d}pp</strong></span>`;
+        }).join('<span style="color:var(--border2);margin:0 3px">→</span>')
+      : '';
+
+    // Rich multi-sentence analysis
+    let verdict = '';
+    const latestPct = h[h.length-1];
+    const firstPct = h[0];
+    const sessionCount = h.length;
+    const highPoint = Math.max(...h);
+    const lowPoint = Math.min(...h);
+    const range = parseFloat((highPoint - lowPoint).toFixed(1));
+
+    // Position context
+    const posContext = latestPct >= 65 ? `At ${latestPct.toFixed(1)}%, you're deeply embedded in their catalogue — this is a high-overlap competitive relationship.`
+      : latestPct >= 45 ? `At ${latestPct.toFixed(1)}%, you're competing directly on a meaningful chunk of their portfolio.`
+      : latestPct >= 25 ? `At ${latestPct.toFixed(1)}%, you're adjacent competitors — some direct overlap but each with your own space.`
+      : `At ${latestPct.toFixed(1)}%, overlap is relatively low — limited direct competition right now.`;
+
+    // Trend sentence
+    let trendSentence = '';
+    if (sessionCount < 2) {
+      trendSentence = 'First reading — baseline set. No trend to read yet, check back next session.';
+    } else if (streak >= 3) {
+      trendSentence = `Rising ${streak} entries in a row — this is a clear, sustained upward trend. Overlap is consistently growing.`;
+    } else if (streak <= -3) {
+      trendSentence = `Falling ${Math.abs(streak)} entries in a row — consistent and sustained decline. Something has changed, worth investigating.`;
+    } else if (diffLast !== null && diffLast > 5) {
+      trendSentence = `Big jump this entry (+${diffLast.toFixed(1)}pp) — significant single-session move. Could be a genuine shift or a one-off. Watch closely next session to see if it holds.`;
+    } else if (diffLast !== null && diffLast < -5) {
+      trendSentence = `Sharp drop this entry (${diffLast.toFixed(1)}pp) — notable single-session fall. Don't overreact to one data point — confirm the direction next session before changing strategy.`;
+    } else if (trend3h !== null && trend3h > 2) {
+      trendSentence = `Gradual but sustained climb over last 3 entries (+${trend3h}pp). This is a positive multi-point trend, not just noise — overlap is building steadily.`;
+    } else if (trend3h !== null && trend3h < -2) {
+      trendSentence = `Gradual decline over last 3 entries (${trend3h}pp). Not a crash but a slow drift — worth watching. If it continues another 2 entries, it becomes a real trend to act on.`;
+    } else if (diffLast !== null && Math.abs(diffLast) <= 0.5) {
+      trendSentence = `Flat this entry — stable overlap with no meaningful movement. Could be a pause in a longer trend, or genuine equilibrium. Check the broader direction over the last 4–5 entries.`;
+    } else {
+      trendSentence = `Mixed movement across entries — no clean trend has formed yet. Need more consistent data points before drawing conclusions.`;
+    }
+
+    // Volatility note
+    let volatilityNote = '';
+    if (sessionCount >= 4 && range > 10) {
+      volatilityNote = ` Overlap has swung ${range}pp between ${lowPoint.toFixed(1)}% and ${highPoint.toFixed(1)}% — fairly volatile. Single entries can be misleading here, focus on the multi-entry direction.`;
+    } else if (sessionCount >= 4 && range <= 3) {
+      volatilityNote = ` Very stable across ${sessionCount} sessions (${lowPoint.toFixed(1)}–${highPoint.toFixed(1)}%) — low volatility. Readings here are reliable.`;
+    }
+
+    // Net direction over all time
+    let netNote = '';
+    if (netChange !== null && sessionCount >= 3) {
+      netNote = netChange > 5 ? ` Overall you're up ${netChange}pp since first tracked — solid growth in overlap.`
+        : netChange < -5 ? ` Overall you're down ${Math.abs(netChange)}pp since first tracked — net decline across the full period.`
+        : ` Net movement since first tracked is minimal (${netChange > 0 ? '+' : ''}${netChange}pp) — broadly flat overall.`;
+    }
+
+    verdict = trendSentence + volatilityNote + netNote + ' ' + posContext;
+
+    analysisText = `<div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.65">${verdict}</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:16px">
+        ${moveHistory ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${moveHistory}</div>` : ''}
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          ${netChange !== null ? `<span style="font-family:var(--mono);font-size:10px">Net all-time: <span style="color:${netColor};font-weight:600">${netChange > 0 ? '+' : ''}${netChange}pp</span></span>` : ''}
+          ${trend3h !== null ? `<span style="font-family:var(--mono);font-size:10px">Last 3: <span style="color:${trend3h > 0 ? 'var(--g)' : trend3h < 0 ? 'var(--o)' : 'var(--muted2)'};font-weight:600">${trend3h > 0 ? '+' : ''}${trend3h}pp</span></span>` : ''}
+          ${streak !== 0 ? `<span style="font-family:var(--mono);font-size:10px">Streak: <span style="color:${streak > 0 ? 'var(--g)' : 'var(--o)'};font-weight:600">${streak > 0 ? '↑' : '↓'} ${Math.abs(streak)}×</span></span>` : ''}
+          <span style="font-family:var(--mono);font-size:10px">Sessions: <span style="color:var(--muted2);font-weight:600">${sessionCount}</span></span>
+          <span style="font-family:var(--mono);font-size:10px">Range: <span style="color:var(--muted2);font-weight:600">${lowPoint.toFixed(1)}–${highPoint.toFixed(1)}%</span></span>
+        </div>
+      </div>
+    </div>`;
 
     // Current value color based on thresholds: green 35-50%, blue >50%, yellow up to 35%, red <15%
     let progressColor = 'var(--text)';
@@ -3225,47 +3513,97 @@ function renderCompChart(snaps) {
 }
 
 function renderCompInsights(snaps) {
-  const ci = document.getElementById('compInsightText');
-  const cb = document.getElementById('compInsightBullets');
-  if (!COMPETITOR_SESSIONS.length) { ci.innerHTML = 'Add competitor readings using ⚡ Update Overlaps to start tracking trends.'; cb.innerHTML=''; return; }
+  const box = document.getElementById('compInsightInner');
+  if (!box) return;
+
+  if (!COMPETITOR_SESSIONS.length) {
+    box.innerHTML = `<div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div><div style="color:var(--muted2);font-family:var(--mono);font-size:11px">Add competitor readings using ⚡ Update Overlaps to start tracking trends.</div>`;
+    return;
+  }
 
   const sellerMap = {};
-  COMPETITOR_SESSIONS.forEach(session => { (session.competitors||[]).forEach(c => { const k=c.name.trim(); if(!sellerMap[k]) sellerMap[k]={sellerId:c.sellerId||'',data:[]}; sellerMap[k].data.push(c.pct||0); if(c.sellerId) sellerMap[k].sellerId=c.sellerId; }); });
-
-  const allLatest = Object.entries(sellerMap).map(([n,v])=>({name:n,pct:v.data[v.data.length-1],avg:v.data.reduce((a,b)=>a+b,0)/v.data.length})).sort((a,b)=>b.pct-a.pct);
-  if (!allLatest.length) { ci.innerHTML = 'Add competitor readings on this tab to start tracking their overlap % over time.'; cb.innerHTML=''; return; }
-
-  const top = allLatest[0];
-  const growing = Object.entries(sellerMap).filter(([_,v])=>{ const d=v.data; return d.length>=2 && d[d.length-1]>d[d.length-2]; });
-  const shrinking = Object.entries(sellerMap).filter(([_,v])=>{ const d=v.data; return d.length>=2 && d[d.length-1]<d[d.length-2]; });
-  const high = allLatest.filter(s => s.pct > 40);
-  const medium = allLatest.filter(s => s.pct > 25 && s.pct <= 40);
-
-  let txt = `<strong style="color:var(--g)">Tracking ${allLatest.length} competitor${allLatest.length!==1?'s':''}</strong> • `;
-  txt += `<strong style="color:var(--g)">${top.name} at ${top.pct.toFixed(1)}% — catch them!</strong> • `;
-  if (high.length) txt += `<strong style="color:var(--g)">${high.length} strong overlap</strong> (>40%) • `;
-  if (growing.length) txt += `<strong style="color:var(--g)"><span style="color:var(--g)">↑</span> ${growing.length} improving</strong> • `;
-  if (shrinking.length) txt += `<strong style="color:var(--o)"><span style="color:var(--o)">↓</span> ${shrinking.length} slipping</strong>`;
-
-  ci.innerHTML = txt;
-
-  const bullets = [];
-  Object.entries(sellerMap).forEach(([name, info]) => {
-    const d = info.data;
-    const trend = d[d.length-1] - d[d.length-2];
-    const avgDiff = d[d.length-1] - (d.reduce((a,b)=>a+b,0)/d.length);
-    
-    if (d.length >= 3 && d[d.length-1]>d[d.length-2] && d[d.length-2]>d[d.length-3])
-      bullets.push(`<strong style="color:var(--g)"><span style="color:var(--g)">↑</span> ${name}</strong> gaining 3 straight — you're closing in!`);
-    if (d.length >= 2 && trend > 5)
-      bullets.push(`<span style="color:var(--g)"><span style="color:var(--g)">↑</span> ${name} +${trend.toFixed(1)}pp — excellent progress!</span>`);
-    if (d.length >= 2 && trend < -5)
-      bullets.push(`<span style="color:var(--o)"><span style="color:var(--o)">↓</span> ${name} -${Math.abs(trend).toFixed(1)}pp — lost ground here</span>`);
-    if (d[d.length-1] > 40)
-      bullets.push(`<span style="color:var(--g)"><strong>${name}</strong> at ${d[d.length-1].toFixed(1)}% — dominating this seller!</span>`);
+  COMPETITOR_SESSIONS.forEach(session => {
+    (session.competitors||[]).forEach(c => {
+      const k = c.name.trim();
+      if (!sellerMap[k]) sellerMap[k] = { sellerId: c.sellerId||'', data: [] };
+      sellerMap[k].data.push({ date: session.date, pct: c.pct||0 });
+      if (c.sellerId) sellerMap[k].sellerId = c.sellerId;
+    });
   });
-  
-  cb.innerHTML = bullets.length > 0 ? bullets.map(b=>`<div class="insight-bullet">${b}</div>`).join('') : '<div class="insight-bullet" style="color:var(--muted)">All competitors stable — keep testing</div>';
+
+  const sellers = Object.entries(sellerMap).map(([name, info]) => {
+    const d = info.data;
+    const latest = d[d.length-1]?.pct ?? 0;
+    const prev = d.length > 1 ? d[d.length-2]?.pct : null;
+    const diff = prev !== null ? parseFloat((latest - prev).toFixed(1)) : null;
+    const avg = parseFloat((d.reduce((s,x)=>s+x.pct,0)/d.length).toFixed(1));
+    const last3 = d.slice(-3).map(x=>x.pct);
+    const trend3 = last3.length >= 2 ? parseFloat((last3[last3.length-1] - last3[0]).toFixed(1)) : null;
+    let streak = 0;
+    for (let i = d.length-1; i >= 1; i--) {
+      const delta = d[i].pct - d[i-1].pct;
+      if (i === d.length-1) streak = delta > 0.1 ? 1 : delta < -0.1 ? -1 : 0;
+      else if ((streak > 0 && delta > 0.1) || (streak < 0 && delta < -0.1)) streak += streak > 0 ? 1 : -1;
+      else break;
+    }
+    return { name, latest, prev, diff, avg, trend3, streak, history: d };
+  }).sort((a,b) => b.latest - a.latest);
+
+  if (!sellers.length) {
+    box.innerHTML = `<div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div><div style="color:var(--muted2);font-family:var(--mono);font-size:11px">No competitor data yet.</div>`;
+    return;
+  }
+
+  const withPrev = sellers.filter(s => s.diff !== null);
+  const up = withPrev.filter(s => s.diff > 0.1);
+  const down = withPrev.filter(s => s.diff < -0.1);
+  const flat = withPrev.filter(s => Math.abs(s.diff) <= 0.1);
+  const avgIncrease = up.length ? parseFloat((up.reduce((s,x)=>s+x.diff,0)/up.length).toFixed(1)) : null;
+  const avgDecrease = down.length ? parseFloat((Math.abs(down.reduce((s,x)=>s+x.diff,0))/down.length).toFixed(1)) : null;
+  const overallAvg = parseFloat((sellers.reduce((s,x)=>s+x.latest,0)/sellers.length).toFixed(1));
+  const highest = sellers[0];
+  const with3 = sellers.filter(s => s.trend3 !== null);
+  const trendingUp = with3.filter(s => s.trend3 > 0.5);
+  const trendingDown = with3.filter(s => s.trend3 < -0.5);
+  const consecutiveUp = sellers.filter(s => s.streak >= 2);
+  const consecutiveDown = sellers.filter(s => s.streak <= -2);
+
+  const statRow = (label, val, color='var(--text)') =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${label}</span>
+      <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${color}">${val}</span>
+    </div>`;
+
+  // Left: aggregate stats
+  const leftHtml = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px">Market snapshot</div>
+    ${statRow('Competitors tracked', sellers.length)}
+    ${statRow('Average overlap', overallAvg + '%', overallAvg > 50 ? 'var(--g)' : overallAvg > 30 ? 'var(--y)' : 'var(--muted2)')}
+    ${statRow('Highest overlap', highest.name + ' — ' + highest.latest.toFixed(1) + '%', 'var(--g)')}
+    ${withPrev.length ? statRow('Up this entry', up.length + ' of ' + withPrev.length, up.length > down.length ? 'var(--g)' : 'var(--muted2)') : ''}
+    ${withPrev.length ? statRow('Down this entry', down.length + ' of ' + withPrev.length, down.length > up.length ? 'var(--o)' : 'var(--muted2)') : ''}
+    ${withPrev.length ? statRow('Flat this entry', flat.length + ' of ' + withPrev.length) : ''}
+    ${avgIncrease !== null ? statRow('Avg increase (risers)', '+' + avgIncrease + 'pp', 'var(--g)') : ''}
+    ${avgDecrease !== null ? statRow('Avg decrease (droppers)', '-' + avgDecrease + 'pp', 'var(--o)') : ''}`;
+
+  // Right: trend summary
+  const rightHtml = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px">Multi-entry trends</div>
+    ${trendingUp.length ? statRow('Trending up (last 3)', trendingUp.map(s=>s.name).join(', '), 'var(--g)') : statRow('Trending up (last 3)', 'None', 'var(--muted2)')}
+    ${trendingDown.length ? statRow('Trending down (last 3)', trendingDown.map(s=>s.name).join(', '), 'var(--o)') : statRow('Trending down (last 3)', 'None', 'var(--muted2)')}
+    ${consecutiveUp.length ? statRow('Hot streak (2+ consecutive)', consecutiveUp.map(s => s.name + ' ×' + s.streak).join(', '), 'var(--g)') : ''}
+    ${consecutiveDown.length ? statRow('Dropping consistently', consecutiveDown.map(s => s.name + ' ×' + Math.abs(s.streak)).join(', '), 'var(--o)') : ''}
+    ${with3.length ? statRow('Biggest 3-entry rise', (() => { const t = [...with3].sort((a,b)=>b.trend3-a.trend3)[0]; return t.name + ' +' + t.trend3 + 'pp'; })(), 'var(--g)') : ''}
+    ${with3.length ? statRow('Biggest 3-entry drop', (() => { const t = [...with3].sort((a,b)=>a.trend3-b.trend3)[0]; return t.trend3 < 0 ? t.name + ' ' + t.trend3 + 'pp' : 'None'; })(), 'var(--o)') : ''}`;
+
+  box.innerHTML = `
+    <div style="padding:16px 20px 10px;border-bottom:1px solid rgba(0,245,160,.1)">
+      <div class="insight-hd" style="margin-bottom:0"><span class="insight-badge">✦ Competitor Analysis</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+      <div style="padding:16px 20px;border-right:1px solid rgba(0,245,160,.1)">${leftHtml}</div>
+      <div style="padding:16px 20px">${rightHtml}</div>
+    </div>`;
 }
 
 function renderCompHistory() {
