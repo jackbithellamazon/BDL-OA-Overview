@@ -532,8 +532,14 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .kpi-tile.worse{background:#1a1a1a;border-color:#d92424}
 .kpi-tile.same{background:#1a1a1a;border-color:#5a6268}
 .kpi-tile:hover{transform:translateY(-2px);box-shadow:0 8px 16px rgba(0,0,0,0.2)}
-.popout{display:none;position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:8px;background:var(--s1);border:0.5px solid #2a2a2a;border-radius:12px;padding:12px;width:220px;font-size:12px;line-height:1.5;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.3);white-space:normal;pointer-events:auto;z-index:10000}
-.popout.show{display:block}
+.kpi-mini-insight{font-size:9px;color:var(--muted2);font-family:var(--mono);line-height:1.4;margin-top:4px;text-align:center;min-height:24px}
+.kpi-tile:hover{transform:translateY(-2px);box-shadow:0 8px 16px rgba(0,0,0,0.3);cursor:pointer}
+.kpi-modal-stat{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:var(--mono);font-size:11px}
+.kpi-modal-stat:last-child{border-bottom:none}
+.kpi-modal-section{margin-bottom:18px}
+.kpi-modal-section-title{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted2);margin-bottom:8px}
+.kpi-modal-context{padding:12px 14px;background:rgba(0,245,160,.05);border-left:2px solid rgba(0,245,160,.25);font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.65;margin-bottom:16px}
+.kpi-modal-row{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:4px;font-family:var(--mono);font-size:11px}
 .kpi-label{font-size:13px;font-weight:700;text-transform:uppercase;color:#f0f0f0;letter-spacing:0.6px;line-height:1.3;width:100%}
 .kpi-value{font-size:36px;font-weight:800;line-height:1;color:#ffffff;width:100%}
 .kpi-change{font-size:13px;font-weight:600;color:#a0aec0;width:100%;line-height:1.3}
@@ -551,7 +557,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       <span class="nav-icon">◈</span> Overview
     </div>
     <div class="nav-item" onclick="switchTab('daily',this)">
-      <span class="nav-icon">📅</span> Daily Summary
+      <span class="nav-icon">◎</span> Business Brief
     </div>
     <div class="nav-item" onclick="switchTab('repricer',this)">
       <span class="nav-icon">⟳</span> Repricer
@@ -601,68 +607,53 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   <div class="tab-page active" id="tab-overview">
     <div style="position:relative;overflow:visible;z-index:10">
     <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:12px;margin-bottom:24px;overflow:visible">
-      <!-- SKUs -->
-      <div class="kpi-tile">
+      <div class="kpi-tile" onclick="openKpiModal('skus')">
         <div class="kpi-label">Total SKUs</div>
         <div class="kpi-value" id="kSkus">—</div>
-        <div class="kpi-change"><span id="kSkusPill"></span><span id="kSkusSub"></span></div>
-        <div class="popout" id="popoutSkus" >SKU count analysis</div>
+        <div class="kpi-change"><span id="kSkusPill"></span></div>
+        <div class="kpi-mini-insight" id="kSkusInsight"></div>
       </div>
-
-      <!-- ASINs -->
-      <div class="kpi-tile">
+      <div class="kpi-tile" onclick="openKpiModal('asins')">
         <div class="kpi-label">Total ASINs</div>
         <div class="kpi-value" id="kAsins">—</div>
-        <div class="kpi-change"><span id="kAsinsPill"></span><span id="kAsinsSub"></span></div>
-        <div class="popout" id="popoutAsins">Unique products listed on Amazon</div>
+        <div class="kpi-change"><span id="kAsinsPill"></span></div>
+        <div class="kpi-mini-insight" id="kAsinsInsight"></div>
       </div>
-
-      <!-- Avg Cost -->
-      <div class="kpi-tile">
+      <div class="kpi-tile" onclick="openKpiModal('cost')">
         <div class="kpi-label">Avg Unit Cost</div>
         <div class="kpi-value" id="kCost">—</div>
-        <div class="kpi-change"><span id="kCostPill"></span><span id="kCostSub"></span></div>
-        <div class="popout" id="popoutCost" >Cost per unit analysis</div>
+        <div class="kpi-change"><span id="kCostPill"></span></div>
+        <div class="kpi-mini-insight" id="kCostInsight"></div>
       </div>
-
-      <!-- Stock Value -->
-      <div class="kpi-tile">
+      <div class="kpi-tile" onclick="openKpiModal('stockvalue')">
         <div class="kpi-label">Stock Value</div>
         <div class="kpi-value" id="kStockValue">—</div>
-        <div class="kpi-change"><span id="kStockValuePill"></span><span id="kStockValueSub"></span></div>
-        <div class="popout" id="popoutStockValue" >Stock value analysis</div>
+        <div class="kpi-change"><span id="kStockValuePill"></span></div>
+        <div class="kpi-mini-insight" id="kStockValueInsight"></div>
       </div>
-
-      <!-- Total Units -->
-      <div class="kpi-tile">
+      <div class="kpi-tile" onclick="openKpiModal('units')">
         <div class="kpi-label">Total Units</div>
         <div class="kpi-value" id="kUnits">—</div>
-        <div class="kpi-change"><span id="kUnitsPill"></span><span id="kUnitsSub"></span></div>
-        <div class="popout" id="popoutUnits" >Unit count analysis</div>
+        <div class="kpi-change"><span id="kUnitsPill"></span></div>
+        <div class="kpi-mini-insight" id="kUnitsInsight"></div>
       </div>
-
-      <!-- Win BB % -->
-      <div class="kpi-tile">
+      <div class="kpi-tile" onclick="openKpiModal('winbb')">
         <div class="kpi-label">Win BB %</div>
         <div class="kpi-value" id="kRepWinPct">—</div>
-        <div class="kpi-change"><span id="kRepWinPctPill"></span><span id="kRepWinPctSub"></span></div>
-        <div class="popout" id="popoutWinBB" >Buy Box win analysis</div>
+        <div class="kpi-change"><span id="kRepWinPctPill"></span></div>
+        <div class="kpi-mini-insight" id="kWinBBInsight"></div>
       </div>
-
-      <!-- Match BB % -->
-      <div class="kpi-tile">
+      <div class="kpi-tile" onclick="openKpiModal('matchbb')">
         <div class="kpi-label">Match BB %</div>
         <div class="kpi-value" id="kRepMatchPct">—</div>
-        <div class="kpi-change"><span id="kRepMatchPctPill"></span><span id="kRepMatchPctSub"></span></div>
-        <div class="popout" id="popoutMatchBB" >Buy Box match analysis</div>
+        <div class="kpi-change"><span id="kRepMatchPctPill"></span></div>
+        <div class="kpi-mini-insight" id="kMatchBBInsight"></div>
       </div>
-
-      <!-- Aged Risk -->
-      <div class="kpi-tile">
-        <div class="kpi-label">Aged Risk 181+d</div>
+      <div class="kpi-tile" onclick="openKpiModal('agedrisk')">
+        <div class="kpi-label">Stock Health</div>
         <div class="kpi-value" id="kAgedRisk">—</div>
-        <div class="kpi-change"><span id="kAgedRiskPill"></span><span id="kAgedRiskSub"></span></div>
-        <div class="popout" id="popoutAgedRisk" >Aged inventory analysis</div>
+        <div class="kpi-change"><span id="kAgedRiskPill"></span></div>
+        <div class="kpi-mini-insight" id="kAgedRiskInsight"></div>
       </div>
     </div>
     </div>
@@ -683,9 +674,10 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
             <button class="metric-toggle" onclick="switchChartMetric('asins')">ASINs</button>
             <button class="metric-toggle" onclick="switchChartMetric('skus')">SKUs</button>
             <button class="metric-toggle" onclick="switchChartMetric('stockvalue')">Stock Value</button>
+            <button class="metric-toggle" onclick="switchChartMetric('avgcostperunit')">Avg Cost/Unit</button>
             <button class="metric-toggle" onclick="switchChartMetric('winbb')">Win BB %</button>
             <button class="metric-toggle" onclick="switchChartMetric('matchbb')">Match BB %</button>
-            <button class="metric-toggle" onclick="switchChartMetric('agedrisk')">Aged Risk %</button>
+            <button class="metric-toggle" onclick="switchChartMetric('agedrisk')">Stock Health</button>
           </div>
           <div style="display:flex;align-items:center;gap:12px">
             <div id="chartTrendBadge"></div>
@@ -699,7 +691,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       </div>
       <div class="card">
         <div class="card-hd">
-          <div class="card-title">Stock Ageing</div>
+          <div class="card-title">Age Pipeline</div>
           <div class="card-tag" id="ageingTotalTag">—</div>
         </div>
         <div class="ageing-list" id="ageingList">
@@ -708,7 +700,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       </div>
       <div class="card">
         <div class="card-hd">
-          <div class="card-title">Stock Ageing Breakdown</div>
+          <div class="card-title">Age Pipeline Trend</div>
           <div class="card-tag" id="ageingBreakdownTag">01/04/2026 → 13/04/2026</div>
         </div>
         <div class="chart-wrap tall"><canvas id="stockAgeingChart"></canvas></div>
@@ -821,7 +813,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <!-- Aged Stock (bottom, reference only) -->
     <div class="card" id="agingCardWrap" style="display:none">
       <div class="card-hd">
-        <div class="card-title">Aged Stock — Reference</div>
+        <div class="card-title">Stock Health — Reference</div>
         <div class="card-tag" id="agingChartTag">—</div>
       </div>
       <div id="repAgedMini" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px"></div>
@@ -1252,374 +1244,320 @@ function renderAll() {
 function renderDailySummary(snaps) {
   const container = document.getElementById('dailySummaryContainer');
   if (!container) return;
-  
-  if (!snaps.length) {
-    container.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--muted)">
-      <div style="font-size:24px;margin-bottom:16px">📅</div>
-      <div style="font-size:16px;margin-bottom:8px">No snapshots available</div>
-    </div>`;
+
+  // Date selector state
+  if (!window._briefDate) window._briefDate = null;
+
+  // Build date list from snapshots
+  const snapDates = [...new Set(snaps.map(s=>s.date))].sort();
+  const defaultDate = snapDates[snapDates.length-1] || null;
+  const selectedDate = window._briefDate && snapDates.includes(window._briefDate) ? window._briefDate : defaultDate;
+
+  if (!snaps.length || !selectedDate) {
+    container.innerHTML = `<div style="text-align:center;padding:80px 20px;color:var(--muted2);font-family:var(--mono)"><div style="font-size:18px;margin-bottom:12px;color:var(--g)">◎</div><div>No snapshots yet — add your first snapshot to see your Business Brief.</div></div>`;
     return;
   }
-  
-  const today = new Date().toISOString().split('T')[0];
-  const todaySnap = snaps.find(s => s.date === today);
-  
-  if (!todaySnap) {
-    container.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--muted)">
-      <div style="font-size:24px;margin-bottom:16px">📅</div>
-      <div style="font-size:16px;margin-bottom:8px">No data for today</div>
-      <div style="font-size:12px">Add a snapshot to see daily comparisons</div>
-    </div>`;
-    return;
+
+  const snapIdx = snaps.findIndex(s=>s.date===selectedDate);
+  const snap = snaps[snapIdx];
+  const prev = snapIdx > 0 ? snaps[snapIdx-1] : null;
+  const prev3 = snapIdx >= 3 ? snaps.slice(Math.max(0,snapIdx-6), snapIdx+1) : snaps.slice(0, snapIdx+1);
+  const allUpTo = snaps.slice(0, snapIdx+1);
+  const daysBetween = prev ? Math.max(1, Math.round((new Date(snap.date)-new Date(prev.date))/86400000)) : null;
+
+  // ── Core metrics ──────────────────────────────────────────
+  const ag = snap.ageing||{};
+  const total = AG_BUCKETS.reduce((s,b)=>s+(ag[b.key]||0),0)||1;
+  const aged181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const aged91 = (ag.a91||0)+aged181;
+  const fresh90 = (ag.a0||0)+(ag.a31||0)+(ag.a61||0);
+  const aged181pct = parseFloat(((aged181/total)*100).toFixed(1));
+  const aged91pct = parseFloat(((aged91/total)*100).toFixed(1));
+  const r = snap.repricer||{};
+  const winPct = r.total>0 ? parseFloat(((r.winning/r.total)*100).toFixed(1)) : parseFloat(r.winPct||0);
+  const matchPct = r.total>0 ? parseFloat(((r.matching/r.total)*100).toFixed(1)) : parseFloat(r.matchPct||0);
+  const prevR = prev?.repricer||{};
+  const prevWin = prevR.total>0 ? parseFloat(((prevR.winning/prevR.total)*100).toFixed(1)) : parseFloat(prevR.winPct||0);
+  const prevMatch = prevR.total>0 ? parseFloat(((prevR.matching/prevR.total)*100).toFixed(1)) : parseFloat(prevR.matchPct||0);
+  const prevAg = prev?.ageing||{};
+  const prevAged181 = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+  const prevTotal = AG_BUCKETS.reduce((s,b)=>s+(prevAg[b.key]||0),0)||1;
+
+  // ── Consecutive trend helpers ──────────────────────────────
+  function consecDir(arr, dir) {
+    let c=0;
+    for(let i=arr.length-1;i>=1;i--){
+      if(dir==='down'&&arr[i]<arr[i-1])c++;
+      else if(dir==='up'&&arr[i]>arr[i-1])c++;
+      else break;
+    }
+    return c;
   }
-  
-  // Get all comparison snapshots
-  const lastSnap = snaps[snaps.length - 2] || null;
-  const monthStartSnap = snaps.find(s => parseInt(s.date.split('-')[2]) === 1) || null;
-  const thirtyDaysBack = new Date(today);
-  thirtyDaysBack.setDate(thirtyDaysBack.getDate() - 30);
-  const thirtySnap = snaps.filter(s => new Date(s.date + 'T00:00:00') <= thirtyDaysBack).pop() || null;
-  
-  // Helper to format metric
-  const fmt2 = (val, isSV=false, isPercent=false) => {
-    if (val === undefined || val === null) return '—';
-    const n = Number(val);
-    if (isPercent) return `${n.toFixed(1)}%`;
-    if (isSV) return `£${n.toLocaleString()}`;
-    return n.toLocaleString();
+  const winVals = allUpTo.map(s=>s.repricer?.total>0?parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.winPct||0));
+  const matchVals = allUpTo.map(s=>s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0));
+  const unitVals = allUpTo.map(s=>s.totalUnits||0);
+  const svVals = allUpTo.map(s=>s.stockValue||0);
+  const aged181Vals = allUpTo.map(s=>(s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0));
+  const winConsecDown = consecDir(winVals,'down');
+  const matchConsecDown = consecDir(matchVals,'down');
+  const svConsecDown = consecDir(svVals,'down');
+  const aged181ConsecUp = consecDir(aged181Vals,'up');
+  const winConsecUp = consecDir(winVals,'up');
+  const svConsecUp = consecDir(svVals,'up');
+
+  // ── Overall business status ─────────────────────────────────
+  let statusLevel = 'good'; // good | watch | concern | critical
+  const concerns = [], positives = [], actions = [];
+
+  // Win BB checks
+  if(winPct<5){statusLevel='critical';concerns.push({icon:'🔴',text:`Win BB critically low at ${winPct.toFixed(1)}% — listings nearly invisible. Urgent pricing action needed.`,area:'Repricer'});}
+  else if(winPct<10&&winConsecDown>=5){statusLevel='concern';concerns.push({icon:'🟠',text:`Win BB at ${winPct.toFixed(1)}% and falling for ${winConsecDown} entries (~${Math.round(winConsecDown/2.5)} weeks). Sustained decline with no recovery — review floor prices.`,area:'Repricer'});}
+  else if(winPct<10&&winConsecDown>=3){if(statusLevel==='good')statusLevel='watch';concerns.push({icon:'🟡',text:`Win BB at ${winPct.toFixed(1)}% — below 10% target and declining for ${winConsecDown} entries. Watch closely.`,area:'Repricer'});}
+  else if(winPct>=10&&winConsecUp>=2){positives.push({icon:'✓',text:`Win BB at ${winPct.toFixed(1)}% and rising ${winConsecUp} entries in a row. Buy box coverage improving.`});}
+  else if(winPct>=10){positives.push({icon:'✓',text:`Win BB at ${winPct.toFixed(1)}% — at or above target.`});}
+
+  // Match BB checks
+  if(matchPct<5&&winPct<5){/* already flagged above */}
+  else if(matchPct<10&&matchConsecDown>=5){if(statusLevel==='good')statusLevel='watch';concerns.push({icon:'🟡',text:`Match BB at ${matchPct.toFixed(1)}% — falling for ${matchConsecDown} entries. Repricer may not be keeping up with competitor moves.`,area:'Repricer'});}
+  else if(matchPct>=10){positives.push({icon:'✓',text:`Match BB at ${matchPct.toFixed(1)}% — decent buy box coverage.`});}
+
+  // Aged stock checks
+  if(aged181pct>10&&aged181ConsecUp>=5){if(statusLevel==='good'||statusLevel==='watch')statusLevel='concern';concerns.push({icon:'🟠',text:`181+ aged stock at ${aged181pct}% and rising for ${aged181ConsecUp} entries (~${Math.round(aged181ConsecUp/2.5)} weeks). Prolonged build-up — clearance needed.`,area:'Stock Health'});actions.push('Run clearance on 181+ units — lower floor prices aggressively to recover capital.');}
+  else if(aged181pct>10){if(statusLevel==='good')statusLevel='watch';concerns.push({icon:'🟡',text:`${aged181} units (${aged181pct}%) aged 181+ days. Above 10% threshold — plan targeted clearance.`,area:'Stock Health'});}
+  else if(ag.a91>0){const a91pct=((ag.a91||0)/total*100).toFixed(1);if(parseFloat(a91pct)>15)concerns.push({icon:'🟡',text:`91–180d bracket has ${ag.a91} units (${a91pct}%) — your early warning zone. These become 181+ in weeks if not moved.`,area:'Stock Health'});}
+  if(aged181===0){positives.push({icon:'✓',text:'No stock aged 181+ days — all inventory within healthy age brackets.'});}
+
+  // Stock value checks
+  if(svConsecDown>=7){if(statusLevel==='good'||statusLevel==='watch')statusLevel='concern';concerns.push({icon:'🟠',text:`Stock value declining for ${svConsecDown} consecutive entries (~${Math.round(svConsecDown/2.5)} weeks). Check buying pipeline — sell-through may be outpacing restocking.`,area:'Inventory'});}
+  else if(svConsecDown>=4){if(statusLevel==='good')statusLevel='watch';concerns.push({icon:'🟡',text:`Stock value down ${svConsecDown} entries in a row. Normal if sell-through is strong, a concern if not restocking.`,area:'Inventory'});}
+  else if(svConsecUp>=3){positives.push({icon:'✓',text:`Stock value growing ${svConsecUp} entries in a row — inventory position strengthening.`});}
+
+  // Unit/cost cross-metric
+  const unitsUp = prev&&(snap.totalUnits||0)>(prev.totalUnits||0);
+  const unitsDown = prev&&(snap.totalUnits||0)<(prev.totalUnits||0);
+  const costUp = prev&&(snap.avgCost||0)>(prev.avgCost||0);
+  const costDown = prev&&(snap.avgCost||0)<(prev.avgCost||0);
+  if(unitsUp&&costDown){positives.push({icon:'✓',text:'Units up and avg cost down — buying more at lower prices. High-velocity strategy working.'});}
+  else if(unitsDown&&costUp){concerns.push({icon:'🟡',text:'Units down and avg cost up — cheaper stock selling through, leaving expensive stock. Watch sell-through on premium ASINs.',area:'Inventory'});}
+  else if(unitsUp&&costUp){positives.push({icon:'◈',text:'Units up and avg cost up — building depth in higher-ticket stock. More capital deployed, watch sell-through pace.'});}
+
+  // Priority action
+  if(winPct<10&&matchPct>winPct+5){actions.push(`Win BB (${winPct.toFixed(1)}%) well below Match BB (${matchPct.toFixed(1)}%) — a small floor price reduction could convert many matches to wins.`);}
+  if(aged181ConsecUp>=3){actions.push(`181+ stock rising for ${aged181ConsecUp} entries — act now before it compounds further.`);}
+  if(winConsecDown>=5){actions.push(`Win BB declining for ${winConsecDown} entries — review and lower floor prices on worst-performing SKUs first.`);}
+
+  const statusConfig = {
+    good:    {label:'All good',        color:'#22c55e', bg:'rgba(34,197,94,.08)',   border:'rgba(34,197,94,.25)'},
+    watch:   {label:'Worth watching',  color:'#ca8a04', bg:'rgba(202,138,4,.08)',   border:'rgba(202,138,4,.25)'},
+    concern: {label:'Needs attention', color:'#ea580c', bg:'rgba(234,88,12,.08)',   border:'rgba(234,88,12,.25)'},
+    critical:{label:'Urgent action',   color:'#dc2626', bg:'rgba(220,38,38,.08)',   border:'rgba(220,38,38,.3)'}
   };
-  
-  // Helper for comparison row
-  const compRow = (name, todayV, compV, isSV=false, isPercent=false) => {
-    if (!compV && compV !== 0) return '';
-    const t = Number(todayV) || 0;
-    const c = Number(compV) || 0;
-    const diff = t - c;
-    const pct = c !== 0 ? ((diff / c) * 100).toFixed(1) : '0';
-    const color = diff > 0 ? 'var(--g)' : diff < 0 ? 'var(--r)' : 'var(--muted2)';
-    const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
-    
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:11px;color:var(--muted);flex:1">${name}</span>
-      <span style="font-size:11px;color:var(--muted2);text-align:center;flex:1">${fmt2(c, isSV, isPercent)}</span>
-      <span style="font-size:12px;font-weight:600;color:#fff;text-align:center;flex:1">${fmt2(t, isSV, isPercent)}</span>
-      <span style="font-size:12px;font-weight:600;color:${color};text-align:right;min-width:60px">${arrow} ${pct}%</span>
-    </div>`;
-  };
-  
-  let html = `<div style="margin-bottom:32px">
-    <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:16px">📊 Data Snapshots</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:32px">`;
-  
-  // TODAY SNAPSHOT
-  html += `<div style="padding:14px;background:var(--s1);border-radius:8px;border:2px solid var(--g);border-left:4px solid var(--g)">
-    <div style="font-size:11px;font-weight:600;color:var(--g);margin-bottom:10px">TODAY</div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:8px">${fmt(todaySnap.date)}</div>
-    <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(todaySnap.totalUnits)}</div>
-    <div style="font-size:9px;color:var(--muted);margin-bottom:10px">Units</div>
-    <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(todaySnap.skus)}</div>
-    <div style="font-size:9px;color:var(--muted)">SKUs</div>
+  const sc = statusConfig[statusLevel];
+
+  // ── KPI snapshot row ────────────────────────────────────────
+  function kpiDiff(cur, prv, fmt, upGoodVal) {
+    if(!prv&&prv!==0) return '';
+    const d = cur-prv;
+    const good = upGoodVal===null ? null : upGoodVal ? d>0 : d<0;
+    const col = d===0?'var(--muted2)':good===null?'#ffd166':good?'#22c55e':'#ea580c';
+    const sign = d>0?'+':d<0?'':'+0';
+    return `<span style="font-family:var(--mono);font-size:10px;color:${col};margin-left:4px">${d!==0?sign+fmt(d):'→'}</span>`;
+  }
+
+  const kpis = [
+    {label:'Stock Value',   val:`£${((snap.stockValue||0)/1000).toFixed(1)}k`,  diff:kpiDiff(snap.stockValue||0,prev?.stockValue||0,v=>'£'+(Math.abs(v)/1000).toFixed(1)+'k',true)},
+    {label:'Total Units',   val:(snap.totalUnits||0).toLocaleString(),          diff:kpiDiff(snap.totalUnits||0,prev?.totalUnits||0,v=>(v>0?'+':'')+Math.round(Math.abs(v)),true)},
+    {label:'Total SKUs',    val:(snap.skus||0).toLocaleString(),                diff:kpiDiff(snap.skus||0,prev?.skus||0,v=>Math.round(Math.abs(v))+' SKUs',true)},
+    {label:'Avg Unit Cost', val:`£${(snap.avgCost||0).toFixed(2)}`,            diff:kpiDiff(snap.avgCost||0,prev?.avgCost||0,v=>'£'+Math.abs(v).toFixed(4),null)},
+    {label:'Win BB %',      val:`${winPct.toFixed(1)}%`,                        diff:kpiDiff(winPct,prevWin,v=>Math.abs(v).toFixed(1)+'pp',true),   alert:winPct<10},
+    {label:'Match BB %',    val:`${matchPct.toFixed(1)}%`,                      diff:kpiDiff(matchPct,prevMatch,v=>Math.abs(v).toFixed(1)+'pp',true), alert:matchPct<10},
+    {label:'181+ Aged',     val:`${aged181} units`,                             diff:kpiDiff(aged181,prevAged181,v=>Math.round(Math.abs(v)),false),   alert:aged181pct>10},
+    {label:'91–180d Watch', val:`${ag.a91||0} units`,                          diff:kpiDiff(ag.a91||0,prevAg.a91||0,v=>Math.round(Math.abs(v)),false), alert:(ag.a91||0)/total>0.15},
+  ];
+
+  // ── Repricer pulse ──────────────────────────────────────────
+  let repricerPulse = '';
+  if(winPct>=10&&matchPct>=10){repricerPulse='Buy box coverage is healthy. Both Win BB and Match BB are at or above target. Keep monitoring for any downward drift.';}
+  else if(winPct>=10&&matchPct<10){repricerPulse=`Win BB is solid at ${winPct.toFixed(1)}% but Match BB (${matchPct.toFixed(1)}%) has slipped below target. Your repricer may not be reacting fast enough to competitor price changes.`;}
+  else if(winPct<5){repricerPulse=`Win BB is critically low at ${winPct.toFixed(1)}%. Your listings are barely visible. This is a cashflow threat — lower floor prices urgently on your top SKUs to recover buy box position.`;}
+  else{repricerPulse=`Win BB at ${winPct.toFixed(1)}% — below the 10% target. ${winConsecDown>=3?'Has been falling for '+winConsecDown+' entries in a row — not a one-off.':'Watch over next 2–3 entries.'} Combined coverage (Win + Match) = ${(winPct+matchPct).toFixed(1)}%.`;}
+
+  // ── Stock health pulse ──────────────────────────────────────
+  let stockPulse = '';
+  const fresh90pct = ((fresh90/total)*100).toFixed(1);
+  if(aged181===0){stockPulse=`All ${total} units are within healthy age brackets (under 181 days). ${parseFloat(fresh90pct)>60?'Over 60% of stock is fresh (under 90 days) — strong buying activity.':'Age distribution is healthy.'}`;}
+  else if(aged181pct>10){stockPulse=`${aged181} units (${aged181pct}%) are aged 181+ days — above the 10% concern threshold. ${aged181ConsecUp>=3?'This has been rising for '+aged181ConsecUp+' entries without recovering — needs action.':'Plan targeted clearance on these ASINs.'} Your 91–180d bracket (${ag.a91||0} units) is your early warning — watch if it keeps growing.`;}
+  else{stockPulse=`${aged181} units (${aged181pct}%) aged 181+ days — manageable but monitor. Fresh stock (under 90d) = ${fresh90pct}% of total. ${(ag.a91||0)>0?'Watch the 91–180d bracket ('+ag.a91+' units) as your leading indicator for future aged stock problems.':''}`;}
+
+  // ── Single thing to focus on ────────────────────────────────
+  let focusOn = '';
+  if(winPct<5){focusOn='URGENT: Lower floor prices across your catalogue — Win BB below 5% means near-zero visibility. Every hour it stays here costs you sales.';}
+  else if(aged181ConsecUp>=5){focusOn=`Clearance — ${aged181} units in 181+ brackets and rising for ${aged181ConsecUp} entries. This is your biggest capital drain right now. Lower floor prices aggressively on these specific ASINs.`;}
+  else if(winConsecDown>=5){focusOn=`Repricer review — Win BB has fallen for ${winConsecDown} entries (~${Math.round(winConsecDown/2.5)} weeks) without any recovery. Lower floor prices on your slowest-moving SKUs first.`;}
+  else if(svConsecDown>=7){focusOn=`Restocking — stock value declining for ${svConsecDown} consecutive entries. Make sure your buying pipeline is active so inventory doesn't deplete too far.`;}
+  else if(aged181pct>10){focusOn=`Clearance on 181+ stock — ${aged181} units (${aged181pct}%) past the acceptable threshold. A targeted promo or price drop now is better than waiting.`;}
+  else if(winPct<10){focusOn=`Pricing — Win BB at ${winPct.toFixed(1)}% is below your 10% target. ${winConsecDown>=3?winConsecDown+' consecutive drops — act on floor prices.':'Review and tighten repricing floors.'}`;}
+  else if(ag.a91>0&&(ag.a91/total)>0.15){focusOn=`91–180d bracket — ${ag.a91} units (${((ag.a91/total)*100).toFixed(1)}%) in the caution zone. These are your future 181+ problem. Reprice these more aggressively now.`;}
+  else{focusOn='Business looks healthy today. Keep monitoring repricer settings and make sure fresh stock is flowing in consistently.';}
+
+  // ── Date selector ───────────────────────────────────────────
+  const dateOptions = snapDates.map(d=>`<option value="${d}" ${d===selectedDate?'selected':''}>${fmt(d)}</option>`).reverse().join('');
+
+  // ── Competitor pulse (if data exists) ──────────────────────
+  let compPulse = '';
+  if(window.COMPETITOR_SESSIONS && COMPETITOR_SESSIONS.length > 0) {
+    const sellerMap = {};
+    COMPETITOR_SESSIONS.forEach(sess=>(sess.competitors||[]).forEach(c=>{
+      const k=c.name.trim();
+      if(!sellerMap[k])sellerMap[k]=[];
+      sellerMap[k].push(c.pct||0);
+    }));
+    const rising = Object.entries(sellerMap).filter(([,v])=>v.length>=2&&v[v.length-1]>v[v.length-2]).map(([k,v])=>`${k} ↑${(v[v.length-1]-v[v.length-2]).toFixed(1)}pp`);
+    const dropping = Object.entries(sellerMap).filter(([,v])=>v.length>=2&&v[v.length-1]<v[v.length-2]).map(([k,v])=>`${k} ↓${(v[v.length-2]-v[v.length-1]).toFixed(1)}pp`);
+    if(rising.length||dropping.length) compPulse = `${rising.length?rising.join(', ')+' gaining ground. ':''}${dropping.length?dropping.join(', ')+' losing ground.':''}`;
+    else compPulse = 'No significant competitor movement since last reading.';
+  }
+
+  // ── BUILD HTML ──────────────────────────────────────────────
+  let html = `
+  <style>
+    .brief-section{margin-bottom:20px}
+    .brief-section-title{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted2);margin-bottom:10px}
+    .brief-panel{padding:14px 16px;border-radius:8px;font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7}
+    .brief-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+    .brief-item:last-child{border-bottom:none}
+  </style>
+
+  <!-- Header: date + status -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Business Brief</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Snapshot: ${fmt(snap.date)}${prev?` · ${daysBetween}d since last entry`:''}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <select onchange="window._briefDate=this.value;renderDailySummary(filteredSnaps())" style="background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:6px;cursor:pointer">${dateOptions}</select>
+      <div style="padding:8px 16px;background:${sc.bg};border:1px solid ${sc.border};border-radius:8px;font-family:var(--mono);font-size:11px;font-weight:600;color:${sc.color}">${sc.label}</div>
+    </div>
+  </div>
+
+  <!-- Focus box -->
+  <div style="padding:16px 20px;background:${sc.bg};border:1px solid ${sc.border};border-radius:10px;margin-bottom:20px">
+    <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:${sc.color};margin-bottom:8px">Focus for today</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.65;font-weight:500">${focusOn}</div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="brief-section">
+    <div class="brief-section-title">Snapshot at a glance</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px">
+      ${kpis.slice(0,4).map(k=>`<div style="background:var(--s2);padding:12px 14px;border-radius:8px;border:1px solid var(--border)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">${k.label}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text)">${k.val}${k.diff}</div>
+      </div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+      ${kpis.slice(4).map(k=>`<div style="background:var(--s2);padding:12px 14px;border-radius:8px;border:1px solid ${k.alert?'rgba(234,88,12,.3)':'var(--border)'}">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">${k.label}</div>
+        <div style="font-size:16px;font-weight:700;color:${k.alert?'#ea580c':'var(--text)'}">${k.val}${k.diff}</div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- Two column: concerns + positives -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <div>
+      <div class="brief-section-title">Concerns & watches</div>
+      <div style="background:var(--s2);border-radius:8px;border:1px solid var(--border);overflow:hidden">
+        ${concerns.length ? concerns.map(c=>`<div class="brief-item" style="padding:10px 14px">
+          <span style="flex-shrink:0;font-size:13px">${c.icon}</span>
+          <div>
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">${c.area}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.55">${c.text}</div>
+          </div>
+        </div>`).join('') : `<div style="padding:16px 14px;font-family:var(--mono);font-size:11px;color:#22c55e">✓ No concerns today — business looking healthy.</div>`}
+      </div>
+    </div>
+    <div>
+      <div class="brief-section-title">What's going well</div>
+      <div style="background:var(--s2);border-radius:8px;border:1px solid var(--border);overflow:hidden">
+        ${positives.length ? positives.map(p=>`<div class="brief-item" style="padding:10px 14px">
+          <span style="flex-shrink:0;font-family:var(--mono);font-size:12px;color:#22c55e">${p.icon}</span>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.55">${p.text}</div>
+        </div>`).join('') : `<div style="padding:16px 14px;font-family:var(--mono);font-size:11px;color:var(--muted2)">Keep adding data — positives will appear as trends emerge.</div>`}
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions if any -->
+  ${actions.length ? `<div class="brief-section">
+    <div class="brief-section-title">Suggested actions</div>
+    <div style="background:rgba(234,88,12,.06);border:1px solid rgba(234,88,12,.2);border-radius:8px;overflow:hidden">
+      ${actions.map((a,i)=>`<div class="brief-item" style="padding:10px 14px">
+        <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:#ea580c;flex-shrink:0">${i+1}.</span>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.55">${a}</div>
+      </div>`).join('')}
+    </div>
+  </div>` : ''}
+
+  <!-- Three pulse sections -->
+  <div style="display:grid;grid-template-columns:1fr 1fr ${compPulse?'1fr':'0fr'};gap:16px;margin-bottom:20px">
+    <div>
+      <div class="brief-section-title">Repricer pulse</div>
+      <div class="brief-panel" style="background:var(--s2);border:1px solid var(--border);border-radius:8px;height:100%">
+        <div style="font-size:13px;font-weight:700;color:${winPct>=10?'#22c55e':winPct<5?'#dc2626':'#ca8a04'};margin-bottom:8px">Win BB ${winPct.toFixed(1)}% · Match BB ${matchPct.toFixed(1)}%</div>
+        ${repricerPulse}
+        ${winConsecDown>=2?`<div style="margin-top:8px;color:#ea580c">↓ ${winConsecDown} drops in a row on Win BB</div>`:''}
+        ${matchConsecDown>=2?`<div style="margin-top:4px;color:#ca8a04">↓ ${matchConsecDown} drops in a row on Match BB</div>`:''}
+      </div>
+    </div>
+    <div>
+      <div class="brief-section-title">Stock health pulse</div>
+      <div class="brief-panel" style="background:var(--s2);border:1px solid var(--border);border-radius:8px;height:100%">
+        <div style="font-size:13px;font-weight:700;color:${aged181pct>10?'#ea580c':aged181pct>5?'#ca8a04':'#22c55e'};margin-bottom:8px">${aged181} units aged 181+ · ${aged181pct}% of stock</div>
+        ${stockPulse}
+        ${aged181ConsecUp>=2?`<div style="margin-top:8px;color:#ea580c">↑ Rising for ${aged181ConsecUp} entries — act before it compounds</div>`:''}
+      </div>
+    </div>
+    ${compPulse?`<div>
+      <div class="brief-section-title">Competitor pulse</div>
+      <div class="brief-panel" style="background:var(--s2);border:1px solid var(--border);border-radius:8px;height:100%">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">${COMPETITOR_SESSIONS.length} competitor${COMPETITOR_SESSIONS.length!==1?'s':''} tracked</div>
+        ${compPulse}
+      </div>
+    </div>`:''}
+  </div>
+
+  <!-- Trend context: last 6 entries -->
+  <div class="brief-section">
+    <div class="brief-section-title">Last ${Math.min(6,allUpTo.length)} entries — key metrics</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border)">
+            ${['Date','Units','Stock Value','Avg Cost','Win BB','Match BB','181+ Aged'].map(h=>`<th style="padding:6px 10px;text-align:left;color:var(--muted2);font-weight:500;font-size:9px;text-transform:uppercase;letter-spacing:.08em">${h}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${allUpTo.slice(-6).reverse().map((s,i)=>{
+            const isSelected = s.date===selectedDate;
+            const sWin = s.repricer?.total>0?parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.winPct||0);
+            const sMatch = s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0);
+            const s181 = (s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0);
+            return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:${isSelected?'rgba(0,245,160,.05)':'transparent'}">
+              <td style="padding:7px 10px;color:${isSelected?'var(--g)':'var(--muted2)'}${isSelected?';font-weight:600':''}">${fmt(s.date)}${isSelected?' ◂':''}</td>
+              <td style="padding:7px 10px;color:var(--text)">${(s.totalUnits||0).toLocaleString()}</td>
+              <td style="padding:7px 10px;color:var(--text)">£${((s.stockValue||0)/1000).toFixed(1)}k</td>
+              <td style="padding:7px 10px;color:var(--text)">£${(s.avgCost||0).toFixed(2)}</td>
+              <td style="padding:7px 10px;color:${sWin>=10?'#22c55e':sWin<5?'#dc2626':'#ca8a04'}">${sWin.toFixed(1)}%</td>
+              <td style="padding:7px 10px;color:${sMatch>=10?'#22c55e':sMatch<5?'#dc2626':'#ca8a04'}">${sMatch.toFixed(1)}%</td>
+              <td style="padding:7px 10px;color:${s181>0?'#ea580c':'#22c55e'}">${s181}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
   </div>`;
-  
-  // LAST SNAPSHOT
-  if (lastSnap) {
-    html += `<div style="padding:14px;background:var(--s1);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-size:11px;font-weight:600;color:var(--muted2);margin-bottom:10px">LAST</div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">${fmt(lastSnap.date)}</div>
-      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(lastSnap.totalUnits)}</div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:10px">Units</div>
-      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(lastSnap.skus)}</div>
-      <div style="font-size:9px;color:var(--muted)">SKUs</div>
-    </div>`;
-  }
-  
-  // MONTH START SNAPSHOT
-  if (monthStartSnap) {
-    html += `<div style="padding:14px;background:var(--s1);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-size:11px;font-weight:600;color:var(--muted2);margin-bottom:10px">MONTH START</div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">${fmt(monthStartSnap.date)}</div>
-      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(monthStartSnap.totalUnits)}</div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:10px">Units</div>
-      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(monthStartSnap.skus)}</div>
-      <div style="font-size:9px;color:var(--muted)">SKUs</div>
-    </div>`;
-  }
-  
-  // 30 DAYS AGO SNAPSHOT - ALWAYS SHOW (blank if no data)
-  if (thirtySnap) {
-    html += `<div style="padding:14px;background:var(--s1);border-radius:8px;border:1px solid var(--border)">
-      <div style="font-size:11px;font-weight:600;color:var(--muted2);margin-bottom:10px">30 DAYS AGO</div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">${fmt(thirtySnap.date)}</div>
-      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(thirtySnap.totalUnits)}</div>
-      <div style="font-size:9px;color:var(--muted);margin-bottom:10px">Units</div>
-      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">${fmt2(thirtySnap.skus)}</div>
-      <div style="font-size:9px;color:var(--muted)">SKUs</div>
-    </div>`;
-  } else {
-    html += `<div style="padding:14px;background:var(--s1);border-radius:8px;border:1px solid var(--border);opacity:0.5">
-      <div style="font-size:11px;font-weight:600;color:var(--muted2);margin-bottom:10px">30 DAYS AGO</div>
-      <div style="font-size:10px;color:var(--muted)">No data available</div>
-    </div>`;
-  }
-  
-  html += `</div>`;
-  
-  // NOW THE COMPARISON TABLES
-  html += `<div style="margin-bottom:24px">
-    <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:16px">📈 Detailed Comparisons</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px">`;
-  
-  // vs LAST
-  if (lastSnap) {
-    html += `<div style="padding:16px;background:var(--s1);border-radius:8px;border:1px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:2px solid var(--border)">
-        <div>
-          <div style="font-size:11px;color:var(--muted)">Last Snapshot</div>
-          <div style="font-size:12px;font-weight:600;color:var(--muted2)">${fmt(lastSnap.date)}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--muted)">Today</div>
-          <div style="font-size:12px;font-weight:600;color:var(--g)">${fmt(todaySnap.date)}</div>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted2);margin-bottom:8px;padding:0 0">
-        <span style="flex:1">Metric</span>
-        <span style="flex:1;text-align:center">Before</span>
-        <span style="flex:1;text-align:center">Now</span>
-        <span style="text-align:right;min-width:60px">Change</span>
-      </div>
-      ${compRow('Units', todaySnap.totalUnits, lastSnap.totalUnits)}
-      ${compRow('SKUs', todaySnap.skus, lastSnap.skus)}
-      ${compRow('Stock Value', todaySnap.stockValue, lastSnap.stockValue, true)}
-      ${compRow('Win BB %', todaySnap.repricer?.winPct, lastSnap.repricer?.winPct, false, true)}
-      ${compRow('Match BB %', todaySnap.repricer?.matchPct, lastSnap.repricer?.matchPct, false, true)}
-      ${compRow('Aged Risk 181+d', calcAgedRisk(todaySnap), calcAgedRisk(lastSnap), false, true)}
-      <div style="margin-top:16px;padding:16px;background:rgba(0,245,160,0.1);border-left:4px solid var(--g);border-radius:6px;font-size:12px;color:#fff;line-height:1.6;font-weight:500;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word">
-        ${(() => {
-          const unitDiff = (todaySnap.totalUnits||0) - (lastSnap.totalUnits||0);
-          const skuDiff = (todaySnap.skus||0) - (lastSnap.skus||0);
-          const svDiff = (todaySnap.stockValue||0) - (lastSnap.stockValue||0);
-          const winDiff = (todaySnap.repricer?.winPct||0) - (lastSnap.repricer?.winPct||0);
-          const matchDiff = (todaySnap.repricer?.matchPct||0) - (lastSnap.repricer?.matchPct||0);
-          const agedRiskDiff = calcAgedRisk(todaySnap) - calcAgedRisk(lastSnap);
-          const avgPriceLast = lastSnap.stockValue / (lastSnap.totalUnits || 1);
-          const avgPriceNow = todaySnap.stockValue / (todaySnap.totalUnits || 1);
-          const daysElapsed = Math.max(1, Math.floor((new Date(todaySnap.date) - new Date(lastSnap.date)) / (1000*60*60*24)));
-          const priceChange = avgPriceNow - avgPriceLast;
-          
-          let analysis = `Since Last Snapshot:\n\n`;
-          
-          // Units analysis
-          analysis += `UNITS: ${lastSnap.totalUnits.toLocaleString()} → ${todaySnap.totalUnits.toLocaleString()}\n`;
-          analysis += `Change: ${unitDiff > 0 ? '+' : ''}${unitDiff.toLocaleString()} units\n`;
-          if (Math.abs(unitDiff) > 100) {
-            const dailyVelocity = Math.abs(unitDiff) / Math.max(1, Math.floor((new Date(todaySnap.date) - new Date(lastSnap.date)) / (1000*60*60*24)));
-            analysis += `Velocity: ${dailyVelocity.toFixed(1)}/day\n`;
-          }
-          analysis += `\n`;
-          
-          // Stock value analysis
-          const svPercent = ((svDiff / lastSnap.stockValue) * 100).toFixed(1);
-          analysis += `STOCK VALUE: £${lastSnap.stockValue.toLocaleString()} → £${todaySnap.stockValue.toLocaleString()}\n`;
-          analysis += `Change: ${svDiff > 0 ? '+' : ''}£${svDiff.toLocaleString()} (${svPercent}%)\n`;
-          analysis += `Avg Price/Unit: £${avgPriceLast.toFixed(2)} → £${avgPriceNow.toFixed(2)}\n`;
-          analysis += `Price Shift: ${priceChange > 0 ? '+' : ''}£${priceChange.toFixed(2)}/unit\n`;
-          analysis += `\n`;
-          
-          // Buy Box analysis
-          analysis += `BUY BOX WIN: ${(lastSnap.repricer?.winPct||0).toFixed(1)}% → ${(todaySnap.repricer?.winPct||0).toFixed(1)}%\n`;
-          analysis += `Trend: ${winDiff > 0 ? '+' : ''}${winDiff.toFixed(1)}pp\n`;
-          analysis += `\n`;
-          
-          // SKU analysis
-          analysis += `SKU COUNT: ${lastSnap.skus} → ${todaySnap.skus} (${skuDiff > 0 ? '+' : ''}${skuDiff})\n`;
-          analysis += `\n`;
-          
-          // Strategic insight
-          if (unitDiff < 0 && svDiff > 0) {
-            analysis += `STRATEGY: Sold ${Math.abs(unitDiff)} units but value UP £${svDiff.toLocaleString()}.\n`;
-            analysis += `This shows a strategic mix shift — you're converting low-margin inventory to cash\n`;
-            analysis += `while restocking with premium, higher-margin products. Average price per unit\n`;
-            analysis += `increased from £${avgPriceLast.toFixed(2)} to £${avgPriceNow.toFixed(2)}, indicating quality mix improvement.\n`;
-            analysis += `This is excellent inventory management.`;
-          } else if (unitDiff > 0 && svDiff > 0 && priceChange > 0) {
-            analysis += `STRATEGY: Growing inventory (+${unitDiff.toLocaleString()} units) at higher price points.\n`;
-            analysis += `Average price increased £${priceChange.toFixed(2)}/unit. Building premium stock position\n`;
-            analysis += `for accelerated sales velocity. Growth phase with improved margins.`;
-          } else if (unitDiff < 0 && svDiff < 0) {
-            analysis += `ALERT: Both units and value declining.\n`;
-            analysis += `Units: -${Math.abs(unitDiff).toLocaleString()}, Value: -£${Math.abs(svDiff).toLocaleString()}\n`;
-            analysis += `Average price fell £${Math.abs(priceChange).toFixed(2)}/unit (£${avgPriceLast.toFixed(2)} → £${avgPriceNow.toFixed(2)}).\n`;
-            analysis += `Monitor pricing and competitive positioning.`;
-          }
-          
-          return analysis;
-        })()}
-      </div>
-    </div>`;
-  }
-  
-  // vs MTD
-  if (monthStartSnap) {
-    html += `<div style="padding:16px;background:var(--s1);border-radius:8px;border:1px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:2px solid var(--border)">
-        <div>
-          <div style="font-size:11px;color:var(--muted)">Month Start</div>
-          <div style="font-size:12px;font-weight:600;color:var(--muted2)">${fmt(monthStartSnap.date)}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--muted)">Today</div>
-          <div style="font-size:12px;font-weight:600;color:var(--g)">${fmt(todaySnap.date)}</div>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted2);margin-bottom:8px;padding:0 0">
-        <span style="flex:1">Metric</span>
-        <span style="flex:1;text-align:center">Start</span>
-        <span style="flex:1;text-align:center">Now</span>
-        <span style="text-align:right;min-width:60px">Change</span>
-      </div>
-      ${compRow('Units', todaySnap.totalUnits, monthStartSnap.totalUnits)}
-      ${compRow('SKUs', todaySnap.skus, monthStartSnap.skus)}
-      ${compRow('Stock Value', todaySnap.stockValue, monthStartSnap.stockValue, true)}
-      ${compRow('Win BB %', todaySnap.repricer?.winPct, monthStartSnap.repricer?.winPct, false, true)}
-      ${compRow('Match BB %', todaySnap.repricer?.matchPct, monthStartSnap.repricer?.matchPct, false, true)}
-      ${compRow('Aged Risk 181+d', calcAgedRisk(todaySnap), calcAgedRisk(monthStartSnap), false, true)}
-      <div style="margin-top:16px;padding:16px;background:rgba(0,245,160,0.1);border-left:4px solid var(--g);border-radius:6px;font-size:12px;color:#fff;line-height:1.6;font-weight:500;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word">
-        ${(() => {
-          const unitDiff = (todaySnap.totalUnits||0) - (monthStartSnap.totalUnits||0);
-          const skuDiff = (todaySnap.skus||0) - (monthStartSnap.skus||0);
-          const svDiff = (todaySnap.stockValue||0) - (monthStartSnap.stockValue||0);
-          const winDiff = (todaySnap.repricer?.winPct||0) - (monthStartSnap.repricer?.winPct||0);
-          const matchDiff = (todaySnap.repricer?.matchPct||0) - (monthStartSnap.repricer?.matchPct||0);
-          const daysInMonth = Math.floor((new Date(todaySnap.date) - new Date(monthStartSnap.date)) / (1000*60*60*24));
-          const dailyBurnRate = unitDiff / daysInMonth;
-          const avgPriceSOM = monthStartSnap.stockValue / (monthStartSnap.totalUnits || 1);
-          const avgPriceCurr = todaySnap.stockValue / (todaySnap.totalUnits || 1);
-          const priceShift = avgPriceCurr - avgPriceSOM;
-          
-          let analysis = `Month-to-Date (${daysInMonth} days):\n\n`;
-          
-          // Units analysis
-          analysis += `UNITS: ${monthStartSnap.totalUnits.toLocaleString()} → ${todaySnap.totalUnits.toLocaleString()}\n`;
-          analysis += `Change: ${unitDiff > 0 ? '+' : ''}${unitDiff.toLocaleString()}\n`;
-          analysis += `Daily Rate: ${dailyBurnRate.toFixed(1)}/day\n`;
-          analysis += `\n`;
-          
-          // Stock value analysis
-          const svPercent = ((svDiff / monthStartSnap.stockValue) * 100).toFixed(1);
-          analysis += `STOCK VALUE: £${monthStartSnap.stockValue.toLocaleString()} → £${todaySnap.stockValue.toLocaleString()}\n`;
-          analysis += `Change: ${svDiff > 0 ? '+' : ''}£${svDiff.toLocaleString()} (${svPercent}%)\n`;
-          analysis += `Avg Price/Unit: £${avgPriceSOM.toFixed(2)} → £${avgPriceCurr.toFixed(2)}\n`;
-          analysis += `Price Shift: ${priceShift > 0 ? '+' : ''}£${priceShift.toFixed(2)}/unit\n`;
-          analysis += `\n`;
-          
-          // Buy Box analysis
-          analysis += `BUY BOX WIN: ${(monthStartSnap.repricer?.winPct||0).toFixed(1)}% → ${(todaySnap.repricer?.winPct||0).toFixed(1)}%\n`;
-          analysis += `Trend: ${winDiff > 0 ? '+' : ''}${winDiff.toFixed(1)}pp over month\n`;
-          analysis += `\n`;
-          
-          // SKU analysis
-          analysis += `SKU COUNT: ${monthStartSnap.skus} → ${todaySnap.skus}\n`;
-          analysis += `\n`;
-          
-          // Month narrative
-          if (unitDiff < 0 && svDiff > 0) {
-            analysis += `MONTH NARRATIVE:\n`;
-            analysis += `You've sold ${Math.abs(unitDiff).toLocaleString()} units (${Math.abs(dailyBurnRate).toFixed(1)}/day)\n`;
-            analysis += `while growing value by £${svDiff.toLocaleString()}. This is strong execution of your\n`;
-            analysis += `mix shift strategy. By selling through low-margin stock and upgrading inventory mix,\n`;
-            analysis += `you increased average price per unit from £${avgPriceSOM.toFixed(2)} to £${avgPriceCurr.toFixed(2)}.\n`;
-            analysis += `This improves margins and positions you well for next period.`;
-          } else if (unitDiff > 0 && svDiff > 0) {
-            analysis += `MONTH NARRATIVE:\n`;
-            analysis += `Building phase — added ${unitDiff.toLocaleString()} units at ${(unitDiff/daysInMonth).toFixed(0)}/day.\n`;
-            analysis += `Stock value increased £${svDiff.toLocaleString()} (${svPercent}%).\n`;
-            analysis += `Average price improved £${priceShift.toFixed(2)}/unit. Growing premium inventory position.`;
-          }
-          
-          return analysis;
-        })()}
-      </div>
-    </div>`;
-  }
-  
-  // vs 30 DAYS
-  if (thirtySnap) {
-    html += `<div style="padding:16px;background:var(--s1);border-radius:8px;border:1px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:2px solid var(--border)">
-        <div>
-          <div style="font-size:11px;color:var(--muted)">30 Days Ago</div>
-          <div style="font-size:12px;font-weight:600;color:var(--muted2)">${fmt(thirtySnap.date)}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--muted)">Today</div>
-          <div style="font-size:12px;font-weight:600;color:var(--g)">${fmt(todaySnap.date)}</div>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted2);margin-bottom:8px;padding:0 0">
-        <span style="flex:1">Metric</span>
-        <span style="flex:1;text-align:center">Then</span>
-        <span style="flex:1;text-align:center">Now</span>
-        <span style="text-align:right;min-width:60px">Change</span>
-      </div>
-      ${compRow('Units', todaySnap.totalUnits, thirtySnap.totalUnits)}
-      ${compRow('SKUs', todaySnap.skus, thirtySnap.skus)}
-      ${compRow('Stock Value', todaySnap.stockValue, thirtySnap.stockValue, true)}
-      ${compRow('Win BB %', todaySnap.repricer?.winPct, thirtySnap.repricer?.winPct, false, true)}
-      ${compRow('Match BB %', todaySnap.repricer?.matchPct, thirtySnap.repricer?.matchPct, false, true)}
-      ${compRow('Aged Risk 181+d', calcAgedRisk(todaySnap), calcAgedRisk(thirtySnap), false, true)}
-      <div style="margin-top:16px;padding:16px;background:rgba(0,245,160,0.1);border-left:4px solid var(--g);border-radius:6px;font-size:12px;color:#fff;line-height:1.6;font-weight:500;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word">
-        ${(() => {
-          const unitDiff = (todaySnap.totalUnits||0) - (thirtySnap.totalUnits||0);
-          const skuDiff = (todaySnap.skus||0) - (thirtySnap.skus||0);
-          const svDiff = (todaySnap.stockValue||0) - (thirtySnap.stockValue||0);
-          const winDiff = (todaySnap.repricer?.winPct||0) - (thirtySnap.repricer?.winPct||0);
-          const matchDiff = (todaySnap.repricer?.matchPct||0) - (thirtySnap.repricer?.matchPct||0);
-          const agedRiskNow = calcAgedRisk(todaySnap);
-          const agedRiskThen = calcAgedRisk(thirtySnap);
-          const agedRiskDiff = agedRiskNow - agedRiskThen;
-          
-          let analysis = `📈 30-Day Trend:\n\n`;
-          
-          // Stock trajectory
-          if (unitDiff > 300) analysis += `⬆️ Strong build: +${unitDiff.toLocaleString()} units (inventory growth phase)\n`;
-          else if (unitDiff > 0) analysis += `Built stock: +${unitDiff.toLocaleString()} units\n`;
-          else if (unitDiff < -300) analysis += `📉 Major sell-through: ${unitDiff.toLocaleString()} units (strong velocity)\n`;
-          else if (unitDiff < 0) analysis += `Reduced stock: ${unitDiff.toLocaleString()} units\n`;
-          else analysis += `Stock stable\n`;
-          
-          // SKU trajectory
-          if (skuDiff > 0) analysis += `Range expanded: +${skuDiff} SKUs\n`;
-          else if (skuDiff < 0) analysis += `Range tightened: ${skuDiff} SKUs\n`;
-          
-          // Value changes
-          const avgPrice30 = thirtySnap.stockValue / (thirtySnap.totalUnits || 1);
-          const avgPriceCurr30 = todaySnap.stockValue / (todaySnap.totalUnits || 1);
-          if (Math.abs(svDiff) > 15000) {
-            analysis += `Stock value: ${svDiff > 0 ? '+' : ''}£${svDiff.toLocaleString()} (avg: £${avgPrice30.toFixed(2)} → £${avgPriceCurr30.toFixed(2)})\n`;
-          }
-          
-          // BB% trends over month
-          if (winDiff > 5) analysis += `✓ Buy Box Win: +${winDiff.toFixed(1)}pp — consistent improvement\n`;
-          else if (winDiff > 0) analysis += `Buy Box Win: +${winDiff.toFixed(1)}pp\n`;
-          else if (winDiff < -5) analysis += `⚠️ Buy Box Win: ${winDiff.toFixed(1)}pp — declining significantly\n`;
-          else if (winDiff < 0) analysis += `Buy Box Win: ${winDiff.toFixed(1)}pp\n`;
-          
-          // Aged inventory health
-          if (agedRiskDiff < -2) analysis += `✓ Aged inventory: Improving significantly (-${Math.abs(agedRiskDiff).toFixed(1)}pp)`;
-          else if (agedRiskDiff < 0) analysis += `✓ Aged inventory: Improving (-${Math.abs(agedRiskDiff).toFixed(1)}pp)`;
-          else if (agedRiskDiff > 2) analysis += `⚠️ Aged inventory: Rising risk (+${agedRiskDiff.toFixed(1)}pp)`;
-          else if (agedRiskDiff > 0) analysis += `Aged inventory: Slight increase (+${agedRiskDiff.toFixed(1)}pp)`;
-          else analysis += `Aged inventory: Stable`;
-          
-          return analysis;
-        })()}
-      </div>
-    </div>`;
-  }
-  
-  html += `</div></div>`;
-  
+
   container.innerHTML = html;
 }
 
@@ -1693,14 +1631,14 @@ function renderKpis(snaps) {
     return tot > 0;
   }).length;
   
-  setKpi('kAsins','kAsinsPill','kAsinsSub', latest.asins, prev?.asins, '', true, avgAsins);
-  setKpi('kSkus','kSkusPill','kSkusSub', latest.skus, prev?.skus, '', true, avgSkus);
-  setKpi('kCost','kCostPill','kCostSub', latest.avgCost, prev?.avgCost, '£', false, avgCost);
-  setKpi('kUnits','kUnitsPill','kUnitsSub', latest.totalUnits, prev?.totalUnits, '', true, avgUnits);
-  setKpi('kStockValue','kStockValuePill','kStockValueSub', latest.stockValue, prev?.stockValue, '£', true, avgStockValue);
-  setKpiPercent('kRepWinPct','kRepWinPctPill','kRepWinPctSub', repWinPct, prevRepWinPct, true, avgRepWinPct);
-  setKpiPercent('kRepMatchPct','kRepMatchPctPill','kRepMatchPctSub', repMatchPct, prevRepMatchPct, true, avgRepMatchPct);
-  setKpiPercent('kAgedRisk','kAgedRiskPill','kAgedRiskSub', agedRiskPct, prevAgedRiskPct, false, avgAgedRiskPct);
+  setKpi('kAsins','kAsinsPill','_', latest.asins, prev?.asins, '', true, avgAsins);
+  setKpi('kSkus','kSkusPill','_', latest.skus, prev?.skus, '', true, avgSkus);
+  setKpi('kCost','kCostPill','_', latest.avgCost, prev?.avgCost, '£', true, avgCost);
+  setKpi('kUnits','kUnitsPill','_', latest.totalUnits, prev?.totalUnits, '', true, avgUnits);
+  setKpi('kStockValue','kStockValuePill','_', latest.stockValue, prev?.stockValue, '£', true, avgStockValue);
+  setKpiPercent('kRepWinPct','kRepWinPctPill','_', repWinPct, prevRepWinPct, true, avgRepWinPct);
+  setKpiPercent('kRepMatchPct','kRepMatchPctPill','_', repMatchPct, prevRepMatchPct, true, avgRepMatchPct);
+  setKpiPercent('kAgedRisk','kAgedRiskPill','_', agedRiskPct, prevAgedRiskPct, false, avgAgedRiskPct);
   
   // Set tile colors based on comparison (only if we have previous data)
   const setTileColor = (tileId, curr, prev, isInverse = false) => {
@@ -1717,24 +1655,19 @@ function renderKpis(snaps) {
     else if (same) tile.classList.add('same');
   };
   
-  // Apply colors to each tile (note: lower cost is BETTER, higher aged risk is WORSE)
-  setTileColor('kSkus', latest.skus, prev?.skus); // Higher = better
-  setTileColor('kAsins', latest.asins, prev?.asins); // Higher = better
-  setTileColor('kCost', latest.avgCost, prev?.avgCost, true); // Lower = better (inverse)
+  // Apply colors to each tile — up = better for all, down = worse for all
+  setTileColor('kSkus', latest.skus, prev?.skus);
+  setTileColor('kAsins', latest.asins, prev?.asins);
+  setTileColor('kCost', latest.avgCost, prev?.avgCost);
   setTileColor('kStockValue', latest.stockValue, prev?.stockValue); // Higher = better
   setTileColor('kUnits', latest.totalUnits, prev?.totalUnits); // Higher = better
   setTileColor('kRepWinPct', parseFloat(repWinPct), prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct) : null); // Higher = better
   setTileColor('kRepMatchPct', parseFloat(repMatchPct), prev?.repricer?.matchPct ? parseFloat(prev.repricer.matchPct) : null); // Higher = better
   setTileColor('kAgedRisk', parseFloat(agedRiskPct), prevAgedRiskPct ? parseFloat(prevAgedRiskPct) : null, true); // Lower = better (inverse)
   
-  // Update popout content with better analysis
-  document.getElementById('popoutSkus').innerHTML = `${latest.skus} variants (${skuDiff > 0 ? '+' : ''}${skuDiff}). ${skuDiff > 0 ? 'Growing breadth expands visibility.' : skuDiff < 0 ? 'Narrowing focus, more efficient.' : 'Holding steady.'}`;
-  document.getElementById('popoutCost').innerHTML = `£${latest.avgCost.toFixed(2)} per unit (${prev ? (latest.avgCost < prev.avgCost ? '↓ cheaper' : '↑ premium') : '—'}). ${latest.avgCost < prev?.avgCost ? 'Lower cost drives velocity.' : 'Higher ticket builds margin.'}`;
-  document.getElementById('popoutStockValue').innerHTML = `£${latest.stockValue.toLocaleString()} total (${stockValDiff > 0 ? '↑' : '↓'} £${Math.abs(stockValDiff).toLocaleString()}). ${stockValDiff > 0 ? 'Value growing — building strength.' : 'Value declining — liquidating.'}`;
-  document.getElementById('popoutUnits').innerHTML = `${latest.totalUnits.toLocaleString()} units (${unitsDiff > 0 ? '+' : ''}${unitsDiff}). ${Math.abs(unitsDiff) > 50 ? (unitsDiff < 0 ? 'Strong turnover velocity.' : 'Restocking aggressively.') : 'Stable baseline.'}`;
-  document.getElementById('popoutWinBB').innerHTML = `${repWinPct}% buy box (${prevRepWinPct ? (winDiff > 0 ? '↑' : '↓') + ' ' + Math.abs(winDiff).toFixed(1) + 'pp' : '—'}). ${parseFloat(repWinPct) > 15 ? 'Strong competitive position.' : parseFloat(repWinPct) < 8 ? 'Visibility gap — adjust prices.' : 'Decent but room to improve.'}`;
-  document.getElementById('popoutMatchBB').innerHTML = `${repMatchPct}% match rate (${prevRepMatchPct ? (matchDiff > 0 ? '↑' : '↓') + ' ' + Math.abs(matchDiff).toFixed(1) + 'pp' : '—'}). Total coverage ${(parseFloat(repWinPct) + parseFloat(repMatchPct)).toFixed(1)}%.`;
-  document.getElementById('popoutAgedRisk').innerHTML = `${agedUnits} aged units (${agedRiskPct}%, 181+d). ${agedRiskPct > 8 ? '⚠️ Critical — run promo now.' : agedRiskPct > 5 ? 'Watch — plan clearance soon.' : '✓ Healthy aging profile.'}`;
+  // Update popouts with rich click popup content
+  updatePopouts(filteredSnaps());
+  updateKpiMiniInsights(filteredSnaps());
   
   
   // Update bottom bar chart
@@ -1758,26 +1691,745 @@ function renderKpis(snaps) {
   if (barStockText) barStockText.textContent = stockHealth.toFixed(0) + '%';
 }
 
-function initPopouts() {
-  document.querySelectorAll('.kpi-tile').forEach(tile => {
-    const popout = tile.querySelector('.popout');
-    if (!popout) return;
-    
-    tile.addEventListener('mouseenter', () => {
-      popout.classList.add('show');
+function initPopouts() { /* replaced by modal system */ }
+
+function closeKpiModal() {
+  const m = document.getElementById('kpiModal');
+  if (m) m.style.display = 'none';
+  if (chartInstances._kpiModalChart) { chartInstances._kpiModalChart.destroy(); delete chartInstances._kpiModalChart; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeKpiModal(); });
+
+function openAgedStockModal(snaps, modal, title, body) {
+  const latest = snaps[snaps.length-1];
+  const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
+  const ag = latest.ageing || {};
+  const prevAg = prev?.ageing || {};
+  const daysBetween = prev ? Math.max(1, Math.round((new Date(latest.date) - new Date(prev.date)) / 86400000)) : null;
+  const total = AG_BUCKETS.reduce((s,b)=>s+(ag[b.key]||0),0) || 1;
+  const total181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const total181pct = ((total181/total)*100).toFixed(1);
+  const total91 = (ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const freshUnits = (ag.a0||0)+(ag.a31||0)+(ag.a61||0);
+  const freshPct = ((freshUnits/total)*100).toFixed(1);
+
+  // Per-bracket history over last 6 snaps
+  const last6 = snaps.slice(-6);
+
+  // Sustained concern detection per danger bracket
+  let consecRising181 = 0;
+  const a181vals = snaps.map(s=>(s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0));
+  for(let i=a181vals.length-1;i>=1;i--){if(a181vals[i]>a181vals[i-1])consecRising181++;else break;}
+
+  // Overall concern sentence
+  let overallConcern='', concernCol='var(--muted2)';
+  if(total181 === 0){ overallConcern='✓ No stock aged 181+ days. Excellent — all inventory within healthy brackets.'; concernCol='#22c55e'; }
+  else if(total181pct > 10 && consecRising181 >= 5){ overallConcern=`⚠ Serious concern — ${total181pct}% of stock is 181+ days and has been rising for ${consecRising181} consecutive entries (~${Math.round(consecRising181/2.5)} weeks). Prolonged build-up with no recovery. Clearance action needed urgently.`; concernCol='#dc2626'; }
+  else if(total181pct > 10 && consecRising181 >= 3){ overallConcern=`⚠ Concern — ${total181pct}% aged 181+ days and rising for ${consecRising181} entries. No sign of recovery. Act now before this compounds.`; concernCol='#ea580c'; }
+  else if(total181pct > 10){ overallConcern=`Watch — ${total181pct}% aged 181+ days (above 10% threshold). Plan targeted clearance on these ASINs.`; concernCol='#ca8a04'; }
+  else if(total181pct > 5){ overallConcern=`Watch — ${total181pct}% in 181+ brackets. Not critical yet but monitor closely.`; concernCol='#ca8a04'; }
+  else { overallConcern=`${total181pct}% aged 181+ days — manageable. Keep monitoring the 91–180d bracket as the leading indicator.`; concernCol='#4ade80'; }
+
+  // ── Sell-through inference ──────────────────────────────────────────────
+  // If a bracket drops by X but next bracket only rises by Y, then X-Y sold within that age window
+  const sellThrough = prev ? AG_BUCKETS.map((b, idx) => {
+    const drop = (prevAg[b.key]||0) - (ag[b.key]||0); // positive = units left this bracket
+    const nextRise = idx < AG_BUCKETS.length-1 ? Math.max(0, (ag[AG_BUCKETS[idx+1].key]||0) - (prevAg[AG_BUCKETS[idx+1].key]||0)) : 0;
+    const sold = Math.max(0, drop - nextRise); // units that left AND didn't graduate = sold
+    const graduated = Math.max(0, nextRise); // units that moved to next bracket
+    return { key: b.key, label: b.label, drop, sold, graduated, zone: b.zone };
+  }) : null;
+
+  // Weekly sell-through rate (Mon/Wed/Fri ≈ 2.5 entries/week)
+  const entriesPerWeek = 2.5;
+  const weeklySellThrough = sellThrough ? sellThrough.map(s => ({
+    ...s,
+    soldPerWeek: daysBetween ? parseFloat((s.sold / daysBetween * 7).toFixed(1)) : null
+  })) : null;
+
+  // Inflow to 0–30d (new stock coming in)
+  const inflow030 = prev ? Math.max(0, (ag.a0||0) - (prevAg.a0||0) + ((prevAg.a0||0) - (ag.a0||0) > 0 ? (prevAg.a0||0) - (ag.a0||0) : 0)) : null;
+  // Better: total sold from 0-30 + graduated to 31-60 = units that were in 0-30 last time that moved
+  // New units in 0-30 = current count - (prev count - units that left)
+  const prev030 = prevAg.a0||0;
+  const curr030 = ag.a0||0;
+  const graduated030 = prev && sellThrough ? Math.max(0, (ag.a31||0) - (prevAg.a31||0)) : 0;
+  const sold030 = sellThrough ? sellThrough[0]?.sold || 0 : 0;
+  const newStockIn = prev ? Math.max(0, curr030 - (prev030 - sold030 - graduated030)) : null;
+
+  // Build sell-through rows
+  const sellThroughRows = weeklySellThrough ? weeklySellThrough.filter(s => s.drop !== 0 || s.sold > 0 || s.graduated > 0).map(s => {
+    const soldCol = s.sold > 0 ? '#22c55e' : 'var(--muted2)';
+    const gradCol = s.graduated > 0 && s.zone !== 'healthy' ? '#ea580c' : s.graduated > 0 ? '#ca8a04' : 'var(--muted2)';
+    return `<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:8px;align-items:center;padding:6px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
+      <span style="color:var(--muted2)">${s.label}</span>
+      <span style="color:${soldCol};text-align:center">${s.sold > 0 ? `✓ ${s.sold} sold` : '—'}</span>
+      <span style="color:${gradCol};text-align:center">${s.graduated > 0 ? `→ ${s.graduated} aged on` : '—'}</span>
+      <span style="color:var(--muted2);text-align:right">${s.soldPerWeek && s.sold > 0 ? '~'+s.soldPerWeek+'/wk' : ''}</span>
+    </div>`;
+  }).join('') : '<div style="font-family:var(--mono);font-size:11px;color:var(--muted2);padding:8px 0">Need 2+ snapshots for sell-through data.</div>';
+
+  // Pipeline health sentence
+  let pipelineHealth = '';
+  if (weeklySellThrough) {
+    const totalSold = weeklySellThrough.reduce((s,x)=>s+x.sold, 0);
+    const totalGraduated181 = weeklySellThrough.filter(s=>s.zone==='danger'||s.zone==='critical').reduce((s,x)=>s+x.graduated, 0);
+    const fresh030sold = weeklySellThrough[0]?.sold || 0;
+    const fresh030grad = weeklySellThrough[0]?.graduated || 0;
+    if (fresh030sold > 0 && fresh030grad === 0) pipelineHealth = `✓ Strong — ${fresh030sold} units sold from the 0–30d bracket with none graduating to 31–60d. Stock is moving before it ages.`;
+    else if (fresh030sold > fresh030grad) pipelineHealth = `✓ Good — ${fresh030sold} units sold from 0–30d vs ${fresh030grad} graduating. More selling than ageing.`;
+    else if (fresh030grad > fresh030sold && fresh030grad > 0) pipelineHealth = `Watch — ${fresh030grad} units graduated from 0–30d to 31–60d vs only ${fresh030sold} sold. Stock is ageing faster than it's selling from fresh brackets.`;
+    if (totalGraduated181 > 0) pipelineHealth += ` ${totalGraduated181} units moved into 181+ danger zone this period.`;
+    if (newStockIn !== null && newStockIn > 0) pipelineHealth += ` ~${newStockIn} new units entered the 0–30d bracket (fresh inbound stock).`;
+  }
+
+  // Bracket rows
+  const bracketRows = AG_BUCKETS.map((b, idx) => {
+    const cnt = ag[b.key]||0;
+    const prevCnt = prevAg[b.key]||0;
+    const diff = prev ? cnt - prevCnt : null;
+    const pct = ((cnt/total)*100).toFixed(1);
+    const upBad = b.zone !== 'healthy';
+    const diffCol = diff===null?'transparent':Math.abs(diff)<1?'var(--muted2)':upBad?(diff>0?b.color:'#22c55e'):(diff<0?b.color:'#22c55e');
+    const diffStr = diff===null||Math.abs(diff)<1 ? '—' : (diff>0?'+':'')+diff;
+    const vel = diff!==null&&daysBetween&&Math.abs(diff)>=1 ? (Math.abs(diff)/daysBetween).toFixed(1)+'/day' : '';
+    // Graduation note
+    let gradNote = '';
+    if(diff!==null&&diff>0&&idx>0&&b.zone!=='healthy') gradNote = `<span style="color:${b.color};font-size:9px"> ← from ${AG_BUCKETS[idx-1].label}</span>`;
+    else if(diff!==null&&diff<0&&b.zone!=='healthy') gradNote = `<span style="color:#22c55e;font-size:9px"> ↓ clearing</span>`;
+
+    return `<div style="display:grid;grid-template-columns:90px 1fr 50px 44px 55px 70px;align-items:center;gap:8px;padding:8px 12px;background:${b.zone==='healthy'?'rgba(74,222,128,.04)':b.zone==='caution'?'rgba(202,138,4,.06)':b.zone==='danger'?'rgba(234,88,12,.07)':'rgba(127,29,19,.1)'};border-left:3px solid ${b.color};border-radius:0 6px 6px 0;margin-bottom:4px">
+      <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${b.color}">${b.label}</span>
+      <div style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${b.color};border-radius:3px"></div></div>
+      <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${b.color};text-align:right">${cnt}</span>
+      <span style="font-family:var(--mono);font-size:10px;color:${diffCol};text-align:right;font-weight:600">${diffStr}${gradNote}</span>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted2);text-align:right">${vel}</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:right">${pct}%</span>
+    </div>`;
+  }).join('');
+
+  // Trend over last 6 for 181+ total
+  const histRows = last6.map((s,i)=>{
+    const v=(s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0);
+    const tot=AG_BUCKETS.reduce((x,b)=>x+(s.ageing?.[b.key]||0),0)||1;
+    const pv = i>0 ? (last6[i-1].ageing?.a181||0)+(last6[i-1].ageing?.a271||0)+(last6[i-1].ageing?.a365||0) : null;
+    const d = pv!==null ? v-pv : null;
+    const dCol = d===null?'var(--muted2)':d>0?'#dc2626':'#22c55e';
+    const dStr = d===null?'—':(d>0?'+':'')+d;
+    const dd=s.date?.split('-'); const lbl=dd?`${dd[2]}/${dd[1]}/${dd[0].slice(2)}`:s.date||'';
+    return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:6px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
+      <span style="color:var(--muted2)">${lbl}</span>
+      <span style="text-align:center;font-weight:700;color:${v>0?'#ea580c':'#22c55e'}">${v} units</span>
+      <span style="text-align:right;font-weight:600;color:${dCol}">${i>0?dStr:'—'}</span>
+    </div>`;
+  }).join('');
+
+  title.textContent = 'Age Pipeline';
+
+  // Concern badge in header
+  const concernEl = document.getElementById('kpiModalConcern');
+  if(concernEl){
+    if(total181===0){concernEl.textContent='✓ Healthy';concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(34,197,94,.12);color:#22c55e;display:inline';}
+    else if(parseFloat(total181pct)>10){concernEl.textContent='⚠ Action needed';concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(220,38,38,.12);color:#dc2626;display:inline';}
+    else{concernEl.textContent='Watch';concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(202,138,4,.12);color:#ca8a04;display:inline';}
+  }
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
+      <!-- LEFT: brackets + history -->
+      <div>
+        <!-- Summary stats -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px">
+          <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">Total units</div>
+            <div style="font-size:20px;font-weight:700;color:var(--text)">${total}</div>
+          </div>
+          <div style="background:rgba(74,222,128,.06);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(74,222,128,.15)">
+            <div style="font-family:var(--mono);font-size:9px;color:#4ade80;margin-bottom:4px;text-transform:uppercase">Under 90d</div>
+            <div style="font-size:20px;font-weight:700;color:#4ade80">${freshUnits} <span style="font-size:11px">(${freshPct}%)</span></div>
+          </div>
+          <div style="background:${total181>0?'rgba(220,38,38,.06)':'rgba(74,222,128,.06)'};padding:12px;border-radius:10px;text-align:center;border:1px solid ${total181>0?'rgba(220,38,38,.2)':'rgba(74,222,128,.15)'}">
+            <div style="font-family:var(--mono);font-size:9px;color:${total181>0?'#dc2626':'#4ade80'};margin-bottom:4px;text-transform:uppercase">181+ days</div>
+            <div style="font-size:20px;font-weight:700;color:${total181>0?'#dc2626':'#4ade80'}">${total181} <span style="font-size:11px">(${total181pct}%)</span></div>
+          </div>
+        </div>
+
+        <!-- Concern sentence -->
+        <div style="padding:10px 14px;background:rgba(255,255,255,.03);border-left:3px solid ${concernCol};border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:${concernCol};line-height:1.6;margin-bottom:16px">${overallConcern}</div>
+
+        <!-- Pipeline health sentence -->
+        ${pipelineHealth ? `<div style="padding:10px 14px;background:rgba(255,255,255,.03);border-left:3px solid #22c55e;border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:#22c55e;line-height:1.6;margin-bottom:16px">${pipelineHealth}</div>` : ''}
+
+        <!-- Sell-through breakdown -->
+        ${weeklySellThrough ? `
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">Sell-through vs graduation — this entry</div>
+        <div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:8px;padding:4px 12px;margin-bottom:4px;font-family:var(--mono);font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">
+          <span>Bracket</span><span style="text-align:center">Sold</span><span style="text-align:center">Aged on</span><span style="text-align:right">Weekly rate</span>
+        </div>
+        ${sellThroughRows}
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);padding:6px 12px;line-height:1.5;margin-bottom:16px">✓ Sold = left this bracket AND didn't appear in the next one (sold within age window). → Aged on = moved to older bracket.</div>` : ''}
+
+        <!-- Bracket table -->
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">All brackets</div>
+        <div style="display:grid;grid-template-columns:90px 1fr 50px 44px 55px 70px;gap:8px;padding:4px 12px;margin-bottom:4px;font-family:var(--mono);font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">
+          <span>Bracket</span><span></span><span style="text-align:right">Units</span><span style="text-align:right">Change</span><span style="text-align:right">Velocity</span><span style="text-align:right">%</span>
+        </div>
+        ${bracketRows}
+
+        <!-- 181+ history -->
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-top:16px;margin-bottom:8px">181+ units — last ${last6.length} entries</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-family:var(--mono);font-size:9px;color:var(--muted2);padding:4px 12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em"><span>Date</span><span style="text-align:center">181+ units</span><span style="text-align:right">Change</span></div>
+        ${histRows}
+      </div>
+
+      <!-- RIGHT: context panels -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="padding:14px 16px;background:rgba(74,222,128,.04);border-left:3px solid rgba(74,222,128,.3);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(74,222,128,.6);margin-bottom:8px">How ageing works</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">All stock starts ageing the moment it's sent in. <span style="color:#4ade80">0–90 days is completely healthy</span> — no concern. <span style="color:#ca8a04">91–180 days needs attention</span> — start repricing more aggressively. <span style="color:#dc2626">181+ days needs action</span> — this stock should realistically be gone. 365+ should almost never happen.</div>
+        </div>
+
+        <div style="padding:14px 16px;background:rgba(202,138,4,.04);border-left:3px solid rgba(202,138,4,.3);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(202,138,4,.7);margin-bottom:8px">The 91–180d bracket is your early warning</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">Units in the 91–180d bracket are your future 181+ problem. If this bracket is rising consistently, expect your 181+ count to follow in 2–4 weeks. Watch it as your leading indicator — act while stock is still in caution, not danger. Current 91–180d: <span style="color:#ca8a04;font-weight:700">${ag.a91||0} units (${((ag.a91||0)/total*100).toFixed(1)}%)</span></div>
+        </div>
+
+        <div style="padding:14px 16px;background:rgba(234,88,12,.04);border-left:3px solid rgba(234,88,12,.3);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(234,88,12,.7);margin-bottom:8px">Holding aged stock isn't always bad</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">Stock can age for legitimate reasons — seasonal products, strategic buying, minimum shipment quantities, or market timing. The key question isn't just "is it old?" but "is it old AND not moving despite competitive pricing?" If it's priced well and still sitting, it needs clearance. If it's priced for margin on a slow-mover, it may be intentional.</div>
+        </div>
+
+        <div style="padding:14px 16px;background:rgba(127,29,19,.08);border-left:3px solid rgba(220,38,38,.3);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(220,38,38,.7);margin-bottom:8px">What to do with 181+ stock</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">For 181+ units: lower floor prices below what you'd normally accept — getting capital back matters more than margin at this point. For 271–365d: consider aggressive clearance pricing. For 365d+: liquidate at almost any price. Every day it sits costs you in storage fees and tied-up capital that could be deployed into faster-moving stock.</div>
+        </div>
+      </div>
+    </div>`;
+
+  modal.style.display = 'block';
+}
+
+function openKpiModal(key) {
+  const snaps = filteredSnaps();
+  if (!snaps || snaps.length === 0) return;
+  const modal = document.getElementById('kpiModal');
+  const title = document.getElementById('kpiModalTitle');
+  const body = document.getElementById('kpiModalBody');
+  if (!modal || !title || !body) return;
+
+  const configs = {
+    skus:       { label:'Total SKUs',      getter:s=>s.skus||0,       fmt:v=>Math.round(v).toLocaleString(),  unit:'SKUs',  upGood:true  },
+    asins:      { label:'Total ASINs',     getter:s=>s.asins||0,      fmt:v=>Math.round(v).toLocaleString(),  unit:'ASINs', upGood:true  },
+    cost:       { label:'Avg Unit Cost',   getter:s=>s.avgCost||0,    fmt:v=>'£'+v.toFixed(2), fmtDiff:v=>'£'+Math.abs(v).toFixed(4),  unit:'',      upGood:null  }, // context-dependent — only meaningful alongside units and stock value
+    stockvalue: { label:'Stock Value',     getter:s=>s.stockValue||0, fmt:v=>'£'+(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0)), unit:'', upGood:true },
+    units:      { label:'Total Units',     getter:s=>s.totalUnits||0, fmt:v=>Math.round(v).toLocaleString(),  unit:'units', upGood:true  },
+    winbb:      { label:'Win BB %',        getter:s=>s.repricer?.total>0?parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.winPct||0), fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:true },
+    matchbb:    { label:'Match BB %',      getter:s=>s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0), fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:true },
+    agedrisk:   { label:'Aged Risk 181+d', getter:s=>{ const ag=s.ageing||{}; const tot=(ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0); const aged=(ag.a181||0)+(ag.a271||0)+(ag.a365||0); return tot>0?parseFloat(((aged/tot)*100).toFixed(1)):0; }, fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:false },
+  };
+  const cfg = configs[key]; if (!cfg) return;
+
+  // Aged stock gets its own full popup
+  if (key === 'agedrisk') { openAgedStockModal(snaps, modal, title, body); return; }
+
+  // Core calcs
+  const vals = snaps.map(cfg.getter);
+  const latest = vals[vals.length-1];
+  const prev = vals.length>1 ? vals[vals.length-2] : null;
+  const diff = prev!==null ? latest-prev : null;
+  const allVals = vals.filter(v=>!isNaN(v));
+  const highest = Math.max(...allVals), lowest = Math.min(...allVals);
+  const avg = allVals.reduce((a,b)=>a+b,0)/allVals.length;
+  const last6 = snaps.slice(-6);
+  const last6vals = last6.map(cfg.getter);
+  const last3 = allVals.slice(-3);
+  const trend3 = last3.length>=2 ? last3[last3.length-1]-last3[0] : null;
+  const trendDir = trend3===null ? null : trend3>0.1?'up':trend3<-0.1?'down':'flat';
+  let streak=0;
+  for(let i=vals.length-1;i>=1;i--){const d=vals[i]-vals[i-1];if(i===vals.length-1)streak=d>0.1?1:d<-0.1?-1:0;else if((streak>0&&d>0.1)||(streak<0&&d<-0.1))streak+=streak>0?1:-1;else break;}
+
+  // Cross-metric data
+  const L = snaps[snaps.length-1], P = snaps.length>1?snaps[snaps.length-2]:null;
+  const unitsL=L.totalUnits||0, unitsP=P?.totalUnits||0;
+  const costL=L.avgCost||0, costP=P?.avgCost||0;
+  const skusL=L.skus||0, skusP=P?.skus||0;
+  const asinsL=L.asins||0, asinsP=P?.asins||0;
+  const svL=L.stockValue||0, svP=P?.stockValue||0;
+  const unitsUp=P&&unitsL>unitsP, unitsDown=P&&unitsL<unitsP;
+  const costUp=P&&costL>costP, costDown=P&&costL<costP;
+  const skusDown=P&&skusL<skusP, asinsDown=P&&asinsL<asinsP;
+  const svUp=P&&svL>svP;
+  const winL=L.repricer?.total>0?parseFloat(((L.repricer.winning/L.repricer.total)*100).toFixed(1)):parseFloat(L.repricer?.winPct||0);
+  const matchL=L.repricer?.total>0?parseFloat(((L.repricer.matching/L.repricer.total)*100).toFixed(1)):parseFloat(L.repricer?.matchPct||0);
+
+  // ── Deep business context per metric ──────────────────────────────────────
+  let whatItMeans='', whatsHappening='', whatToWatch='', combinations='';
+
+  if(key==='skus'){
+    whatItMeans='SKUs represent how many product variants you have actively listed. More SKUs = broader catalogue = more chances to win buy boxes across different products. However breadth without depth (low units per SKU) can dilute focus.';
+    if(P){
+      const skuDiff=skusL-skusP;
+      if(skuDiff>0&&unitsDown) whatsHappening=`SKUs up ${skuDiff} but units are down — you're broadening your catalogue while overall stock is thinning. You may be spreading capital across more products with less depth per product.`;
+      else if(skuDiff>0&&unitsUp) whatsHappening=`SKUs up ${skuDiff} and units also rising — expanding both breadth and depth. Strong growth signal. Make sure your repricer can handle the increased catalogue efficiently.`;
+      else if(skuDiff<0&&unitsUp) whatsHappening=`SKUs down ${Math.abs(skuDiff)} but units up — you're concentrating. Going deeper on fewer products. This is a deliberate strategy shift towards inventory depth over breadth. Not a bad thing.`;
+      else if(skuDiff<0&&unitsDown) whatsHappening=`Both SKUs and units declining — overall inventory is contracting. Could be intentional wind-down, cash flow management, or difficulty sourcing. Check if this is planned.`;
+      else whatsHappening='SKU count is stable. No significant catalogue changes this period.';
+    }
+    whatToWatch='Watch SKUs alongside units per SKU. A high SKU count with very few units each means lots of lines with minimal stock — one sale and you\'re out. Aim for a healthy balance of breadth and depth.';
+    combinations=`Currently averaging ${P?((unitsL/Math.max(skusL,1)).toFixed(1)):'-'} units per SKU. ${skusL>0&&unitsL/skusL<3?'Low depth per SKU — consider going deeper on proven sellers rather than adding new lines.':skusL>0&&unitsL/skusL>10?'Good depth per SKU — well stocked across your catalogue.':'Reasonable depth across your catalogue.'}`;
+  }
+
+  else if(key==='asins'){
+    whatItMeans='ASINs represent your unique product footprint — the number of distinct Amazon product pages you\'re selling on. Unlike SKUs (which count variants), ASINs count unique products. Dropping ASINs can mean suppressed listings, out-of-stock products, or Amazon removals — worth checking in Seller Central if you see unexpected drops.';
+    if(P){
+      const asinDiff=asinsL-asinsP;
+      if(asinDiff<0&&skusDown) whatsHappening=`Both ASINs and SKUs declining — your product footprint is shrinking on both measures. Could be intentional catalogue pruning or stock running out across multiple lines.`;
+      else if(asinDiff<0&&!skusDown) whatsHappening=`ASINs down but SKUs relatively stable — you may have multi-variant products where some variants dropped off. Check for suppressed or out-of-stock listings.`;
+      else if(asinDiff>0) whatsHappening=`ASINs growing — you're listing on more unique products. Broader footprint means more buy box opportunities across different categories.`;
+      else whatsHappening='ASIN count stable this period.';
+    }
+    whatToWatch='If ASINs and SKUs diverge significantly, it means you have products with multiple variants (size, colour, etc). A single ASIN with 5 SKUs is still one product — don\'t confuse breadth of products with breadth of variants.';
+    combinations='';
+  }
+
+  else if(key==='cost'){
+    whatItMeans='Average unit cost is the most context-dependent KPI — it doesn\'t have a simple "higher is better" or "lower is better" rule. What matters is what\'s driving the change. Lower avg cost can mean you\'re buying cheaper/faster-moving products. Higher avg cost can mean you\'re buying more premium/higher-margin products. Neither is automatically good or bad — it depends on what else is moving.';
+    if(P){
+      if(costDown&&unitsUp) whatsHappening='Avg cost down, units up — you\'re buying more stock at lower prices. Classic high-velocity, lower-ticket strategy. These products tend to move faster. Good for cashflow, lower per-unit margin but higher turnover.';
+      else if(costDown&&unitsDown) whatsHappening='Avg cost down and units down — cheaper stock is selling through but you\'re not restocking much. Capital is releasing. Fine if you\'re being selective, a concern if you\'re struggling to find good buys.';
+      else if(costUp&&unitsUp) whatsHappening='Avg cost up and units up — you\'re buying more stock AND it\'s higher ticket. Bigger capital deployment. Higher-value products tend to sell slower, so watch sell-through carefully. Strong potential margin, but ties up capital longer.';
+      else if(costUp&&unitsDown) whatsHappening='Avg cost up, units down — cheaper stock is selling through leaving you with more expensive units. Your remaining stock is higher-value. Good margin potential but slower movement — review pricing floors to keep buy box competitive.';
+      else whatsHappening='Avg cost relatively stable this period. Product mix hasn\'t shifted significantly.';
+    }
+    whatToWatch='The real signal is avg cost vs stock value vs units together. If avg cost rises but stock value and units also rise, you\'re deliberately moving upmarket. If avg cost rises but units fall, your cheap stock is moving but premium stock is sitting.';
+    combinations=`Current avg cost £${costL.toFixed(2)} × ${unitsL.toLocaleString()} units = £${(costL*unitsL/1000).toFixed(1)}k total deployed. ${costL>15?'Higher ticket portfolio — expect slower sell-through but stronger margins.':costL<8?'Lower ticket portfolio — faster velocity expected, focus on volume.':'Mid-range portfolio — balanced mix of velocity and margin.'}`;
+  }
+
+  else if(key==='stockvalue'){
+    whatItMeans='Stock value is your single most important KPI. It represents the total capital deployed in inventory and your capacity to generate sales and profit. Higher stock value generally means more opportunity — more products, more listings, more chances to win buy boxes and generate revenue. It\'s your working capital in product form.';
+    if(P){
+      const svDiff=svL-svP;
+      if(svUp&&unitsUp&&costDown) whatsHappening=`Stock value up £${Math.abs(svDiff/1000).toFixed(1)}k — driven by more units at lower cost. You\'re building inventory volume efficiently. Good position for high-velocity selling.`;
+      else if(svUp&&unitsUp&&costUp) whatsHappening=`Stock value up £${Math.abs(svDiff/1000).toFixed(1)}k — units up and avg cost up. You\'re deploying more capital into higher-value products. Stronger margin potential but watch sell-through pace.`;
+      else if(svUp&&unitsDown) whatsHappening=`Stock value up but units down — average cost has risen significantly. You\'re holding more value in fewer, more expensive units. Make sure your repricer is keeping these competitive.`;
+      else if(!svUp&&unitsDown) whatsHappening=`Stock value declining (${svDiff<0?'-£'+Math.abs(svDiff/1000).toFixed(1)+'k':'+£'+(svDiff/1000).toFixed(1)+'k'}) and units falling — inventory is contracting. Could be healthy sell-through or a signal to restock. Check your buying pipeline.`;
+      else if(!svUp&&unitsUp) whatsHappening='Stock value falling despite more units — you\'re selling through higher-value stock and restocking with cheaper products. Cashflow positive but margin may be compressing.';
+      else whatsHappening='Stock value relatively stable this period.';
+    }
+    whatToWatch='Track stock value vs units together. If stock value keeps rising but units plateau, avg cost is creeping up. If both rise together, you\'re genuinely growing inventory. The goal is stock value trending upward with healthy unit depth.';
+    combinations=`Implied avg cost: £${unitsL>0?(svL/unitsL).toFixed(2):'—'} per unit. ${winL>0?`With ${winL.toFixed(1)}% Win BB, this stock has ${winL<8?'low':'reasonable'} buy box visibility right now.`:''}`;
+  }
+
+  else if(key==='units'){
+    whatItMeans='Total units is your raw inventory depth — how many individual items you have across all products. It\'s a key indicator of your capacity to sell. More units means more stock to fulfil orders, more listings to win buy boxes on, and more runway before you need to restock.';
+    if(P){
+      const uDiff=unitsL-unitsP;
+      if(unitsUp&&skusDown) whatsHappening=`Units up ${uDiff.toLocaleString()} but SKUs down — you\'re concentrating. Fewer product lines but going deeper on the ones you keep. A deliberate strategy towards proven winners. Not a bad sign at all.`;
+      else if(unitsUp&&costDown) whatsHappening=`Units up ${uDiff.toLocaleString()} and avg cost down — buying more of cheaper/faster-moving products. High-velocity strategy. These should move quickly through the buy box if repriced well.`;
+      else if(unitsUp&&costUp) whatsHappening=`Units up ${uDiff.toLocaleString()} and avg cost also up — building depth in higher-value products. More capital tied up per unit. Keep an eye on sell-through speed — premium stock needs time.`;
+      else if(unitsDown&&!svUp) whatsHappening=`Units down ${Math.abs(uDiff).toLocaleString()} and stock value also falling — inventory contracting. Either strong sell-through (good) or not restocking enough (needs attention). Check your buying pipeline.`;
+      else if(unitsDown&&svUp) whatsHappening=`Units down ${Math.abs(uDiff).toLocaleString()} but stock value up — cheaper stock sold through, leaving higher-value units. Your per-unit value has increased. Good margin position but potentially slower movement.`;
+      else whatsHappening='Unit count relatively stable this period.';
+    }
+    whatToWatch=`With ${winL.toFixed(1)}% Win BB and ${matchL.toFixed(1)}% Match BB, your current buy box coverage means roughly ${(winL+matchL).toFixed(0)}% of your listings are visible to buyers. ${(winL+matchL)<15?'Low combined coverage — units will move slowly at this rate. Prioritise improving buy box %':'Combined coverage is reasonable — stock should be moving at a decent pace'}.`;
+    combinations=`${unitsL.toLocaleString()} units across ${skusL} SKUs = ${skusL>0?(unitsL/skusL).toFixed(1):'-'} units per SKU average.`;
+  }
+
+  else if(key==='winbb'){
+    whatItMeans='Win BB % is the percentage of your listings where you currently hold the buy box outright — meaning you\'re the default seller customers see and buy from. This is the most direct measure of your pricing competitiveness. Higher is always better. Target: above 10–12% consistently. Below 5% is critical — you\'re essentially invisible.';
+    if(P){
+      const winP=P.repricer?.total>0?parseFloat(((P.repricer.winning/P.repricer.total)*100).toFixed(1)):parseFloat(P.repricer?.winPct||0);
+      const wDiff=winL-winP;
+      if(wDiff<0&&matchL>winL*1.5) whatsHappening=`Win BB down ${Math.abs(wDiff).toFixed(1)}pp but Match BB (${matchL.toFixed(1)}%) is significantly higher — you\'re price-competitive but not quite winning outright. A small floor price reduction could flip a meaningful chunk of matches into wins.`;
+      else if(wDiff<-2) whatsHappening=`Win BB has dropped ${Math.abs(wDiff).toFixed(1)}pp — a significant loss of buy box position. Competitors are undercutting you. Your units will move slower until this recovers. Review floor prices on your top-volume SKUs first.`;
+      else if(wDiff<0) whatsHappening=`Win BB edging down ${Math.abs(wDiff).toFixed(1)}pp. Worth monitoring. If it drops another 1–2pp next entry, it\'s time to review pricing floors.`;
+      else if(wDiff>2) whatsHappening=`Win BB up ${wDiff.toFixed(1)}pp — strong improvement in buy box position. Your repricing is working. More wins = more visibility = more units moving.`;
+      else if(wDiff>0) whatsHappening=`Win BB up slightly ${wDiff.toFixed(1)}pp. Moving in the right direction. Keep monitoring.`;
+      else whatsHappening='Win BB stable this entry.';
+    }
+    whatToWatch=`Current position: ${winL.toFixed(1)}%. ${winL>=12?'Above target — strong competitive position.':winL>=8?'Close to target — one or two pricing tweaks could push above 12%.':winL>=5?'Below target — noticeable visibility gap. Review your repricing floors.':'Critical — below 5%. Urgent action needed on pricing.'} Remember: every 1pp of Win BB is another slice of your catalogue that customers can actually find and buy.`;
+    combinations=`Win BB ${winL.toFixed(1)}% + Match BB ${matchL.toFixed(1)}% = ${(winL+matchL).toFixed(1)}% combined coverage. ${unitsL.toLocaleString()} units in stock. ${(winL+matchL)<15&&unitsL>500?'You have strong inventory but low visibility — pricing is the bottleneck, not stock levels.':winL+matchL>20?'Good coverage across your catalogue.':''}`;
+  }
+
+  else if(key==='matchbb'){
+    whatItMeans='Match BB % is the percentage of listings where you\'re matching the buy box price — you\'re price-competitive but not winning outright (another seller holds the box, possibly due to metrics like feedback, fulfilment method, etc). It\'s your defensive coverage. High Match + Low Win means your prices are right but your seller metrics or fulfilment may be the limiting factor.';
+    if(P){
+      const matchP=P.repricer?.total>0?parseFloat(((P.repricer.matching/P.repricer.total)*100).toFixed(1)):parseFloat(P.repricer?.matchPct||0);
+      const mDiff=matchL-matchP;
+      if(mDiff<-2) whatsHappening=`Match BB dropped ${Math.abs(mDiff).toFixed(1)}pp — you\'re losing price-competitive positioning. Your repricer may not be reacting quickly enough to competitor price changes. Review repricing speed settings.`;
+      else if(mDiff<0) whatsHappening=`Match BB down slightly ${Math.abs(mDiff).toFixed(1)}pp. Small drift — monitor next 2 entries before taking action.`;
+      else if(mDiff>2) whatsHappening=`Match BB up ${mDiff.toFixed(1)}pp — you\'re matching the buy box on more listings. More price-competitive across the board.`;
+      else whatsHappening='Match BB stable this entry.';
+    }
+    whatToWatch=`The gap between Win BB (${winL.toFixed(1)}%) and Match BB (${matchL.toFixed(1)}%) is ${(matchL-winL).toFixed(1)}pp. ${matchL>winL+5?'Large gap — you\'re matching but not winning on a significant portion of listings. These could potentially be converted to wins with slight price adjustments or improved seller metrics.':'Small gap between win and match — you\'re converting matches into wins efficiently.'}`;
+    combinations=`Combined buy box coverage: ${(winL+matchL).toFixed(1)}%. Target is 20%+ combined for solid visibility. ${(winL+matchL)>=20?'Currently above combined target — good position.':winL+matchL>=15?'Approaching combined target.':'Below combined 20% target — both metrics need work.'}`;
+  }
+
+  else if(key==='agedrisk'){
+    whatItMeans='Aged risk tracks what percentage of your units have been in stock for 181+ days. These are your slow-movers — they\'re tying up working capital, may be incurring storage fees, and are at risk of never selling at a profitable price. The lower this number the better. Anything above 8–10% needs attention.';
+    const ag=L.ageing||{};
+    const tot=(ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+    const aged181=(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+    const aged365=ag.a365||0;
+    if(P){
+      const agP=P.ageing||{};
+      const totP=(agP.a0||0)+(agP.a31||0)+(agP.a61||0)+(agP.a91||0)+(agP.a181||0)+(agP.a271||0)+(agP.a365||0);
+      const aged181P=(agP.a181||0)+(agP.a271||0)+(agP.a365||0);
+      const agedDiff=aged181-aged181P;
+      if(agedDiff>10) whatsHappening=`Aged units increased by ${agedDiff} — more stock is crossing the 181-day threshold. Act now before it compounds. A targeted clearance promo on these specific ASINs is the fastest fix.`;
+      else if(agedDiff>0) whatsHappening=`Aged units up slightly (${agedDiff} more units). Not critical yet but the trend is the wrong direction.`;
+      else if(agedDiff<0) whatsHappening=`Aged units reduced by ${Math.abs(agedDiff)} — good progress clearing old stock. Keep the clearance momentum going.`;
+      else whatsHappening='Aged stock holding steady. No significant movement either way.';
+    }
+    whatToWatch=`${aged365>0?`You have ${aged365} units aged 365+ days — these are your most urgent clearance priority. At this age, recovering any capital is better than holding out for full margin. `:''}${winL<8?'Your Win BB % is also low ('+winL.toFixed(1)+'%) — aged stock is harder to move when you\'re not winning buy boxes. Fix pricing first to give these products visibility.':''}`;
+    combinations=`${aged181} aged units out of ${tot} total (${tot>0?((aged181/tot)*100).toFixed(1):0}%). ${(winL+matchL)<15?'Combined BB coverage is low — these aged units aren\'t being seen. Lower their floor prices specifically to prioritise clearing them.':''}`;
+  }
+
+  // Simple: up = green, down = red always for vs Last Entry display
+  const diffDisplayColor = diff===null?'var(--muted2)':diff>0?'#00f5a0':diff<0?'#ff8c42':'var(--muted2)';
+
+  // Concern sentence — reads full history for sustained patterns
+  let concernSentence = '';
+  let concernColor = 'var(--muted2)';
+
+  if(snaps.length >= 2) {
+    // Count consecutive drops from latest going back
+    let consecDown = 0, consecUp = 0;
+    for(let i = allVals.length-1; i >= 1; i--) {
+      if(allVals[i] < allVals[i-1]) consecDown++;
+      else break;
+    }
+    for(let i = allVals.length-1; i >= 1; i--) {
+      if(allVals[i] > allVals[i-1]) consecUp++;
+      else break;
+    }
+    // How many entries since last time it went up (for downtrend metrics) or down (for uptrend)
+    let entriesSinceRecovery = 0;
+    if(consecDown > 0) {
+      entriesSinceRecovery = consecDown;
+    }
+    // Net change over all entries
+    const netAllTime = allVals.length >= 2 ? allVals[allVals.length-1] - allVals[0] : 0;
+    // Has it ever recovered after a drop? Find longest down streak in full history
+    let longestDownStreak = 0, curStreak = 0;
+    for(let i = 1; i < allVals.length; i++) {
+      if(allVals[i] < allVals[i-1]) { curStreak++; longestDownStreak = Math.max(longestDownStreak, curStreak); }
+      else curStreak = 0;
+    }
+
+    // Mon/Wed/Fri = ~2.5 entries per week, so:
+    // 3 entries ≈ just over 1 week
+    // 5 entries ≈ 2 weeks
+    // 7+ entries ≈ 3+ weeks = serious concern
+    const weeksDown = Math.round(consecDown / 2.5 * 10) / 10;
+
+    if(key === 'winbb' || key === 'matchbb') {
+      if(latest < 5) {
+        concernSentence = `⚠ Critical — at ${latest.toFixed(1)}% your listings are nearly invisible. Urgent action needed on floor prices.`;
+        concernColor = '#ff4d6d';
+      } else if(latest < 10 && consecDown >= 7) {
+        concernSentence = `⚠ Serious concern — below 10% target and has fallen ${consecDown} entries in a row (~${weeksDown} weeks) with no recovery. This is a sustained decline, not a blip. Review repricing strategy urgently.`;
+        concernColor = '#ff4d6d';
+      } else if(latest < 10 && consecDown >= 5) {
+        concernSentence = `⚠ Concern — below target and declining for ${consecDown} consecutive entries (~${weeksDown} weeks). No signs of recovery yet. Act before this becomes critical.`;
+        concernColor = '#ff8c42';
+      } else if(latest < 10 && consecDown >= 3) {
+        concernSentence = `Watch — below 10% target and falling for ${consecDown} entries in a row. A week or two of drops is normal, but if it continues another 2–3 entries without recovery, it needs action.`;
+        concernColor = '#ffd166';
+      } else if(latest < 10) {
+        concernSentence = `Watch — below 10% target. Recent movement mixed. Monitor over next few entries.`;
+        concernColor = '#ffd166';
+      } else if(latest >= 10 && consecDown >= 3) {
+        concernSentence = `Watch — above target but has fallen ${consecDown} entries in a row. Still healthy for now, but the trend is heading the wrong way.`;
+        concernColor = '#ffd166';
+      } else if(latest >= 10) {
+        concernSentence = `✓ On target — above 10%. ${consecUp >= 2 ? `Rising ${consecUp} entries in a row — momentum building.` : 'Holding position.'}`;
+        concernColor = '#00f5a0';
+      }
+    }
+
+    else if(key === 'agedrisk') {
+      if(latest > 10 && consecUp >= 5) {
+        concernSentence = `⚠ Serious concern — aged risk above 10% and has risen ${consecUp} entries in a row (~${Math.round(consecUp/2.5*10)/10} weeks) without dropping. Prolonged build-up. Run clearance promos now — the longer you wait the harder it gets.`;
+        concernColor = '#ff4d6d';
+      } else if(latest > 10 && consecUp >= 3) {
+        concernSentence = `⚠ Concern — aged risk above 10% and rising for ${consecUp} consecutive entries. Not recovering. Targeted clearance needed on 181+ day ASINs.`;
+        concernColor = '#ff8c42';
+      } else if(latest > 10) {
+        concernSentence = `⚠ Watch — above 10% aged risk threshold. Plan clearance soon.`;
+        concernColor = '#ff8c42';
+      } else if(latest > 5) {
+        concernSentence = `Watch — aged risk building (${latest.toFixed(1)}%). Not critical yet but worth monitoring.`;
+        concernColor = '#ffd166';
+      } else {
+        concernSentence = `✓ Healthy — below 5%. Stock is turning over well.`;
+        concernColor = '#00f5a0';
+      }
+    }
+
+    else if(key === 'stockvalue') {
+      if(consecDown >= 7) {
+        concernSentence = `⚠ Serious concern — stock value has declined ${consecDown} consecutive entries (~${weeksDown} weeks) with no recovery. This is a prolonged contraction. Check your buying pipeline and cashflow urgently.`;
+        concernColor = '#ff4d6d';
+      } else if(consecDown >= 5) {
+        concernSentence = `⚠ Concern — stock value has fallen ${consecDown} entries in a row (~${weeksDown} weeks) without recovering. Sell-through may be outpacing restocking. Review sourcing activity.`;
+        concernColor = '#ff8c42';
+      } else if(consecDown >= 3) {
+        concernSentence = `Watch — declining for ${consecDown} entries in a row. A few weeks of drawdown is normal (strong sell-through), but watch for recovery in next 2–3 entries.`;
+        concernColor = '#ffd166';
+      } else if(consecUp >= 3) {
+        concernSentence = `✓ Growing consistently — up ${consecUp} entries in a row. Strong inventory build.`;
+        concernColor = '#00f5a0';
+      } else {
+        concernSentence = `No major concern — fluctuation is normal. Net movement all-time: ${netAllTime >= 0 ? '+' : ''}£${Math.round(netAllTime).toLocaleString()}.`;
+        concernColor = 'var(--muted2)';
+      }
+    }
+
+    else if(key === 'units') {
+      if(consecDown >= 7) {
+        concernSentence = `⚠ Concern — units declining ${consecDown} entries in a row (~${weeksDown} weeks). Either exceptionally strong sell-through, or you\'re not restocking fast enough. Check buying pipeline.`;
+        concernColor = '#ff8c42';
+      } else if(consecDown >= 5) {
+        concernSentence = `Watch — units down ${consecDown} consecutive entries (~${weeksDown} weeks). Could be healthy sell-through, but sustained decline without restocking will leave you short on stock.`;
+        concernColor = '#ffd166';
+      } else if(consecDown >= 3) {
+        concernSentence = `Watch — falling for ${consecDown} entries. Normal if sell-through is strong. Concern if restocking hasn\'t kicked in yet.`;
+        concernColor = '#ffd166';
+      } else if(consecUp >= 3) {
+        concernSentence = `✓ Units growing ${consecUp} entries in a row — inventory depth building.`;
+        concernColor = '#00f5a0';
+      } else {
+        concernSentence = `Normal fluctuation — units move up and down with buy/sell cycles. No sustained concern.`;
+        concernColor = 'var(--muted2)';
+      }
+    }
+
+    else if(key === 'cost') {
+      if(costUp && unitsDown && consecDown >= 4) {
+        concernSentence = `⚠ Watch — avg cost has been rising for multiple entries while units fall. Cheap stock is selling but expensive stock isn\'t. Your remaining inventory is increasingly high-cost. Review floor prices on premium ASINs.`;
+        concernColor = '#ff8c42';
+      } else if(costDown && unitsUp) {
+        concernSentence = `✓ Positive pattern — buying more at lower cost. High-velocity strategy working well.`;
+        concernColor = '#00f5a0';
+      } else if(costUp && unitsUp) {
+        concernSentence = `Neutral — buying more at higher cost. Higher margin potential but more capital at risk. Watch sell-through on premium stock.`;
+        concernColor = '#ffd166';
+      } else {
+        concernSentence = `Avg cost needs cross-metric context. Check the panels on the right for the full picture.`;
+        concernColor = 'var(--muted2)';
+      }
+    }
+
+    else if(key === 'skus' || key === 'asins') {
+      if(consecDown >= 5) {
+        concernSentence = `Watch — count has fallen ${consecDown} entries in a row (~${weeksDown} weeks). Could be listings suppressed, stock running out, or intentional pruning. Check Seller Central if unexpected.`;
+        concernColor = '#ffd166';
+      } else if(consecDown >= 3) {
+        concernSentence = `Watch — declining for ${consecDown} entries. Normal if intentional. Check for suppressed listings if unexpected.`;
+        concernColor = '#ffd166';
+      } else if(consecUp >= 3) {
+        concernSentence = `✓ Growing ${consecUp} entries in a row — catalogue breadth expanding.`;
+        concernColor = '#00f5a0';
+      } else {
+        concernSentence = `Stable — no sustained trend in either direction.`;
+        concernColor = 'var(--muted2)';
+      }
+    }
+  }
+
+  // History rows — fixed formatting and alignment
+  const histRows = last6.map((s,i)=>{
+    const v=cfg.getter(s), pv=i>0?cfg.getter(last6[i-1]):null, d=pv!==null?v-pv:null;
+    const dCol=d===null?'transparent':Math.abs(d)<0.05?'var(--muted2)':d>0?'#00f5a0':'#ff8c42';
+    // Fix: format sign separately from currency symbol, use fmtDiff for changes if available
+    let dStr='';
+    if(d!==null&&Math.abs(d)>=0.0001){
+      const sign=d>0?'+':'-';
+      const fmtFn = cfg.fmtDiff || cfg.fmt;
+      const absStr=fmtFn(Math.abs(d));
+      dStr=sign+absStr;
+    }
+    const dd=s.date?.split('-'); const lbl=dd?`${dd[2]}/${dd[1]}/${dd[0].slice(2)}`:s.date||'';
+    return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:7px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
+      <span style="color:var(--muted2)">${lbl}</span>
+      <span style="text-align:center;font-weight:700;color:var(--text)">${cfg.fmt(v)}</span>
+      <span style="text-align:right;font-weight:600;color:${dCol}">${i>0?dStr:'—'}</span>
+    </div>`;
+  }).join('');
+
+  // Trend tags
+  const trendGood = trendDir===null?null:cfg.upGood===null?null:cfg.upGood?trendDir==='up':trendDir==='down';
+  const streakTag = streak!==0?`<span style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:4px;background:${Math.abs(streak)>=2?'rgba(255,255,255,.06)':'rgba(255,255,255,.04)'};color:var(--muted2)">${streak>0?'↑':'↓'} ${Math.abs(streak)} in a row</span>`:'';
+  const trendTag = trendDir?`<span style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:4px;background:${trendGood===null?'rgba(255,209,102,.08)':trendGood?'rgba(0,245,160,.1)':'rgba(255,140,66,.1)'};color:${trendGood===null?'#ffd166':trendGood?'#00f5a0':'#ff8c42'}">${trendDir==='up'?'↗':trendDir==='down'?'↘':'→'} ${trendDir} over 3 entries</span>`:'';
+
+  title.textContent = cfg.label;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
+
+      <!-- LEFT -->
+      <div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:20px">
+          <div style="background:rgba(255,255,255,.04);padding:14px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">Latest</div>
+            <div style="font-size:22px;font-weight:700;color:var(--text)">${cfg.fmt(latest)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.04);padding:14px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">vs Last Entry</div>
+            <div style="font-size:22px;font-weight:700;color:${diffDisplayColor}">${diff===null?'—':((diff>0?'+':'-')+(cfg.fmtDiff||cfg.fmt)(Math.abs(diff||0)))}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.04);padding:14px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">All-time Avg</div>
+            <div style="font-size:20px;font-weight:700;color:var(--muted2)">${cfg.fmt(avg)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.04);padding:14px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">Range</div>
+            <div style="font-size:12px;font-weight:600;color:var(--muted2);margin-top:2px">${cfg.fmt(lowest)} → ${cfg.fmt(highest)}</div>
+          </div>
+        </div>
+
+        ${(trendTag||streakTag)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${trendTag}${streakTag}</div>`:''}
+
+        <!-- Concern sentence -->
+        ${concernSentence?`<div style="padding:10px 14px;background:rgba(255,255,255,.03);border-left:3px solid ${concernColor};border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:${concernColor};line-height:1.6;margin-bottom:16px">${concernSentence}</div>`:''}
+
+        <!-- History table -->
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">Entry history</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-family:var(--mono);font-size:9px;color:var(--muted2);padding:4px 12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em">
+          <span>Date</span><span style="text-align:center">Value</span><span style="text-align:right">Change</span>
+        </div>
+        ${histRows}
+
+        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-top:18px;margin-bottom:8px">Trend chart</div>
+        <div style="position:relative;height:160px"><canvas id="kpiModalCanvas"></canvas></div>
+      </div>
+
+      <!-- RIGHT -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="padding:14px 16px;background:rgba(0,245,160,.04);border-left:3px solid rgba(0,245,160,.3);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(0,245,160,.6);margin-bottom:8px">What this KPI means</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">${whatItMeans}</div>
+        </div>
+        ${whatsHappening?`<div style="padding:14px 16px;background:rgba(255,209,102,.04);border-left:3px solid rgba(255,209,102,.35);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,209,102,.7);margin-bottom:8px">What's happening right now</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">${whatsHappening}</div>
+        </div>`:''}
+        ${combinations?`<div style="padding:14px 16px;background:rgba(61,158,255,.04);border-left:3px solid rgba(61,158,255,.3);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(61,158,255,.7);margin-bottom:8px">Cross-metric context</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">${combinations}</div>
+        </div>`:''}
+        ${whatToWatch?`<div style="padding:14px 16px;background:rgba(255,140,66,.04);border-left:3px solid rgba(255,140,66,.3);border-radius:0 8px 8px 0">
+          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,140,66,.7);margin-bottom:8px">What to watch</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">${whatToWatch}</div>
+        </div>`:''}
+      </div>
+    </div>`;
+
+  // Concern badge
+  const concernEl = document.getElementById('kpiModalConcern');
+  if(concernEl){
+    let concern='', concernStyle='';
+    if(key==='winbb'&&winL<5){concern='🔴 Critical';concernStyle='background:rgba(255,77,109,.15);color:#ff4d6d';}
+    else if(key==='winbb'&&winL<10){concern='🟡 Below target';concernStyle='background:rgba(255,209,102,.12);color:#ffd166';}
+    else if(key==='winbb'&&winL>=10){concern='🟢 On target';concernStyle='background:rgba(0,245,160,.1);color:#00f5a0';}
+    else if(key==='matchbb'&&matchL<5){concern='🔴 Critical';concernStyle='background:rgba(255,77,109,.15);color:#ff4d6d';}
+    else if(key==='matchbb'&&matchL<10){concern='🟡 Below target';concernStyle='background:rgba(255,209,102,.12);color:#ffd166';}
+    else if(key==='matchbb'&&matchL>=10){concern='🟢 On target';concernStyle='background:rgba(0,245,160,.1);color:#00f5a0';}
+    else if(key==='agedrisk'&&latest>10){concern='🔴 High risk';concernStyle='background:rgba(255,77,109,.15);color:#ff4d6d';}
+    else if(key==='agedrisk'&&latest>5){concern='🟡 Watch this';concernStyle='background:rgba(255,209,102,.12);color:#ffd166';}
+    else if(key==='agedrisk'&&latest<=5){concern='🟢 Healthy';concernStyle='background:rgba(0,245,160,.1);color:#00f5a0';}
+    else if(key==='stockvalue'&&diff!==null&&diff<0&&streak<=-2){concern='🟡 Declining trend';concernStyle='background:rgba(255,209,102,.12);color:#ffd166';}
+    else if(key==='stockvalue'&&diff!==null&&diff>0){concern='🟢 Growing';concernStyle='background:rgba(0,245,160,.1);color:#00f5a0';}
+    else if(key==='cost'&&unitsDown&&costUp){concern='🟡 Watch — expensive stock sitting';concernStyle='background:rgba(255,209,102,.12);color:#ffd166';}
+    concernEl.textContent=concern;
+    concernEl.style.cssText+=';'+concernStyle;
+    concernEl.style.display=concern?'inline':'none';
+  }
+
+  modal.style.display = 'block';
+
+  setTimeout(()=>{
+    const canvas=document.getElementById('kpiModalCanvas');
+    if(!canvas)return;
+    if(chartInstances._kpiModalChart){chartInstances._kpiModalChart.destroy();delete chartInstances._kpiModalChart;}
+    const lineColor=diff===null?'#00f5a0':diff>0?'#00f5a0':'#ff8c42';
+    chartInstances._kpiModalChart=new Chart(canvas.getContext('2d'),{
+      type:'line',
+      data:{labels:last6.map(s=>{const d=s.date?.split('-');return d?`${d[2]}/${d[1]}`:s.date;}),datasets:[{label:cfg.label,data:last6vals,borderColor:lineColor,backgroundColor:lineColor+'22',tension:.35,fill:true,pointRadius:5,pointBackgroundColor:lineColor,pointBorderColor:'#16181a',pointBorderWidth:2,borderWidth:2.5}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+cfg.fmt(ctx.parsed.y)}}},scales:{x:{ticks:{font:{size:10},color:'#6b7a8d'},grid:{color:'rgba(255,255,255,.05)'}},y:{ticks:{font:{size:10},color:'#6b7a8d',callback:v=>cfg.fmt(v)},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:false}}}
     });
-    
-    tile.addEventListener('mouseleave', () => {
-      popout.classList.remove('show');
-    });
+  },50);
+}
+
+function updateKpiMiniInsights(snaps) {
+  if (!snaps || snaps.length < 2) return;
+
+  const configs = {
+    kSkusInsight:      { getter: s=>s.skus||0,        upGood:true,  fmt: v=>Math.round(v) },
+    kAsinsInsight:     { getter: s=>s.asins||0,       upGood:true,  fmt: v=>Math.round(v) },
+    kCostInsight:      { getter: s=>s.avgCost||0,     upGood:true,  fmt: v=>'£'+v.toFixed(2) },
+    kStockValueInsight:{ getter: s=>s.stockValue||0,  upGood:true,  fmt: v=>'£'+(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0)) },
+    kUnitsInsight:     { getter: s=>s.totalUnits||0,  upGood:true,  fmt: v=>Math.round(v) },
+    kWinBBInsight:     { getter: s=>s.repricer?.total>0?parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.winPct||0), upGood:true, fmt: v=>v.toFixed(1)+'%' },
+    kMatchBBInsight:   { getter: s=>s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0), upGood:true, fmt: v=>v.toFixed(1)+'%' },
+    kAgedRiskInsight:  { getter: s=>{ const ag=s.ageing||{}; const tot=(ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0); const aged=(ag.a181||0)+(ag.a271||0)+(ag.a365||0); return tot>0?parseFloat(((aged/tot)*100).toFixed(1)):0; }, upGood:false, fmt: v=>v.toFixed(1)+'%' },
+  };
+
+  // Cross-metric flags
+  const latest = snaps[snaps.length-1];
+  const prev = snaps[snaps.length-2];
+  const unitsUp = (latest.totalUnits||0) > (prev.totalUnits||0);
+  const costDown = (latest.avgCost||0) < (prev.avgCost||0);
+  const costUp = (latest.avgCost||0) > (prev.avgCost||0);
+
+  Object.entries(configs).forEach(([elId, cfg]) => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const vals = snaps.map(cfg.getter);
+    const cur = vals[vals.length-1];
+    const prv = vals[vals.length-2];
+    const diff = cur - prv;
+    const isGood = cfg.upGood ? diff > 0 : diff < 0;
+    const isFlat = Math.abs(diff) < 0.05;
+    const col = isFlat ? 'var(--muted2)' : isGood ? '#00f5a0' : '#ff8c42';
+    const arrow = isFlat ? '→' : diff > 0 ? '↑' : '↓';
+    const diffStr = cfg.fmt(Math.abs(diff));
+
+    // One-line context
+    let ctx = '';
+    if (elId === 'kCostInsight' && unitsUp && costDown) ctx = 'More stock, cheaper — good';
+    else if (elId === 'kCostInsight' && unitsUp && costUp) ctx = 'More stock & higher ticket';
+    else if (elId === 'kUnitsInsight' && unitsUp && costDown) ctx = 'Growing cheaply — healthy';
+    else if (elId === 'kUnitsInsight' && unitsUp && costUp) ctx = 'Growing, higher avg cost';
+    else if (elId === 'kWinBBInsight') { const v=cur; ctx = v<5?'Critical — nearly invisible':v<10?'Below target':v>=10?'At target ✓':''; }
+    else if (elId === 'kMatchBBInsight') { const v=cur; ctx = v<5?'Very low coverage':v<10?'Below 10% target':v>=10?'Good coverage ✓':''; }
+    else if (elId === 'kAgedRiskInsight') { ctx = cur>10?'High risk — act now':cur>5?'Watch this':'Healthy ✓'; }
+
+    // Mini insight: show trend over last 3 + one-liner context (not duplicate of pill)
+    const last3vals = snaps.slice(-3).map(cfg.getter);
+    const trend3val = last3vals.length >= 2 ? last3vals[last3vals.length-1] - last3vals[0] : null;
+    let trendLine = '';
+    if (trend3val !== null && snaps.length >= 3) {
+      const trendGoodVal = cfg.upGood === false ? trend3val < 0 : trend3val > 0;
+      const trendCol = Math.abs(trend3val) < 0.05 ? 'var(--muted2)' : trendGoodVal ? '#00f5a0' : '#ff8c42';
+      const trendArrow = trend3val > 0.05 ? '↑' : trend3val < -0.05 ? '↓' : '→';
+      trendLine = `<span style="color:${trendCol}">${trendArrow} ${trendArrow==='→'?'Flat':(trendGoodVal?'Trending up':'Trending down')} (last 3)</span>`;
+    } else if (snaps.length >= 2) {
+      const g = cfg.upGood === false ? diff < 0 : diff > 0;
+      const c = Math.abs(diff) < 0.05 ? 'var(--muted2)' : g ? '#00f5a0' : '#ff8c42';
+      trendLine = `<span style="color:${c}">${Math.abs(diff)<0.05?'→ Stable':g?'↑ Up':'↓ Down'} vs last</span>`;
+    }
+    el.innerHTML = `${trendLine}${ctx ? `<br><span style="color:var(--muted2)">${ctx}</span>` : ''}`;
   });
 }
+
+function updatePopouts(snaps) { updateKpiMiniInsights(snaps); }
 
 function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0) {
   const el = document.getElementById(valId);
   const pill = document.getElementById(pillId);
-  const sub = document.getElementById(subId);
-  if (!el || !pill || !sub) return;
+  const sub = document.getElementById(subId); // optional
+  if (!el || !pill) return;
   
   let displayVal = '—';
   if (curr) {
@@ -1795,10 +2447,9 @@ function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0)
   if (prev && prev !== 0) {
     const diff = curr - prev;
     const up = diff > 0;
-    const good = upGood ? up : !up;
-    const cls = diff === 0 ? 'flat' : (good ? 'up' : 'down');
+    const good = upGood === null ? null : upGood ? up : !up;
+    const cls = diff === 0 ? 'flat' : good === null ? 'flat' : (good ? 'up' : 'down');
     const arrow = diff === 0 ? '→' : (up ? '▲' : '▼');
-    // Show specific unit label based on field
     let label = '';
     if (prefix === '£') {
       label = (up ? '+' : '') + '£' + Math.abs(diff).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0});
@@ -1814,14 +2465,14 @@ function setKpi(valId, pillId, subId, curr, prev, prefix='', upGood=true, avg=0)
     pillHtml += `<span class="pill ${cls}">${arrow} ${label}</span>`;
   }
   pill.innerHTML = pillHtml;
-  sub.textContent = !prev ? 'First snapshot' : '';
+  if (sub) sub.textContent = !prev ? 'First snapshot' : '';
 }
 
 function setKpiPercent(valId, pillId, subId, curr, prev, upGood=true, avg=0) {
   const el = document.getElementById(valId);
   const pill = document.getElementById(pillId);
-  const sub = document.getElementById(subId);
-  if (!el || !pill || !sub) return; // Skip if elements don't exist
+  const sub = document.getElementById(subId); // optional
+  if (!el || !pill) return;
   el.textContent = curr ? (curr + '%') : '—';
   
   let pillHtml = '';
@@ -1836,7 +2487,7 @@ function setKpiPercent(valId, pillId, subId, curr, prev, upGood=true, avg=0) {
     pillHtml += `<span class="pill ${cls}">${arrow} ${diff > 0 ? '+' : ''}${diff.toFixed(1)}pp</span>`;
   }
   pill.innerHTML = pillHtml;
-  sub.textContent = !prev ? 'First snapshot' : '';
+  if (sub) sub.textContent = !prev ? 'First snapshot' : '';
 }
 
 function setKpiDual(valId, pillId, subId, curr, prev, avg, suffix='', upGood=true) {
@@ -1860,52 +2511,88 @@ function setKpiDual(valId, pillId, subId, curr, prev, avg, suffix='', upGood=tru
 }
 
 const AG_BUCKETS = [
-  {key:'a0',  label:'0–30d',    color:'#00f5a0'},
-  {key:'a31', label:'31–60d',   color:'#3d9eff'},
-  {key:'a61', label:'61–90d',   color:'#c084fc'},
-  {key:'a91', label:'91–180d',  color:'#ffd166'},
-  {key:'a181',label:'181–270d', color:'#ff8c42'},
-  {key:'a271',label:'271–365d', color:'#ff6b35'},
-  {key:'a365',label:'365d+',    color:'#ff4d6d'},
+  {key:'a0',  label:'0–30d',    color:'#4ade80', zone:'healthy'},
+  {key:'a31', label:'31–60d',   color:'#22c55e', zone:'healthy'},
+  {key:'a61', label:'61–90d',   color:'#16a34a', zone:'healthy'},
+  {key:'a91', label:'91–180d',  color:'#ca8a04', zone:'caution'},
+  {key:'a181',label:'181–270d', color:'#ea580c', zone:'danger'},
+  {key:'a271',label:'271–365d', color:'#dc2626', zone:'danger'},
+  {key:'a365',label:'365d+',    color:'#7f1d1d', zone:'critical'},
 ];
 
 function renderAgeing(snaps) {
   const list = document.getElementById('ageingList');
   const tag = document.getElementById('ageingTotalTag');
   if (!snaps.length) { list.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:20px 0">No data</div>'; return; }
-  
+
   const latest = snaps[snaps.length-1];
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
   const ag = latest.ageing || {};
   const prevAg = prev?.ageing || {};
-  
+
+  // Days between snapshots for velocity
+  const daysBetween = prev ? Math.max(1, Math.round((new Date(latest.date) - new Date(prev.date)) / 86400000)) : null;
+
   const total = AG_BUCKETS.reduce((s,b) => s + (ag[b.key]||0), 0) || 1;
-  tag.textContent = total + ' SKUs';
-  
-  list.innerHTML = AG_BUCKETS.map(b => {
+  const total181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  tag.textContent = `${total} units · ${total181 > 0 ? total181 + ' aged 181+' : 'No 181+ stock'}`;
+
+  list.innerHTML = AG_BUCKETS.map((b, idx) => {
     const cnt = ag[b.key]||0;
     const prevCnt = prevAg[b.key]||0;
+    const diff = prev ? cnt - prevCnt : null;
     const pct = ((cnt/total)*100).toFixed(1);
-    
-    // Show trend for ALL brackets
-    let trendHtml = '';
-    if (prev) {
-      const diff = cnt - prevCnt;
-      if (diff !== 0) {
-        const arrow = diff > 0 ? '↑' : '↓';
-        // Critical brackets (180+d): up is bad (red), down is good (green)
-        const isCritical = b.key === 'a181' || b.key === 'a271' || b.key === 'a365';
-        const color = isCritical ? (diff > 0 ? 'var(--r)' : 'var(--g)') : (diff > 0 ? 'var(--g)' : 'var(--r)');
-        trendHtml = `<span style="font-size:9px;color:${color};margin-left:4px">${arrow} ${Math.abs(diff)}</span>`;
-      }
+
+    // Velocity: units/day leaving this bracket
+    let velocityHtml = '';
+    if (diff !== null && daysBetween && diff !== 0) {
+      const rate = (Math.abs(diff) / daysBetween).toFixed(1);
+      velocityHtml = `<span style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-left:6px">${Math.abs(diff)>0?'~'+rate+'/day':''}</span>`;
     }
-    
-    // Highlight critical aged brackets
-    const isCritical = b.key === 'a181' || b.key === 'a271' || b.key === 'a365';
-    const bgStyle = isCritical ? 'background:rgba(255,77,109,.1);border-left:2px solid var(--r)' : '';
-    const labelStyle = isCritical ? 'font-weight:600;color:var(--r)' : '';
-    
-    return `<div class="ag-row" style="${bgStyle}"><div class="ag-lbl" style="${labelStyle}">${b.label}</div><div class="ag-track"><div class="ag-fill" style="width:${pct}%;background:${b.color}"></div></div><div class="ag-cnt" style="color:${b.color}">${cnt}${trendHtml}</div><div class="ag-pct">${pct}%</div></div>`;
+
+    // Graduation warning: if this bracket went UP, units came from the bracket before
+    let graduationHtml = '';
+    if (diff !== null && diff > 0 && idx > 0) {
+      const prevBracket = AG_BUCKETS[idx-1].label;
+      const isWarning = b.zone === 'caution' || b.zone === 'danger' || b.zone === 'critical';
+      graduationHtml = `<div style="font-family:var(--mono);font-size:9px;color:${isWarning?b.color:'var(--muted2)'};margin-top:2px">${isWarning?'⚠ ':'+'}${diff} moved in from ${prevBracket}</div>`;
+    } else if (diff !== null && diff < 0 && (b.zone==='danger'||b.zone==='critical')) {
+      graduationHtml = `<div style="font-family:var(--mono);font-size:9px;color:#22c55e;margin-top:2px">✓ ${Math.abs(diff)} cleared from this bracket</div>`;
+    }
+
+    // Change arrow
+    let changeHtml = '';
+    if (diff !== null && diff !== 0) {
+      // For 0-90d: down = good (selling), up = more fresh stock (neutral/good)
+      // For 91+: up = bad, down = good
+      const upBad = b.zone === 'caution' || b.zone === 'danger' || b.zone === 'critical';
+      const col = upBad ? (diff > 0 ? b.color : '#22c55e') : (diff > 0 ? '#22c55e' : '#ca8a04');
+      changeHtml = `<span style="color:${col};font-size:10px;font-weight:600;margin-left:4px">${diff>0?'↑':'↓'}${Math.abs(diff)}</span>`;
+    }
+
+    // Zone label
+    const zoneBg = b.zone==='healthy'?'rgba(74,222,128,.06)':b.zone==='caution'?'rgba(202,138,4,.08)':b.zone==='danger'?'rgba(234,88,12,.08)':'rgba(127,29,19,.12)';
+    const zoneBorder = b.zone==='healthy'?'rgba(74,222,128,.2)':b.zone==='caution'?'rgba(202,138,4,.25)':b.zone==='danger'?'rgba(234,88,12,.25)':'rgba(220,38,38,.3)';
+
+    return `<div style="background:${zoneBg};border:1px solid ${zoneBorder};border-radius:8px;padding:10px 12px;margin-bottom:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${b.color};flex-shrink:0;display:inline-block"></span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${b.color}">${b.label}</span>
+          ${b.zone==='caution'?'<span style="font-family:var(--mono);font-size:9px;color:#ca8a04;background:rgba(202,138,4,.12);padding:1px 6px;border-radius:3px">CAUTION</span>':b.zone==='danger'?'<span style="font-family:var(--mono);font-size:9px;color:#ea580c;background:rgba(234,88,12,.12);padding:1px 6px;border-radius:3px">ACTION NEEDED</span>':b.zone==='critical'?'<span style="font-family:var(--mono);font-size:9px;color:#dc2626;background:rgba(220,38,38,.12);padding:1px 6px;border-radius:3px">CRITICAL</span>':''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${b.color}">${cnt}</span>
+          ${changeHtml}
+          ${velocityHtml}
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${pct}%</span>
+        </div>
+      </div>
+      <div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${b.color};border-radius:3px;transition:width .3s"></div>
+      </div>
+      ${graduationHtml}
+    </div>`;
   }).join('');
 }
 
@@ -1948,65 +2635,123 @@ function renderInsights(snaps) {
   }
 
   let main = '';
-  if (snaps.length === 1) {
-    main = `This is your first snapshot — <strong>baseline established</strong>. You currently hold <strong>${latest.asins} ASINs</strong> across <strong>${latest.skus} SKUs</strong> with <strong>${totalUnits} units</strong> in stock`;
-    if (over180 > 0) main += `<span class="danger">${over180} units (${over180pct}%)</span> are already aged over 180 days — worth reviewing these for repricing or clearance`;
-    if (freshPct > 40) main += `<strong>${freshPct}% of your stock is under 30 days old</strong>, which is a healthy sign of active buying.`;
-    main += ` <span style="color:var(--muted2)"><em>Add more snapshots to see trends.</em></span>`;
-  } else if (snaps.length === 2) {
-    const asinDiff = latest.asins - prev.asins;
-    const skuDiff = latest.skus - prev.skus;
-    const prevAg = prev.ageing || {};
-    const prevOver180 = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
-    const prevTotal = AG_BUCKETS.reduce((s,b) => s+(prevAg[b.key]||0),0)||1;
-    const prevOver180pct = ((prevOver180/prevTotal)*100).toFixed(1);
-    const over180change = parseFloat(over180pct) - parseFloat(prevOver180pct);
 
-    main = `Since your last snapshot on <strong>${fmt(prev.date)}</strong>, your catalogue has `;
-    if (asinDiff > 0) main += `<strong style="color:var(--g)">grown by ${asinDiff} ASINs</strong>`;
-    else if (asinDiff < 0) main += `<strong style="color:var(--r)">shrunk by ${Math.abs(asinDiff)} ASINs</strong>`;
-    else main += `held steady on ASINs`;
-    main += `. <span style="color:var(--muted2)"><em>You have 2 snapshots — add 1+ more to reveal trend patterns.</em></span>`;
-  } else {
-    // Comprehensive narrative analysis
-    const asinDiff = latest.asins - prev.asins;
-    const skuDiff = latest.skus - prev.skus;
-    const costDiff = latest.avgCost - prev.avgCost;
-    const unitsDiff = latest.totalUnits - prev.totalUnits;
-    const stockValDiff = (latest.stockValue||0) - (prev.stockValue||0);
-    const winDiff = winPct - (prev.repricer?.winPct || 0);
-    const agedRiskPct = over180pct;
-    
-    const firstSnap = snaps[0];
-    const trendUnitsDiff = latest.totalUnits - firstSnap.totalUnits;
-    const trendValueDiff = (latest.stockValue||0) - (firstSnap.stockValue||0);
-    const daysSpan = Math.max(1, Math.floor((new Date(latest.date) - new Date(firstSnap.date)) / (1000*60*60*24)));
-    const dailyVelocity = (Math.abs(trendUnitsDiff) / daysSpan).toFixed(1);
-    
-    const prevRepWinPct = prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct).toFixed(1) : null;
-    const repWinPct = winPct.toFixed(1);
-    
-    // Calculate aged inventory
-    const agedUnits = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
-    const daysToNaturalClear = dailyVelocity > 0 ? Math.round(agedUnits / dailyVelocity) : 0;
-    
-    // Check ASIN trend
-    const asinTrend = snaps.length >= 3 
-      ? (snaps[snaps.length-1].asins >= snaps[snaps.length-2].asins && snaps[snaps.length-2].asins >= snaps[snaps.length-3].asins)
-        ? 'positive for 3 snapshots'
-        : 'mixed'
-      : 'mixed';
-
-    main = `Since last snapshot (${fmt(prev.date)}): Units down ${Math.abs(unitsDiff).toLocaleString()}, but stock value up £${Math.round(stockValDiff).toLocaleString()}. You're executing a deliberate mix-shift — buying more high-velocity, low-ticket inventory at lower cost per unit, while also adding premium, high-ticket products. This creates margin compression but drives volume and faster turns. Buy Box coverage slipped to ${repWinPct}%, suggesting competitive pricing pressure.\n\n`;
-
-    main += `Over ${snaps.length} snapshots (${daysSpan} days): Units declined at ~${dailyVelocity} units/day velocity, but stock value is up £${Math.round(trendValueDiff).toLocaleString()} month-to-date. You're buying smarter and in better volume. SKU count up ${skuDiff} variants with ASIN growth trending ${asinTrend}. Fresh stock at ${freshPct}% shows you're building inventory quality. This is healthy momentum — you're converting slow-moving SKUs into fast-turning products.\n\n`;
-
-    main += `Your goal is: Stock Value UP + Total Units UP = real improvement. Right now you're in the mix-shift phase with value climbing while units decline. Once restocking accelerates, you want units to climb again while maintaining this value growth. That's the sweet spot. `;
-    
-    if (agedUnits > 0) {
-      main += `Watch your ${agedUnits} aged units (${agedRiskPct}%, 181+ days old) eating capital. At ${dailyVelocity} units/day velocity, they'll take ${daysToNaturalClear}+ days to clear naturally. Run an aggressive clearance promo this week to free up cash for premium restocks.`;
-    }
+  function _consec(arr, dir) {
+    let c=0;
+    for(let i=arr.length-1;i>=1;i--){ if(dir==='down'?arr[i]<arr[i-1]:arr[i]>arr[i-1])c++; else break; } return c;
   }
+  function _win(s){ const r=s.repricer||{}; return r.total>0?parseFloat(((r.winning/r.total)*100).toFixed(1)):parseFloat(r.winPct||0); }
+  function _match(s){ const r=s.repricer||{}; return r.total>0?parseFloat(((r.matching/r.total)*100).toFixed(1)):parseFloat(r.matchPct||0); }
+  function _g(val, isGood) { return `<strong style="color:${isGood?'#22c55e':'#ea580c'}">${val}</strong>`; }
+  function _n(val, isGood) { return `<span style="color:${isGood?'#22c55e':'#ea580c'}">${val}</span>`; }
+  function _gbp(v, isGood) { return _g('£'+Math.abs(Math.round(v)).toLocaleString(), isGood); }
+  function _neu(val) { return `<span style="color:var(--muted2)">${val}</span>`; }
+
+  if (snaps.length === 1) {
+    main = `Baseline established on <strong>${fmt(latest.date)}</strong>. Stock value: <strong>£${(latest.stockValue||0).toLocaleString()}</strong> · Units: <strong>${latest.totalUnits.toLocaleString()}</strong> · Avg unit cost: <strong>£${(latest.avgCost||0).toFixed(2)}</strong> · ${latest.skus} SKUs across ${latest.asins} ASINs.`;
+    if(over180>0) main += ` ${_n(over180+' units ('+over180pct+'%)', false)} aged 181+ days.`;
+    main += ` <em style="color:var(--muted2)">Add more snapshots to see trend analysis.</em>`;
+
+  } else if (snaps.length === 2) {
+    const sv2=(latest.stockValue||0)-(prev.stockValue||0), u2=latest.totalUnits-prev.totalUnits, c2=(latest.avgCost||0)-(prev.avgCost||0);
+    main = `Since <strong>${fmt(prev.date)}</strong>: stock value ${sv2>=0?_g('+£'+Math.abs(Math.round(sv2)).toLocaleString(),true):_g('-£'+Math.abs(Math.round(sv2)).toLocaleString(),false)}, units ${u2>=0?_g('+'+u2,true):_g(u2.toString(),false)}, avg unit cost ${c2>=0.005?_g('+£'+c2.toFixed(2),true):c2<=-0.005?_g('-£'+Math.abs(c2).toFixed(2),false):_neu('flat')}. <em style="color:var(--muted2)">Add more snapshots to reveal trends.</em>`;
+
+  } else {
+    const first = snaps[0];
+    const svA=snaps.map(s=>s.stockValue||0), uA=snaps.map(s=>s.totalUnits||0), cA=snaps.map(s=>s.avgCost||0);
+    const wA=snaps.map(_win), mA=snaps.map(_match);
+    const svDiff=(latest.stockValue||0)-(prev.stockValue||0), uDiff=latest.totalUnits-prev.totalUnits, cDiff=(latest.avgCost||0)-(prev.avgCost||0);
+    const wCur=_win(latest), mCur=_match(latest), wDiff=wCur-_win(prev), mDiff=mCur-_match(prev);
+    const prevAg2=prev.ageing||{}, prev181=(prevAg2.a181||0)+(prevAg2.a271||0)+(prevAg2.a365||0);
+    const skuDiff=latest.skus-prev.skus, asinDiff=latest.asins-prev.asins;
+    const last3=snaps.slice(-3);
+    const sv3s=last3[0].stockValue||0, sv3e=latest.stockValue||0;
+    const u3s=last3[0].totalUnits||0, u3e=latest.totalUnits||0;
+    const c3s=last3[0].avgCost||0, c3e=latest.avgCost||0;
+    const c3peak=Math.max(...last3.map(s=>s.avgCost||0));
+    const daysSpan=Math.max(1,Math.floor((new Date(latest.date)-new Date(first.date))/86400000));
+    const svTrend=(latest.stockValue||0)-(first.stockValue||0), uTrend=latest.totalUnits-first.totalUnits, cTrend=(latest.avgCost||0)-(first.avgCost||0);
+    const svConsecDown=_consec(svA,'down'), svConsecUp=_consec(svA,'up'), wConsecDown=_consec(wA,'down');
+    const svDown=svDiff<0,svUp=svDiff>0,uDown=uDiff<0,uUp=uDiff>0,cDown=cDiff<-0.005,cUp=cDiff>0.005;
+
+    // ── 1. Latest snapshot movement ─────────────────────────
+    main += `<strong>Latest snapshot movement (vs ${fmt(prev.date)}):</strong><br>`;
+    main += `Stock value ${svUp?`increased by ${_g('+£'+Math.round(svDiff).toLocaleString(),true)}`:svDown?`fell by ${_g('-£'+Math.abs(Math.round(svDiff)).toLocaleString(),false)}`:`held flat`}, `;
+    main += `total units ${uUp?`increased by ${_g('+'+uDiff.toLocaleString(),true)}`:uDown?`declined by ${_g(uDiff.toLocaleString(),false)}`:`held flat`}, `;
+    main += `and avg unit cost ${cUp?`increased by ${_g('+£'+cDiff.toFixed(2),true)} to ${_n('£'+(latest.avgCost||0).toFixed(2),true)}`:cDown?`decreased by ${_g('-£'+Math.abs(cDiff).toFixed(2),false)} to ${_n('£'+(latest.avgCost||0).toFixed(2),false)}`:`held broadly steady at £${(latest.avgCost||0).toFixed(2)}`}.<br>`;
+
+    if(svDown&&uDown&&cDown) main += `All 3 core inventory KPIs softened — lower inventory depth, lower deployed stock value, and weaker average inventory value overall.`;
+    else if(svUp&&uUp&&cUp) main += `All 3 core inventory KPIs improved — stronger stock value, deeper inventory, and higher average unit cost. Strongest combined signal for this business model.`;
+    else if(svDown&&uDown&&cUp) main += `Stock value and units both declined while avg unit cost increased. Lower-cost units sold through, leaving higher-value stock remaining. Inventory depth and deployed capital reduced.`;
+    else if(svUp&&uDown&&cUp) main += `Stock value increased with fewer units and higher avg cost — inventory concentrated in higher-value products. Depth thinner but average value per unit is stronger.`;
+    else if(svUp&&uUp&&cDown) main += `Stock value and units both grew while avg unit cost declined — more units at lower individual values. Inventory depth increased but mix shifted toward lower-value products.`;
+    else if(svDown&&uUp&&cDown) main += `More units added at lower values with stock value declining. Inventory depth grew but average value per unit and total deployed capital weakened.`;
+    else main += `Mixed signals across the 3 core KPIs this period.`;
+    main += `<br><br>`;
+
+    // ── 2. Short-term trend (last 3) ────────────────────────
+    if(last3.length>=3){
+      main += `<strong>Short-term trend (last 3 snapshots):</strong><br>`;
+      main += `Stock value has ${sv3e>sv3s?_n('continued building',true):_n('continued declining',false)} across the last 3 entries`;
+      main += `, while avg unit cost has ${c3e>c3s?_n('strengthened',true):_n('softened',false)} to ${_n('£'+c3e.toFixed(2),c3e>=c3s)}`;
+      if(c3e<c3peak&&c3peak!==c3s) main += ` (recent high: ${_n('£'+c3peak.toFixed(2),false)})`;
+      main += `. Units have ${u3e>u3s?_n('increased',true):_n('continued trending lower',false)} over the same period`;
+      if(u3e<u3s) main += `, suggesting replenishment has not fully kept pace with sell-through in the short term`;
+      main += `.`;
+      if(cTrend>0&&cDown) main += ` Avg unit cost remains ${_n('above earlier '+fmt(first.date)+' levels',true)} despite the recent dip.`;
+      main += `<br><br>`;
+    }
+
+    // ── 3. Selected timeframe trend ─────────────────────────
+    main += `<strong>Selected timeframe trend (${fmt(first.date)} → ${fmt(latest.date)}):</strong><br>`;
+    main += `&bull; Stock value: ${svTrend>=0?_g('+£'+Math.abs(Math.round(svTrend)).toLocaleString(),true):_g('-£'+Math.abs(Math.round(svTrend)).toLocaleString(),false)}<br>`;
+    main += `&bull; Units: ${uTrend>=0?_g('+'+uTrend.toLocaleString(),true):_g(uTrend.toLocaleString(),false)}<br>`;
+    main += `&bull; Avg unit cost: ${cTrend>=0.01?_g('+£'+cTrend.toFixed(2),true):cTrend<=-0.01?_g('-£'+Math.abs(cTrend).toFixed(2),false):_neu('flat')}<br>`;
+    if(svTrend<0&&uTrend<0&&cTrend>0) main += `Longer-term movement remains mixed. Avg unit cost is still ${_n('materially above earlier levels',true)}, although total stock value and inventory depth have ${_n('continued trending lower',false)} overall.`;
+    else if(svTrend>0&&uTrend>0&&cTrend>0) main += `All three core KPIs have ${_n('strengthened',true)} over the period — a positive longer-term picture.`;
+    else if(svTrend<0&&uTrend<0&&cTrend<0) main += `All three core KPIs have ${_n('weakened',false)} over the period. Replenishment has not kept pace with sell-through and the inventory mix has also shifted toward lower-value products.`;
+    else main += `Mixed picture over the full period — some KPIs strengthened while others declined.`;
+    main += `<br><br>`;
+
+    // ── 4. Core KPI relationship ────────────────────────────
+    main += `<strong>Core KPI relationship:</strong><br>`;
+    main += `The strongest inventory state is ${_n('stock value ↑',true)}, ${_n('units ↑',true)}, and ${_n('avg unit cost ↑',true)} — stronger capital deployment, deeper inventory, and higher-value mix. `;
+    if(svDiff<0||uDiff<0||cDiff<-0.005) main += `Current short-term movement remains ${_n('below that ideal state',false)}.`;
+    else if(svDiff>0&&uDiff>0&&cDiff>0.005) main += `Current movement is ${_n('aligned with that ideal state',true)}.`;
+    else main += `Current movement is partially aligned with that ideal state.`;
+    main += `<br><br>`;
+
+    // ── 5. Secondary KPIs ───────────────────────────────────
+    main += `<strong>Secondary KPIs:</strong><br>`;
+    const wColour = wCur>=10?'#22c55e':wCur<5?'#dc2626':'#ea580c';
+    const mColour = mCur>=10?'#22c55e':mCur<5?'#dc2626':'#ea580c';
+    main += `Win Buy Box ${_n(wCur.toFixed(1)+'%',wCur>=10)}${wDiff!==0?` (${_n((wDiff>0?'+':'')+wDiff.toFixed(1)+'pp',wDiff>0)})`:''} `;
+    if(wCur<5) main += `— <span style="color:#dc2626">critically low, listings near-invisible</span>`;
+    else if(wCur<10&&wConsecDown>=3) main += `— below 10% target, declining ${_n(wConsecDown+' entries in a row',false)}`;
+    else if(wCur<10) main += `— below 10% target`;
+    else main += `— at or above 10% target`;
+    main += `. Match Buy Box ${_n(mCur.toFixed(1)+'%',mCur>=10)}${mDiff!==0?` (${_n((mDiff>0?'+':'')+mDiff.toFixed(1)+'pp',mDiff>0)})`:''}.`;
+    if(skuDiff!==0||asinDiff!==0){
+      main += ` SKUs ${_n((skuDiff>=0?'+':'')+skuDiff,skuDiff>=0)}, ASINs ${_n((asinDiff>=0?'+':'')+asinDiff,asinDiff>=0)}`;
+      if((skuDiff>0||asinDiff>0)&&uDiff<0) main += ` — catalogue expanding but ${_n('units per SKU thinning',false)}`;
+      main += `.`;
+    }
+    const aged181change=over180-prev181;
+    main += ` Aged inventory (181+d): ${over180>0?_n(over180+' units ('+over180pct+'%)',parseFloat(over180pct)<=10):_n('clear',true)}`;
+    if(aged181change>0) main += ` ${_n('↑ +'+aged181change+' since last snapshot',false)}`;
+    else if(aged181change<0) main += ` ${_n('↓ '+aged181change+' since last snapshot',true)}`;
+    main += parseFloat(over180pct)>10?` — ${_n('above 10% threshold',false)}.`:`.`;
+    main += `<br><br>`;
+
+    // ── 6. Overall ──────────────────────────────────────────
+    main += `<strong>Overall:</strong><br>`;
+    if(svDiff<0&&uDiff<0&&cDiff<-0.005) main += `Short-term inventory momentum has ${_n('softened',false)}, particularly across stock value and unit depth.`;
+    else if(svDiff>0&&uDiff>0&&cDiff>0.005) main += `Short-term inventory momentum is ${_n('positive',true)} across all three core KPIs.`;
+    else main += `Short-term inventory signals are mixed.`;
+    main += ` The main metric to monitor is whether replenishment activity stabilises ${_n('stock value',true)} and rebuilds ${_n('unit depth',true)} over upcoming snapshots.`;
+    if(svConsecDown>=5) main += ` ${_n('⚠ Stock value has declined for '+svConsecDown+' consecutive entries — sustained pattern that may require stronger restocking activity.',false)}`;
+  }
+
   box.innerHTML = main;
 }
 
@@ -2117,6 +2862,20 @@ function renderOverviewChart(snaps) {
     trend = Math.abs(latest.stockValue - prev.stockValue);
     trendDir = latest.stockValue >= prev.stockValue ? 'up' : 'down';
     trendColor = trendDir === 'up' ? 'var(--g)' : 'var(--r)';
+  } else if (chartMetric === 'avgcostperunit') {
+    const data = snaps.map(s => s.totalUnits > 0 ? parseFloat((s.stockValue / s.totalUnits).toFixed(2)) : 0);
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    const range = max - min || 1;
+    yMin = Math.max(0, min - range * 0.15);
+    yMax = max + range * 0.15;
+    yLabel = 'Avg Cost/Unit (£)';
+    datasets.push({ label:'Avg Cost/Unit', data, borderColor:'#ff8c42', backgroundColor:'rgba(255,140,66,.08)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#ff8c42', pointBorderColor:'#07090c', pointBorderWidth:2 });
+    const latestCpu = snaps[snaps.length-1].totalUnits > 0 ? snaps[snaps.length-1].stockValue / snaps[snaps.length-1].totalUnits : 0;
+    const prevCpu = snaps[snaps.length-2].totalUnits > 0 ? snaps[snaps.length-2].stockValue / snaps[snaps.length-2].totalUnits : 0;
+    trend = Math.abs(latestCpu - prevCpu).toFixed(2);
+    trendDir = latestCpu >= prevCpu ? 'up' : 'down';
+    trendColor = trendDir === 'up' ? 'var(--r)' : 'var(--g)'; // up = spending more per unit = bad
   } else if (chartMetric === 'agedrisk') {
     const calcAgedRisk = (snap) => {
       const ag = snap.ageing || {};
@@ -2141,8 +2900,8 @@ function renderOverviewChart(snaps) {
   // Add trend badge
   if (trendBadge && trend !== null) {
     const arrow = trendDir === 'up' ? '↑' : '↓';
-    const label = chartMetric === 'agedrisk' ? (trendDir === 'up' ? 'WORSENING' : 'IMPROVING') : (trendDir === 'up' ? 'UP' : 'DOWN');
-    const suffix = (chartMetric.includes('bb') || chartMetric === 'agedrisk') ? 'pp' : '';
+    const label = chartMetric === 'agedrisk' ? (trendDir === 'up' ? 'WORSENING' : 'IMPROVING') : chartMetric === 'avgcostperunit' ? (trendDir === 'up' ? 'RISING' : 'FALLING') : (trendDir === 'up' ? 'UP' : 'DOWN');
+    const suffix = (chartMetric.includes('bb') || chartMetric === 'agedrisk') ? 'pp' : chartMetric === 'avgcostperunit' ? 'p' : '';
     trendBadge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:${trendColor};color:#07090c;border-radius:3px;font-weight:600;font-size:11px;font-family:var(--mono);">${arrow} ${label} ${trend}${suffix}</span>`;
   }
 
@@ -2156,6 +2915,8 @@ function renderOverviewChart(snaps) {
     opts.scales.y.ticks.callback = v => v + '%';
   } else if (chartMetric === 'stockvalue') {
     opts.scales.y.ticks.callback = v => '£' + (v/1000).toFixed(0) + 'k';
+  } else if (chartMetric === 'avgcostperunit') {
+    opts.scales.y.ticks.callback = v => '£' + v.toFixed(2);
   }
 
   chartInstances.overviewChart = new Chart(ctx, {
@@ -4277,5 +5038,19 @@ document.getElementById('rangeFrom').value = rangeFrom;
 document.getElementById('rangeTo').value = rangeTo;
 
 </script>
+<!-- KPI Modal — at root level so position:fixed works correctly -->
+<div id="kpiModal" onclick="if(event.target===this)closeKpiModal()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,.85);z-index:999999;backdrop-filter:blur(6px)">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#16181a;border:1px solid rgba(0,245,160,.2);border-radius:16px;width:920px;max-width:94vw;max-height:86vh;overflow-y:auto;box-shadow:0 40px 120px rgba(0,0,0,.95)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;background:#16181a;z-index:2;border-radius:16px 16px 0 0">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="kpiModalTitle" style="font-size:15px;font-weight:700;color:var(--g);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em"></span>
+        <span id="kpiModalConcern" style="font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;display:none"></span>
+      </div>
+      <button onclick="closeKpiModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fff;font-size:12px;font-family:var(--mono);cursor:pointer;padding:7px 16px;border-radius:8px;flex-shrink:0;letter-spacing:.05em">✕ CLOSE</button>
+    </div>
+    <div id="kpiModalBody" style="padding:28px"></div>
+  </div>
+</div>
+
 </body>
 </html>
