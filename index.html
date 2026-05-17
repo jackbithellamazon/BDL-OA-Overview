@@ -527,10 +527,10 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .metric-toggle{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:4px;font-size:10px;font-family:var(--mono);cursor:pointer;transition:all 0.2s;margin-right:4px}
 .metric-toggle:hover{color:var(--fg);border-color:var(--fg)}
 .metric-toggle.active{background:var(--g);color:#07090c;border-color:var(--g);font-weight:600}
-.kpi-tile{padding:22px 14px;border-radius:12px;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center;justify-content:center;min-height:140px;cursor:pointer;position:relative;transition:all 0.2s;background:#1a1a1a;border:2px solid transparent;z-index:1;overflow:visible}
-.kpi-tile.better{background:#1a1a1a;border-color:#2b8f56}
-.kpi-tile.worse{background:#1a1a1a;border-color:#d92424}
-.kpi-tile.same{background:#1a1a1a;border-color:#5a6268}
+.kpi-tile{padding:22px 14px;border-radius:12px;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center;justify-content:center;min-height:140px;cursor:pointer;position:relative;transition:all 0.2s;background:#1a1a1a;border:3px solid rgba(255,255,255,.06);z-index:1;overflow:visible}
+.kpi-tile.better{background:#1a1a1a;border:4px solid #2b8f56;box-shadow:0 0 16px rgba(43,143,86,.3)}
+.kpi-tile.worse{background:#1a1a1a;border:4px solid #d92424;box-shadow:0 0 16px rgba(217,36,36,.3)}
+.kpi-tile.same{background:#1a1a1a;border:4px solid #5a6268}
 .kpi-tile:hover{transform:translateY(-2px);box-shadow:0 8px 16px rgba(0,0,0,0.2)}
 .kpi-mini-insight{font-size:9px;color:var(--muted2);font-family:var(--mono);line-height:1.4;margin-top:4px;text-align:center;min-height:24px}
 .kpi-tile:hover{transform:translateY(-2px);box-shadow:0 8px 16px rgba(0,0,0,0.3);cursor:pointer}
@@ -1638,6 +1638,20 @@ function renderKpis(snaps) {
   setKpi('kStockValue','kStockValuePill','_', latest.stockValue, prev?.stockValue, '£', true, avgStockValue);
   setKpiPercent('kRepWinPct','kRepWinPctPill','_', repWinPct, prevRepWinPct, true, avgRepWinPct);
   setKpiPercent('kRepMatchPct','kRepMatchPctPill','_', repMatchPct, prevRepMatchPct, true, avgRepMatchPct);
+
+  // setTileColor — must be defined before any calls below
+  const setTileColor = (tileId, curr, prevVal) => {
+    const el = document.getElementById(tileId);
+    const tile = el?.closest('.kpi-tile') || document.querySelector(`.kpi-tile [id="${tileId}"]`)?.closest('.kpi-tile');
+    if (!tile || prevVal === null || prevVal === undefined) return;
+    const improved = curr > prevVal;
+    const declined = curr < prevVal;
+    tile.classList.remove('better', 'worse', 'same');
+    if (improved) tile.classList.add('better');
+    else if (declined) tile.classList.add('worse');
+    else tile.classList.add('same');
+  };
+
   // Stock Health KPI — show 0-90d flow % (target 80%+), not 181d+ risk
   const ag0 = latest.ageing||{};
   const agTotal = AG_BUCKETS.reduce((s,b)=>s+(ag0[b.key]||0),0)||1;
@@ -1649,32 +1663,17 @@ function renderKpis(snaps) {
     prevFresh90pctKpi = parseFloat(((((prevAg0.a0||0)+(prevAg0.a31||0)+(prevAg0.a61||0))/prevAgTotal)*100).toFixed(1));
   }
   setKpiPercent('kAgedRisk','kAgedRiskPill','_', fresh90pctKpi, prevFresh90pctKpi, true, 0);
-  setTileColor('kAgedRisk', fresh90pctKpi, prevFresh90pctKpi); // higher = better (more in 0-90d)
-  
-  // Set tile colors based on comparison (only if we have previous data)
-  const setTileColor = (tileId, curr, prev, isInverse = false) => {
-    const tile = document.querySelector(`[id*="${tileId}"]`)?.closest('.kpi-tile');
-    if (!tile || !prev) return; // No color if no previous data
-    
-    const improved = isInverse ? (curr < prev) : (curr > prev);
-    const declined = isInverse ? (curr > prev) : (curr < prev);
-    const same = curr === prev;
-    
-    tile.classList.remove('better', 'worse', 'same');
-    if (improved) tile.classList.add('better');
-    else if (declined) tile.classList.add('worse');
-    else if (same) tile.classList.add('same');
-  };
-  
-  // Apply colors to each tile — up = better for all, down = worse for all
+  setTileColor('kAgedRisk', fresh90pctKpi, prevFresh90pctKpi);
+
+  // Apply colours — up = better for all KPIs
   setTileColor('kSkus', latest.skus, prev?.skus);
   setTileColor('kAsins', latest.asins, prev?.asins);
   setTileColor('kCost', latest.avgCost, prev?.avgCost);
-  setTileColor('kStockValue', latest.stockValue, prev?.stockValue); // Higher = better
-  setTileColor('kUnits', latest.totalUnits, prev?.totalUnits); // Higher = better
-  setTileColor('kRepWinPct', parseFloat(repWinPct), prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct) : null); // Higher = better
-  setTileColor('kRepMatchPct', parseFloat(repMatchPct), prev?.repricer?.matchPct ? parseFloat(prev.repricer.matchPct) : null); // Higher = better
-  // kAgedRisk tile colour handled above with fresh90pctKpi
+  setTileColor('kStockValue', latest.stockValue, prev?.stockValue);
+  setTileColor('kUnits', latest.totalUnits, prev?.totalUnits);
+  setTileColor('kRepWinPct', parseFloat(repWinPct), prev ? parseFloat(prev.repricer?.total>0?((prev.repricer.winning/prev.repricer.total)*100).toFixed(1):prev.repricer?.winPct||0) : null);
+  setTileColor('kRepMatchPct', parseFloat(repMatchPct), prev ? parseFloat(prev.repricer?.total>0?((prev.repricer.matching/prev.repricer.total)*100).toFixed(1):prev.repricer?.matchPct||0) : null);
+  setTileColor('kAgedRisk', fresh90pctKpi, prevFresh90pctKpi);
   
   // Update popouts with rich click popup content
   updatePopouts(filteredSnaps());
@@ -2695,6 +2694,7 @@ function renderAgeing(snaps) {
 
   const total = AG_BUCKETS.reduce((s,b) => s + (ag[b.key]||0), 0) || 1;
   const total181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const fresh90 = (ag.a0||0)+(ag.a31||0)+(ag.a61||0);
   const fresh90pctNum = parseFloat(((fresh90/total)*100).toFixed(1));
   tag.textContent = `${total} SKUs · ${fresh90pctNum}% within 90d · ${total181 > 0 ? total181 + ' at 181+' : 'No 181+ stock'}`;
 
@@ -3452,7 +3452,7 @@ function repGetTrend(snaps, getter, n) {
 function renderRepricerTab(snaps) {
   console.log('renderRepricerTab called with snaps:', snaps);
   if (!snaps.length) {
-    ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch','repKpiCombined'].forEach(id => {
+    ['repKpiSkus','repKpiAsins','repKpiWin','repKpiMatch'].forEach(id => {
       const el = document.getElementById(id); if (el) el.textContent = '—';
     });
     return;
