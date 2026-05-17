@@ -1638,7 +1638,18 @@ function renderKpis(snaps) {
   setKpi('kStockValue','kStockValuePill','_', latest.stockValue, prev?.stockValue, '£', true, avgStockValue);
   setKpiPercent('kRepWinPct','kRepWinPctPill','_', repWinPct, prevRepWinPct, true, avgRepWinPct);
   setKpiPercent('kRepMatchPct','kRepMatchPctPill','_', repMatchPct, prevRepMatchPct, true, avgRepMatchPct);
-  setKpiPercent('kAgedRisk','kAgedRiskPill','_', agedRiskPct, prevAgedRiskPct, false, avgAgedRiskPct);
+  // Stock Health KPI — show 0-90d flow % (target 80%+), not 181d+ risk
+  const ag0 = latest.ageing||{};
+  const agTotal = AG_BUCKETS.reduce((s,b)=>s+(ag0[b.key]||0),0)||1;
+  const fresh90pctKpi = parseFloat(((((ag0.a0||0)+(ag0.a31||0)+(ag0.a61||0))/agTotal)*100).toFixed(1));
+  let prevFresh90pctKpi = null;
+  if(prev){
+    const prevAg0 = prev.ageing||{};
+    const prevAgTotal = AG_BUCKETS.reduce((s,b)=>s+(prevAg0[b.key]||0),0)||1;
+    prevFresh90pctKpi = parseFloat(((((prevAg0.a0||0)+(prevAg0.a31||0)+(prevAg0.a61||0))/prevAgTotal)*100).toFixed(1));
+  }
+  setKpiPercent('kAgedRisk','kAgedRiskPill','_', fresh90pctKpi, prevFresh90pctKpi, true, 0);
+  setTileColor('kAgedRisk', fresh90pctKpi, prevFresh90pctKpi); // higher = better (more in 0-90d)
   
   // Set tile colors based on comparison (only if we have previous data)
   const setTileColor = (tileId, curr, prev, isInverse = false) => {
@@ -1663,7 +1674,7 @@ function renderKpis(snaps) {
   setTileColor('kUnits', latest.totalUnits, prev?.totalUnits); // Higher = better
   setTileColor('kRepWinPct', parseFloat(repWinPct), prev?.repricer?.winPct ? parseFloat(prev.repricer.winPct) : null); // Higher = better
   setTileColor('kRepMatchPct', parseFloat(repMatchPct), prev?.repricer?.matchPct ? parseFloat(prev.repricer.matchPct) : null); // Higher = better
-  setTileColor('kAgedRisk', parseFloat(agedRiskPct), prevAgedRiskPct ? parseFloat(prevAgedRiskPct) : null, true); // Lower = better (inverse)
+  // kAgedRisk tile colour handled above with fresh90pctKpi
   
   // Update popouts with rich click popup content
   updatePopouts(filteredSnaps());
@@ -1705,208 +1716,351 @@ function openAgedStockModal(snaps, modal, title, body) {
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
   const ag = latest.ageing || {};
   const prevAg = prev?.ageing || {};
-  const daysBetween = prev ? Math.max(1, Math.round((new Date(latest.date) - new Date(prev.date)) / 86400000)) : null;
   const total = AG_BUCKETS.reduce((s,b)=>s+(ag[b.key]||0),0) || 1;
-  const total181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
-  const total181pct = ((total181/total)*100).toFixed(1);
-  const total91 = (ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0);
-  const freshUnits = (ag.a0||0)+(ag.a31||0)+(ag.a61||0);
-  const freshPct = ((freshUnits/total)*100).toFixed(1);
+  const prevTotal = AG_BUCKETS.reduce((s,b)=>s+(prevAg[b.key]||0),0) || 1;
 
-  // Per-bracket history over last 6 snaps
+  // Core counts — ALL IN SKUs
+  const fresh90 = (ag.a0||0)+(ag.a31||0)+(ag.a61||0);
+  const caution91 = ag.a91||0;
+  const danger181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
+  const fresh90pct = parseFloat(((fresh90/total)*100).toFixed(1));
+  const caution91pct = parseFloat(((caution91/total)*100).toFixed(1));
+  const danger181pct = parseFloat(((danger181/total)*100).toFixed(1));
+
+  const prevFresh90 = (prevAg.a0||0)+(prevAg.a31||0)+(prevAg.a61||0);
+  const prevCaution91 = prevAg.a91||0;
+  const prevDanger181 = (prevAg.a181||0)+(prevAg.a271||0)+(prevAg.a365||0);
+  const prevFresh90pct = prevTotal > 0 ? parseFloat(((prevFresh90/prevTotal)*100).toFixed(1)) : null;
+
+  // KEY THRESHOLD: 80%+ in 0-90d = healthy
+  const isHealthyFlow = fresh90pct >= 80;
+  const isWarningFlow = fresh90pct >= 70 && fresh90pct < 80;
+  const isCriticalFlow = fresh90pct < 70;
+
+  // Consecutive trend on key brackets across all snaps
+  function consec(getter, dir) {
+    const vals = snaps.map(getter);
+    let c=0;
+    for(let i=vals.length-1;i>=1;i--){
+      if(dir==='up'?vals[i]>vals[i-1]:vals[i]<vals[i-1]) c++;
+      else break;
+    }
+    return c;
+  }
+  const get91 = s => s.ageing?.a91||0;
+  const get181 = s => (s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0);
+  const getFresh = s => { const ag=s.ageing||{}; const tot=AG_BUCKETS.reduce((x,b)=>x+(ag[b.key]||0),0)||1; return parseFloat((((ag.a0||0)+(ag.a31||0)+(ag.a61||0))/tot*100).toFixed(1)); };
+  const consec91Up = consec(get91,'up');
+  const consec91Down = consec(get91,'down');
+  const consec181Up = consec(get181,'up');
+  const consec181Down = consec(get181,'down');
+  const consecFreshDown = consec(getFresh,'down');
+
+  // ── Overall health sentence ──────────────────────────────
+  let healthSentence='', healthColor='';
+  if(isCriticalFlow){
+    healthSentence=`⚠ Concern — only ${fresh90pct}% of SKUs are within the healthy 0–90d window (target: 80%+). Too much inventory is aging past the sell-through target.`;
+    healthColor='#dc2626';
+  } else if(isWarningFlow){
+    healthSentence=`Watch — ${fresh90pct}% of SKUs are within 0–90 days. Below the 80% target. Monitor over next few entries.`;
+    healthColor='#ca8a04';
+  } else {
+    healthSentence=`✓ Healthy flow — ${fresh90pct}% of SKUs are within the 0–90d target window (80%+ is the goal).`;
+    healthColor='#22c55e';
+  }
+
+  // ── Early warning: 91–180d bracket ──────────────────────
+  let earlyWarnSentence='', earlyWarnColor='var(--muted2)';
+  if(consec91Up>=5){
+    earlyWarnSentence=`⚠ Serious — 91–180d bracket has been rising for ${consec91Up} consecutive entries (~${Math.round(consec91Up/2.5)} weeks). This is your future 181+ problem. Act now.`;
+    earlyWarnColor='#dc2626';
+  } else if(consec91Up>=3){
+    earlyWarnSentence=`Watch — 91–180d has been rising for ${consec91Up} entries in a row. SKUs are aging past the 90-day target and not clearing. Start repricing these aggressively.`;
+    earlyWarnColor='#ca8a04';
+  } else if(consec91Down>=2){
+    earlyWarnSentence=`✓ 91–180d bracket is clearing — down for ${consec91Down} consecutive entries. Good direction.`;
+    earlyWarnColor='#22c55e';
+  } else if(prev){
+    const diff91 = caution91 - prevCaution91;
+    if(diff91>5) earlyWarnSentence=`91–180d grew by ${diff91} SKUs this entry. Watch if this continues next snapshot.`;
+    else if(diff91<-5) earlyWarnSentence=`91–180d cleared ${Math.abs(diff91)} SKUs this entry — positive movement.`;
+    else earlyWarnSentence=`91–180d bracket broadly stable this entry (${caution91} SKUs). Monitor as your key leading indicator.`;
+    earlyWarnColor='var(--muted2)';
+  }
+
+  // ── 181+ sentence ────────────────────────────────────────
+  let deadStockSentence='', deadStockColor='';
+  if(danger181===0){
+    deadStockSentence='✓ No SKUs aged 181+ days.'; deadStockColor='#22c55e';
+  } else if(danger181pct>10&&consec181Up>=5){
+    deadStockSentence=`⚠ ${danger181} SKUs (${danger181pct}%) aged 181+ days — above 10% and rising for ${consec181Up} entries. Prolonged build-up. Clearance action needed.`;
+    deadStockColor='#dc2626';
+  } else if(danger181pct>10){
+    deadStockSentence=`⚠ ${danger181} SKUs (${danger181pct}%) aged 181+ days. Above the 10% threshold — plan targeted clearance.`;
+    deadStockColor='#ea580c';
+  } else if(consec181Up>=3){
+    deadStockSentence=`Watch — ${danger181} SKUs (${danger181pct}%) in 181+ and rising for ${consec181Up} entries. Still manageable but trending wrong way.`;
+    deadStockColor='#ca8a04';
+  } else {
+    deadStockSentence=`${danger181} SKUs (${danger181pct}%) aged 181+ days — manageable. Monitor to prevent further accumulation.`;
+    deadStockColor='var(--muted2)';
+  }
+
+  // ── Bracket table rows ───────────────────────────────────
+  // Backwards cascade algorithm — correct flow calculation
+  // Core: now = last + agedIn − agedOut − sold
+  // agedOn[n] = 0 (nothing ages past 365d+), cascade backwards
+
+  function computeFlows(ag, prevAg) {
+    const keys = ['a0','a31','a61','a91','a181','a271','a365'];
+    const n = keys.length;
+    const last = keys.map(k => prevAg[k]||0);
+    const now  = keys.map(k => ag[k]||0);
+    const agedOn = new Array(n+1).fill(0); // agedOn[i] = flow INTO bracket i from i-1
+    const sold   = new Array(n).fill(0);
+    for(let i = n-1; i >= 0; i--) {
+      const agedOut = agedOn[i+1]; // flow leaving forward (set last iteration)
+      agedOn[i] = Math.max(0, (now[i] - last[i]) + agedOut); // inflow so sold >= 0
+      sold[i]   = Math.max(0, last[i] + agedOn[i] - agedOut - now[i]);
+    }
+    return keys.map((key, i) => ({
+      key, last: last[i], now: now[i], net: now[i]-last[i],
+      agedIn:  i===0 ? null : agedOn[i],  // null at 0-30d — new arrivals unknown
+      agedOut: agedOn[i+1],
+      sold:    i===0 ? null : sold[i],    // null at 0-30d — ambiguous
+    }));
+  }
+
+  const flows = prev ? computeFlows(ag, prevAg) : null;
+
+  const bracketRows = AG_BUCKETS.map((b, idx) => {
+    const cnt     = ag[b.key]||0;
+    const prevCnt = prevAg[b.key]||0;
+    const diff    = prev ? cnt - prevCnt : null;
+    const pct     = ((cnt/total)*100).toFixed(1);
+    const isHealthy = b.zone === 'healthy';
+    const isCaution = b.zone === 'caution';
+    const barPct  = Math.min(parseFloat(pct), 100);
+    const f       = flows ? flows[idx] : null;
+
+    // Colour
+    let diffCol = 'var(--muted2)';
+    if(f && diff !== null){
+      if(idx===0) diffCol = 'var(--muted2)';
+      else if(f.agedOut>0 && (f.sold||0)===0) diffCol = b.color; // only aged on = bad
+      else if(f.agedOut>0 && (f.sold||0)>0)  diffCol = '#ca8a04'; // mixed
+      else if((f.sold||0)>0) diffCol = isHealthy ? 'var(--muted2)' : '#22c55e'; // sold = good
+      else if(diff>0) diffCol = isHealthy ? 'var(--muted2)' : b.color;
+    }
+
+    // Label
+    let moveLabel = '';
+    if(f && prev){
+      if(idx===0){
+        const parts = [];
+        if(f.agedOut>0) parts.push(`${f.agedOut} aged into 31–60d`);
+        parts.push('new arrivals + sales mixed');
+        moveLabel = parts.join(' · ');
+      } else {
+        const parts = [];
+        if((f.agedIn||0)>0)  parts.push(`${f.agedIn} aged in`);
+        if(f.agedOut>0)      parts.push(`${f.agedOut} aged on${!isHealthy?' ⚠':''}`);
+        if((f.sold||0)>0)    parts.push(`${f.sold} sold ✓`);
+        moveLabel = parts.length ? parts.join(' · ') : (diff===0 ? '' : `${Math.abs(diff||0)} left`);
+      }
+    }
+
+    // Zone badge
+    const zoneBadge = isCaution
+      ? `<span style="font-family:var(--mono);font-size:8px;color:#ca8a04;background:rgba(202,138,4,.15);padding:1px 6px;border-radius:2px">CAUTION</span>`
+      : b.zone==='danger'
+      ? `<span style="font-family:var(--mono);font-size:8px;color:#ea580c;background:rgba(234,88,12,.15);padding:1px 6px;border-radius:2px">ACTION</span>`
+      : b.zone==='critical'
+      ? `<span style="font-family:var(--mono);font-size:8px;color:#dc2626;background:rgba(220,38,38,.15);padding:1px 6px;border-radius:2px">CRITICAL</span>`
+      : `<span style="font-family:var(--mono);font-size:8px;color:#4ade80;background:rgba(74,222,128,.1);padding:1px 6px;border-radius:2px">HEALTHY</span>`;
+
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+      <td style="padding:10px 12px;white-space:nowrap">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${b.color};flex-shrink:0;display:inline-block"></span>
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${b.color}">${b.label}</span>
+          ${zoneBadge}
+        </div>
+      </td>
+      <td style="padding:10px 12px;text-align:right;font-family:var(--mono);font-size:16px;font-weight:700;color:${b.color}">${cnt}</td>
+      <td style="padding:10px 12px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted2)">${prev ? prevCnt : '—'}</td>
+      <td style="padding:10px 12px;text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${diffCol}">${diff===null?'—':diff===0?'→':isHealthy?(diff>0?`↑ ${Math.abs(diff)}`:`↓ ${Math.abs(diff)}`):(diff>0?`↑ ${Math.abs(diff)}`:`↓ ${Math.abs(diff)}`)}</td>
+      <td style="padding:10px 12px;font-family:var(--mono);font-size:10px;color:${diffCol}">${moveLabel}</td>
+      <td style="padding:10px 12px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted2)">${pct}%</td>
+      <td style="padding:10px 16px 10px 8px;width:100px">
+        <div style="height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${barPct}%;background:${b.color};border-radius:3px"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // ── Last 6 entries history table ─────────────────────────
   const last6 = snaps.slice(-6);
 
-  // Sustained concern detection per danger bracket
-  let consecRising181 = 0;
-  const a181vals = snaps.map(s=>(s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0));
-  for(let i=a181vals.length-1;i>=1;i--){if(a181vals[i]>a181vals[i-1])consecRising181++;else break;}
+  // Net change over the full 6-entry window
+  const getSnapVals = s => ({
+    s0:   s.ageing?.a0||0,
+    s31:  s.ageing?.a31||0,
+    s61:  s.ageing?.a61||0,
+    s91:  s.ageing?.a91||0,
+    s181: s.ageing?.a181||0,
+    s271: s.ageing?.a271||0,
+    s365: s.ageing?.a365||0,
+    s181all: (s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0)
+  });
+  const firstVals = getSnapVals(last6[0]||{ageing:{}});
+  const lastVals  = getSnapVals(last6[last6.length-1]||{ageing:{}});
+  const netFreshPct = parseFloat(((((lastVals.s0+lastVals.s31+lastVals.s61)/(AG_BUCKETS.reduce((x,b)=>x+(last6[last6.length-1]?.ageing?.[b.key]||0),0)||1))*100) - (((firstVals.s0+firstVals.s31+firstVals.s61)/(AG_BUCKETS.reduce((x,b)=>x+(last6[0]?.ageing?.[b.key]||0),0)||1))*100)).toFixed(0));
+  const netCalc = k => (lastVals[k]||0) - (firstVals[k]||0);
+  const net0=netCalc('s0'), net31=netCalc('s31'), net61=netCalc('s61');
+  const net91=netCalc('s91'), net181=netCalc('s181'), net271=netCalc('s271'), net365=netCalc('s365');
 
-  // Overall concern sentence
-  let overallConcern='', concernCol='var(--muted2)';
-  if(total181 === 0){ overallConcern='✓ No stock aged 181+ days. Excellent — all inventory within healthy brackets.'; concernCol='#22c55e'; }
-  else if(total181pct > 10 && consecRising181 >= 5){ overallConcern=`⚠ Serious concern — ${total181pct}% of stock is 181+ days and has been rising for ${consecRising181} consecutive entries (~${Math.round(consecRising181/2.5)} weeks). Prolonged build-up with no recovery. Clearance action needed urgently.`; concernCol='#dc2626'; }
-  else if(total181pct > 10 && consecRising181 >= 3){ overallConcern=`⚠ Concern — ${total181pct}% aged 181+ days and rising for ${consecRising181} entries. No sign of recovery. Act now before this compounds.`; concernCol='#ea580c'; }
-  else if(total181pct > 10){ overallConcern=`Watch — ${total181pct}% aged 181+ days (above 10% threshold). Plan targeted clearance on these ASINs.`; concernCol='#ca8a04'; }
-  else if(total181pct > 5){ overallConcern=`Watch — ${total181pct}% in 181+ brackets. Not critical yet but monitor closely.`; concernCol='#ca8a04'; }
-  else { overallConcern=`${total181pct}% aged 181+ days — manageable. Keep monitoring the 91–180d bracket as the leading indicator.`; concernCol='#4ade80'; }
+  // Arrow helper
+  const arr = (v, danger) => {
+    if(!v) return '';
+    const col = danger ? (v>0?'#ea580c':'#22c55e') : (v>0?'rgba(74,222,128,.5)':'rgba(74,222,128,.5)');
+    return ` <span style="color:${col};font-size:10px;font-weight:700">${v>0?'↑':'↓'}${Math.abs(v)}</span>`;
+  };
+  const netArr = (v, danger) => {
+    if(v===0) return `<span style="color:var(--muted2)">→</span>`;
+    const col = danger ? (v>0?'#ea580c':'#22c55e') : 'var(--muted2)';
+    return `<span style="color:${col};font-weight:700">${v>0?'↑ +':'↓ '}${Math.abs(v)}</span>`;
+  };
 
-  // ── Sell-through inference ──────────────────────────────────────────────
-  // If a bracket drops by X but next bracket only rises by Y, then X-Y sold within that age window
-  const sellThrough = prev ? AG_BUCKETS.map((b, idx) => {
-    const drop = (prevAg[b.key]||0) - (ag[b.key]||0); // positive = units left this bracket
-    const nextRise = idx < AG_BUCKETS.length-1 ? Math.max(0, (ag[AG_BUCKETS[idx+1].key]||0) - (prevAg[AG_BUCKETS[idx+1].key]||0)) : 0;
-    const sold = Math.max(0, drop - nextRise); // units that left AND didn't graduate = sold
-    const graduated = Math.max(0, nextRise); // units that moved to next bracket
-    return { key: b.key, label: b.label, drop, sold, graduated, zone: b.zone };
-  }) : null;
-
-  // Weekly sell-through rate (Mon/Wed/Fri ≈ 2.5 entries/week)
-  const entriesPerWeek = 2.5;
-  const weeklySellThrough = sellThrough ? sellThrough.map(s => ({
-    ...s,
-    soldPerWeek: daysBetween ? parseFloat((s.sold / daysBetween * 7).toFixed(1)) : null
-  })) : null;
-
-  // Inflow to 0–30d (new stock coming in)
-  const inflow030 = prev ? Math.max(0, (ag.a0||0) - (prevAg.a0||0) + ((prevAg.a0||0) - (ag.a0||0) > 0 ? (prevAg.a0||0) - (ag.a0||0) : 0)) : null;
-  // Better: total sold from 0-30 + graduated to 31-60 = units that were in 0-30 last time that moved
-  // New units in 0-30 = current count - (prev count - units that left)
-  const prev030 = prevAg.a0||0;
-  const curr030 = ag.a0||0;
-  const graduated030 = prev && sellThrough ? Math.max(0, (ag.a31||0) - (prevAg.a31||0)) : 0;
-  const sold030 = sellThrough ? sellThrough[0]?.sold || 0 : 0;
-  const newStockIn = prev ? Math.max(0, curr030 - (prev030 - sold030 - graduated030)) : null;
-
-  // Build sell-through rows
-  const sellThroughRows = weeklySellThrough ? weeklySellThrough.filter(s => s.drop !== 0 || s.sold > 0 || s.graduated > 0).map(s => {
-    const soldCol = s.sold > 0 ? '#22c55e' : 'var(--muted2)';
-    const gradCol = s.graduated > 0 && s.zone !== 'healthy' ? '#ea580c' : s.graduated > 0 ? '#ca8a04' : 'var(--muted2)';
-    return `<div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:8px;align-items:center;padding:6px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
-      <span style="color:var(--muted2)">${s.label}</span>
-      <span style="color:${soldCol};text-align:center">${s.sold > 0 ? `✓ ${s.sold} sold` : '—'}</span>
-      <span style="color:${gradCol};text-align:center">${s.graduated > 0 ? `→ ${s.graduated} aged on` : '—'}</span>
-      <span style="color:var(--muted2);text-align:right">${s.soldPerWeek && s.sold > 0 ? '~'+s.soldPerWeek+'/wk' : ''}</span>
-    </div>`;
-  }).join('') : '<div style="font-family:var(--mono);font-size:11px;color:var(--muted2);padding:8px 0">Need 2+ snapshots for sell-through data.</div>';
-
-  // Pipeline health sentence
-  let pipelineHealth = '';
-  if (weeklySellThrough) {
-    const totalSold = weeklySellThrough.reduce((s,x)=>s+x.sold, 0);
-    const totalGraduated181 = weeklySellThrough.filter(s=>s.zone==='danger'||s.zone==='critical').reduce((s,x)=>s+x.graduated, 0);
-    const fresh030sold = weeklySellThrough[0]?.sold || 0;
-    const fresh030grad = weeklySellThrough[0]?.graduated || 0;
-    if (fresh030sold > 0 && fresh030grad === 0) pipelineHealth = `✓ Strong — ${fresh030sold} units sold from the 0–30d bracket with none graduating to 31–60d. Stock is moving before it ages.`;
-    else if (fresh030sold > fresh030grad) pipelineHealth = `✓ Good — ${fresh030sold} units sold from 0–30d vs ${fresh030grad} graduating. More selling than ageing.`;
-    else if (fresh030grad > fresh030sold && fresh030grad > 0) pipelineHealth = `Watch — ${fresh030grad} units graduated from 0–30d to 31–60d vs only ${fresh030sold} sold. Stock is ageing faster than it's selling from fresh brackets.`;
-    if (totalGraduated181 > 0) pipelineHealth += ` ${totalGraduated181} units moved into 181+ danger zone this period.`;
-    if (newStockIn !== null && newStockIn > 0) pipelineHealth += ` ~${newStockIn} new units entered the 0–30d bracket (fresh inbound stock).`;
-  }
-
-  // Bracket rows
-  const bracketRows = AG_BUCKETS.map((b, idx) => {
-    const cnt = ag[b.key]||0;
-    const prevCnt = prevAg[b.key]||0;
-    const diff = prev ? cnt - prevCnt : null;
-    const pct = ((cnt/total)*100).toFixed(1);
-    const upBad = b.zone !== 'healthy';
-    const diffCol = diff===null?'transparent':Math.abs(diff)<1?'var(--muted2)':upBad?(diff>0?b.color:'#22c55e'):(diff<0?b.color:'#22c55e');
-    const diffStr = diff===null||Math.abs(diff)<1 ? '—' : (diff>0?'+':'')+diff;
-    const vel = diff!==null&&daysBetween&&Math.abs(diff)>=1 ? (Math.abs(diff)/daysBetween).toFixed(1)+'/day' : '';
-    // Graduation note
-    let gradNote = '';
-    if(diff!==null&&diff>0&&idx>0&&b.zone!=='healthy') gradNote = `<span style="color:${b.color};font-size:9px"> ← from ${AG_BUCKETS[idx-1].label}</span>`;
-    else if(diff!==null&&diff<0&&b.zone!=='healthy') gradNote = `<span style="color:#22c55e;font-size:9px"> ↓ clearing</span>`;
-
-    return `<div style="display:grid;grid-template-columns:90px 1fr 50px 44px 55px 70px;align-items:center;gap:8px;padding:8px 12px;background:${b.zone==='healthy'?'rgba(74,222,128,.04)':b.zone==='caution'?'rgba(202,138,4,.06)':b.zone==='danger'?'rgba(234,88,12,.07)':'rgba(127,29,19,.1)'};border-left:3px solid ${b.color};border-radius:0 6px 6px 0;margin-bottom:4px">
-      <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${b.color}">${b.label}</span>
-      <div style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${b.color};border-radius:3px"></div></div>
-      <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${b.color};text-align:right">${cnt}</span>
-      <span style="font-family:var(--mono);font-size:10px;color:${diffCol};text-align:right;font-weight:600">${diffStr}${gradNote}</span>
-      <span style="font-family:var(--mono);font-size:9px;color:var(--muted2);text-align:right">${vel}</span>
-      <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:right">${pct}%</span>
-    </div>`;
-  }).join('');
-
-  // Trend over last 6 for 181+ total
   const histRows = last6.map((s,i)=>{
-    const v=(s.ageing?.a181||0)+(s.ageing?.a271||0)+(s.ageing?.a365||0);
-    const tot=AG_BUCKETS.reduce((x,b)=>x+(s.ageing?.[b.key]||0),0)||1;
-    const pv = i>0 ? (last6[i-1].ageing?.a181||0)+(last6[i-1].ageing?.a271||0)+(last6[i-1].ageing?.a365||0) : null;
-    const d = pv!==null ? v-pv : null;
-    const dCol = d===null?'var(--muted2)':d>0?'#dc2626':'#22c55e';
-    const dStr = d===null?'—':(d>0?'+':'')+d;
+    const sv = getSnapVals(s);
+    const sTot = AG_BUCKETS.reduce((x,b)=>x+(s.ageing?.[b.key]||0),0)||1;
+    const sFreshPct = ((sv.s0+sv.s31+sv.s61)/sTot*100).toFixed(0);
+    const pv = i>0 ? getSnapVals(last6[i-1]) : null;
+    const isLatest = i===last6.length-1;
     const dd=s.date?.split('-'); const lbl=dd?`${dd[2]}/${dd[1]}/${dd[0].slice(2)}`:s.date||'';
-    return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:6px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
-      <span style="color:var(--muted2)">${lbl}</span>
-      <span style="text-align:center;font-weight:700;color:${v>0?'#ea580c':'#22c55e'}">${v} units</span>
-      <span style="text-align:right;font-weight:600;color:${dCol}">${i>0?dStr:'—'}</span>
-    </div>`;
+    const freshCol = parseFloat(sFreshPct)>=80?'#22c55e':parseFloat(sFreshPct)>=70?'#ca8a04':'#ea580c';
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);background:${isLatest?'rgba(0,245,160,.04)':'transparent'}">
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:11px;color:${isLatest?'#22c55e':'var(--muted2)'};font-weight:${isLatest?700:400}">${lbl}${isLatest?' ◂':''}</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:700;color:${freshCol}">${sFreshPct}%</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:#4ade80">${sv.s0}${pv?arr(sv.s0-pv.s0,false):''}</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:#22c55e">${sv.s31}${pv?arr(sv.s31-pv.s31,false):''}</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:#16a34a">${sv.s61}${pv?arr(sv.s61-pv.s61,false):''}</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:#ca8a04">${sv.s91}${pv?arr(sv.s91-pv.s91,true):''}</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:${sv.s181>0?'#ea580c':'var(--muted2)'}">${sv.s181}${pv?arr(sv.s181-pv.s181,true):''}</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:${sv.s271>0?'#dc2626':'var(--muted2)'}">${sv.s271}${pv?arr(sv.s271-pv.s271,true):''}</td>
+      <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:${sv.s365>0?'#7f1d1d':'var(--muted2)'}">${sv.s365}${pv?arr(sv.s365-pv.s365,true):''}</td>
+    </tr>`;
   }).join('');
 
-  title.textContent = 'Age Pipeline';
+  // Net row
+  const netRow = `<tr style="border-top:2px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04)">
+    <td style="padding:8px 10px;font-family:var(--mono);font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Net (${last6.length} entries)</td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(netFreshPct,false)}<span style="font-family:var(--mono);font-size:9px;color:var(--muted2)">pp</span></td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(net0,false)}</td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(net31,false)}</td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(net61,false)}</td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(net91,true)}</td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(net181,true)}</td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(net271,true)}</td>
+    <td style="padding:8px 8px;text-align:center;font-family:var(--mono);font-size:11px">${netArr(net365,true)}</td>
+  </tr>`; 
 
-  // Concern badge in header
+  // ── Concern badge ────────────────────────────────────────
   const concernEl = document.getElementById('kpiModalConcern');
   if(concernEl){
-    if(total181===0){concernEl.textContent='✓ Healthy';concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(34,197,94,.12);color:#22c55e;display:inline';}
-    else if(parseFloat(total181pct)>10){concernEl.textContent='⚠ Action needed';concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(220,38,38,.12);color:#dc2626;display:inline';}
-    else{concernEl.textContent='Watch';concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(202,138,4,.12);color:#ca8a04;display:inline';}
+    if(isCriticalFlow||danger181pct>10){
+      concernEl.textContent='⚠ Action needed';
+      concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(220,38,38,.12);color:#dc2626;display:inline';
+    } else if(isWarningFlow||consec91Up>=3||consec181Up>=3){
+      concernEl.textContent='Watch';
+      concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(202,138,4,.12);color:#ca8a04;display:inline';
+    } else {
+      concernEl.textContent='✓ Healthy';
+      concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(34,197,94,.12);color:#22c55e;display:inline';
+    }
   }
 
+  title.textContent = 'Age Pipeline';
+  modal.style.display = 'block';
+
   body.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
-      <!-- LEFT: brackets + history -->
-      <div>
-        <!-- Summary stats -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px">
-          <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
-            <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">Total units</div>
-            <div style="font-size:20px;font-weight:700;color:var(--text)">${total}</div>
-          </div>
-          <div style="background:rgba(74,222,128,.06);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(74,222,128,.15)">
-            <div style="font-family:var(--mono);font-size:9px;color:#4ade80;margin-bottom:4px;text-transform:uppercase">Under 90d</div>
-            <div style="font-size:20px;font-weight:700;color:#4ade80">${freshUnits} <span style="font-size:11px">(${freshPct}%)</span></div>
-          </div>
-          <div style="background:${total181>0?'rgba(220,38,38,.06)':'rgba(74,222,128,.06)'};padding:12px;border-radius:10px;text-align:center;border:1px solid ${total181>0?'rgba(220,38,38,.2)':'rgba(74,222,128,.15)'}">
-            <div style="font-family:var(--mono);font-size:9px;color:${total181>0?'#dc2626':'#4ade80'};margin-bottom:4px;text-transform:uppercase">181+ days</div>
-            <div style="font-size:20px;font-weight:700;color:${total181>0?'#dc2626':'#4ade80'}">${total181} <span style="font-size:11px">(${total181pct}%)</span></div>
-          </div>
-        </div>
-
-        <!-- Concern sentence -->
-        <div style="padding:10px 14px;background:rgba(255,255,255,.03);border-left:3px solid ${concernCol};border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:${concernCol};line-height:1.6;margin-bottom:16px">${overallConcern}</div>
-
-        <!-- Pipeline health sentence -->
-        ${pipelineHealth ? `<div style="padding:10px 14px;background:rgba(255,255,255,.03);border-left:3px solid #22c55e;border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:#22c55e;line-height:1.6;margin-bottom:16px">${pipelineHealth}</div>` : ''}
-
-        <!-- Sell-through breakdown -->
-        ${weeklySellThrough ? `
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">Sell-through vs graduation — this entry</div>
-        <div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:8px;padding:4px 12px;margin-bottom:4px;font-family:var(--mono);font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">
-          <span>Bracket</span><span style="text-align:center">Sold</span><span style="text-align:center">Aged on</span><span style="text-align:right">Weekly rate</span>
-        </div>
-        ${sellThroughRows}
-        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);padding:6px 12px;line-height:1.5;margin-bottom:16px">✓ Sold = left this bracket AND didn't appear in the next one (sold within age window). → Aged on = moved to older bracket.</div>` : ''}
-
-        <!-- Bracket table -->
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">All brackets</div>
-        <div style="display:grid;grid-template-columns:90px 1fr 50px 44px 55px 70px;gap:8px;padding:4px 12px;margin-bottom:4px;font-family:var(--mono);font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">
-          <span>Bracket</span><span></span><span style="text-align:right">Units</span><span style="text-align:right">Change</span><span style="text-align:right">Velocity</span><span style="text-align:right">%</span>
-        </div>
-        ${bracketRows}
-
-        <!-- 181+ history -->
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-top:16px;margin-bottom:8px">181+ units — last ${last6.length} entries</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-family:var(--mono);font-size:9px;color:var(--muted2);padding:4px 12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em"><span>Date</span><span style="text-align:center">181+ units</span><span style="text-align:right">Change</span></div>
-        ${histRows}
+    <!-- Headline stats -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      <div style="background:${isHealthyFlow?'rgba(74,222,128,.06)':isWarningFlow?'rgba(202,138,4,.06)':'rgba(220,38,38,.06)'};padding:14px;border-radius:10px;text-align:center;border:1px solid ${isHealthyFlow?'rgba(74,222,128,.2)':isWarningFlow?'rgba(202,138,4,.2)':'rgba(220,38,38,.2)'}">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">0–90d flow</div>
+        <div style="font-size:22px;font-weight:700;color:${isHealthyFlow?'#4ade80':isWarningFlow?'#ca8a04':'#dc2626'}">${fresh90pct}%</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:2px">${fresh90} SKUs · target 80%+</div>
       </div>
+      <div style="background:rgba(255,255,255,.03);padding:14px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">Total SKUs tracked</div>
+        <div style="font-size:22px;font-weight:700;color:var(--text)">${total}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:2px">across all brackets</div>
+      </div>
+      <div style="background:${caution91>0?'rgba(202,138,4,.06)':'rgba(255,255,255,.03)'};padding:14px;border-radius:10px;text-align:center;border:1px solid ${caution91>0?'rgba(202,138,4,.2)':'rgba(255,255,255,.07)'}">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">91–180d <span style="color:#ca8a04">⚠ watch</span></div>
+        <div style="font-size:22px;font-weight:700;color:${caution91>0?'#ca8a04':'var(--muted2)'}">${caution91}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:2px">${caution91pct}% · early warning</div>
+      </div>
+      <div style="background:${danger181>0?'rgba(234,88,12,.06)':'rgba(74,222,128,.04)'};padding:14px;border-radius:10px;text-align:center;border:1px solid ${danger181>0?'rgba(234,88,12,.2)':'rgba(74,222,128,.15)'}">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase">181d+ <span style="color:#ea580c">action</span></div>
+        <div style="font-size:22px;font-weight:700;color:${danger181>0?'#ea580c':'#22c55e'}">${danger181}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:2px">${danger181pct}% · dead stock zone</div>
+      </div>
+    </div>
 
-      <!-- RIGHT: context panels -->
-      <div style="display:flex;flex-direction:column;gap:14px">
-        <div style="padding:14px 16px;background:rgba(74,222,128,.04);border-left:3px solid rgba(74,222,128,.3);border-radius:0 8px 8px 0">
-          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(74,222,128,.6);margin-bottom:8px">How ageing works</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">All stock starts ageing the moment it's sent in. <span style="color:#4ade80">0–90 days is completely healthy</span> — no concern. <span style="color:#ca8a04">91–180 days needs attention</span> — start repricing more aggressively. <span style="color:#dc2626">181+ days needs action</span> — this stock should realistically be gone. 365+ should almost never happen.</div>
-        </div>
+    <!-- Insight sentences -->
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:20px">
+      <div style="padding:8px 14px;background:rgba(255,255,255,.02);border-left:3px solid ${healthColor};border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:${healthColor};line-height:1.5">${healthSentence}</div>
+      ${earlyWarnSentence?`<div style="padding:8px 14px;background:rgba(255,255,255,.02);border-left:3px solid ${earlyWarnColor};border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:${earlyWarnColor};line-height:1.5">${earlyWarnSentence}</div>`:''}
+      <div style="padding:8px 14px;background:rgba(255,255,255,.02);border-left:3px solid ${deadStockColor};border-radius:0 6px 6px 0;font-family:var(--mono);font-size:11px;color:${deadStockColor};line-height:1.5">${deadStockSentence}</div>
+    </div>
 
-        <div style="padding:14px 16px;background:rgba(202,138,4,.04);border-left:3px solid rgba(202,138,4,.3);border-radius:0 8px 8px 0">
-          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(202,138,4,.7);margin-bottom:8px">The 91–180d bracket is your early warning</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">Units in the 91–180d bracket are your future 181+ problem. If this bracket is rising consistently, expect your 181+ count to follow in 2–4 weeks. Watch it as your leading indicator — act while stock is still in caution, not danger. Current 91–180d: <span style="color:#ca8a04;font-weight:700">${ag.a91||0} units (${((ag.a91||0)/total*100).toFixed(1)}%)</span></div>
-        </div>
+    <!-- Main bracket table -->
+    <div style="margin-bottom:20px">
+      <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">SKU bracket breakdown — vs last snapshot</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.1)">
+            <th style="padding:6px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">Bracket</th>
+            <th style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">Now</th>
+            <th style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">Last</th>
+            <th style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">Change</th>
+            <th style="padding:6px 12px;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">Movement</th>
+            <th style="padding:6px 12px;text-align:right;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">%</th>
+            <th style="padding:6px 16px 6px 8px;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">Share</th>
+          </tr>
+        </thead>
+        <tbody>${bracketRows}</tbody>
+      </table>
+    </div>
 
-        <div style="padding:14px 16px;background:rgba(234,88,12,.04);border-left:3px solid rgba(234,88,12,.3);border-radius:0 8px 8px 0">
-          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(234,88,12,.7);margin-bottom:8px">Holding aged stock isn't always bad</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">Stock can age for legitimate reasons — seasonal products, strategic buying, minimum shipment quantities, or market timing. The key question isn't just "is it old?" but "is it old AND not moving despite competitive pricing?" If it's priced well and still sitting, it needs clearance. If it's priced for margin on a slow-mover, it may be intentional.</div>
-        </div>
-
-        <div style="padding:14px 16px;background:rgba(127,29,19,.08);border-left:3px solid rgba(220,38,38,.3);border-radius:0 8px 8px 0">
-          <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:rgba(220,38,38,.7);margin-bottom:8px">What to do with 181+ stock</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.7">For 181+ units: lower floor prices below what you'd normally accept — getting capital back matters more than margin at this point. For 271–365d: consider aggressive clearance pricing. For 365d+: liquidate at almost any price. Every day it sits costs you in storage fees and tied-up capital that could be deployed into faster-moving stock.</div>
-        </div>
+    <!-- History table - all brackets -->
+    <div>
+      <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">Last ${last6.length} entries — all brackets</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.1)">
+            <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--muted2);font-weight:500;text-transform:uppercase">Date</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#4ade80;font-weight:500;text-transform:uppercase">0–90d %</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#4ade80;font-weight:500;text-transform:uppercase">0–30d</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#22c55e;font-weight:500;text-transform:uppercase">31–60d</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#16a34a;font-weight:500;text-transform:uppercase">61–90d</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#ca8a04;font-weight:500;text-transform:uppercase">91–180d</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#ea580c;font-weight:500;text-transform:uppercase">181–270d</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#dc2626;font-weight:500;text-transform:uppercase">271–365d</th>
+            <th style="padding:6px 8px;text-align:center;font-family:var(--mono);font-size:9px;color:#7f1d1d;font-weight:500;text-transform:uppercase">365d+</th>
+          </tr>
+        </thead>
+        <tbody>${histRows}${netRow}</tbody>
+      </table>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:8px;padding:0 12px">
+        <span style="color:#4ade80">0–90d % = flow health</span> · target 80%+ · 
+        <span style="color:#ca8a04">91–180d rising</span> = early warning · 
+        <span style="color:#ea580c">181d+ rising</span> = action needed
       </div>
     </div>`;
-
-  modal.style.display = 'block';
 }
 
 function openKpiModal(key) {
@@ -2372,7 +2526,7 @@ function updateKpiMiniInsights(snaps) {
     kUnitsInsight:     { getter: s=>s.totalUnits||0,  upGood:true,  fmt: v=>Math.round(v) },
     kWinBBInsight:     { getter: s=>s.repricer?.total>0?parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.winPct||0), upGood:true, fmt: v=>v.toFixed(1)+'%' },
     kMatchBBInsight:   { getter: s=>s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0), upGood:true, fmt: v=>v.toFixed(1)+'%' },
-    kAgedRiskInsight:  { getter: s=>{ const ag=s.ageing||{}; const tot=(ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0); const aged=(ag.a181||0)+(ag.a271||0)+(ag.a365||0); return tot>0?parseFloat(((aged/tot)*100).toFixed(1)):0; }, upGood:false, fmt: v=>v.toFixed(1)+'%' },
+    kAgedRiskInsight:  { getter: s=>{ const ag=s.ageing||{}; const tot=AG_BUCKETS.reduce((x,b)=>x+(ag[b.key]||0),0)||1; return parseFloat((((ag.a0||0)+(ag.a31||0)+(ag.a61||0))/tot*100).toFixed(1)); }, upGood:true, fmt: v=>v.toFixed(1)+'%' },
   };
 
   // Cross-metric flags
@@ -2403,7 +2557,13 @@ function updateKpiMiniInsights(snaps) {
     else if (elId === 'kUnitsInsight' && unitsUp && costUp) ctx = 'Growing, higher avg cost';
     else if (elId === 'kWinBBInsight') { const v=cur; ctx = v<5?'Critical — nearly invisible':v<10?'Below target':v>=10?'At target ✓':''; }
     else if (elId === 'kMatchBBInsight') { const v=cur; ctx = v<5?'Very low coverage':v<10?'Below 10% target':v>=10?'Good coverage ✓':''; }
-    else if (elId === 'kAgedRiskInsight') { ctx = cur>10?'High risk — act now':cur>5?'Watch this':'Healthy ✓'; }
+    else if (elId === 'kAgedRiskInsight') {
+      const agSnap = snaps[snaps.length-1];
+      const agTot = AG_BUCKETS.reduce((s,b)=>s+(agSnap.ageing?.[b.key]||0),0)||1;
+      const agFresh = (agSnap.ageing?.a0||0)+(agSnap.ageing?.a31||0)+(agSnap.ageing?.a61||0);
+      const freshPctVal = parseFloat(((agFresh/agTot)*100).toFixed(1));
+      ctx = freshPctVal>=80?'✓ Above 80% target':freshPctVal>=70?'Below 80% target':'⚠ Well below target';
+    }
 
     // Mini insight: show trend over last 3 + one-liner context (not duplicate of pill)
     const last3vals = snaps.slice(-3).map(cfg.getter);
@@ -2535,7 +2695,8 @@ function renderAgeing(snaps) {
 
   const total = AG_BUCKETS.reduce((s,b) => s + (ag[b.key]||0), 0) || 1;
   const total181 = (ag.a181||0)+(ag.a271||0)+(ag.a365||0);
-  tag.textContent = `${total} units · ${total181 > 0 ? total181 + ' aged 181+' : 'No 181+ stock'}`;
+  const fresh90pctNum = parseFloat(((fresh90/total)*100).toFixed(1));
+  tag.textContent = `${total} SKUs · ${fresh90pctNum}% within 90d · ${total181 > 0 ? total181 + ' at 181+' : 'No 181+ stock'}`;
 
   list.innerHTML = AG_BUCKETS.map((b, idx) => {
     const cnt = ag[b.key]||0;
@@ -2560,15 +2721,15 @@ function renderAgeing(snaps) {
       graduationHtml = `<div style="font-family:var(--mono);font-size:9px;color:#22c55e;margin-top:2px">✓ ${Math.abs(diff)} cleared from this bracket</div>`;
     }
 
-    // Change arrow
-    let changeHtml = '';
-    if (diff !== null && diff !== 0) {
-      // For 0-90d: down = good (selling), up = more fresh stock (neutral/good)
-      // For 91+: up = bad, down = good
-      const upBad = b.zone === 'caution' || b.zone === 'danger' || b.zone === 'critical';
-      const col = upBad ? (diff > 0 ? b.color : '#22c55e') : (diff > 0 ? '#22c55e' : '#ca8a04');
-      changeHtml = `<span style="color:${col};font-size:10px;font-weight:600;margin-left:4px">${diff>0?'↑':'↓'}${Math.abs(diff)}</span>`;
-    }
+    // Colour logic: 0-90d movement is neutral, 91d+ up=bad, down=good
+    const isHealthy = b.zone === 'healthy';
+    const upBad = !isHealthy;
+    const col = diff === null || Math.abs(diff) < 1 ? 'var(--muted2)' 
+      : isHealthy ? 'var(--muted2)'
+      : diff > 0 ? b.color : '#22c55e';
+    const changeHtml = diff !== null && Math.abs(diff) >= 1
+      ? `<span style="color:${col};font-size:10px;font-weight:600;margin-left:4px">${diff>0?'↑':'↓'}${Math.abs(diff)}</span>`
+      : '';
 
     // Zone label
     const zoneBg = b.zone==='healthy'?'rgba(74,222,128,.06)':b.zone==='caution'?'rgba(202,138,4,.08)':b.zone==='danger'?'rgba(234,88,12,.08)':'rgba(127,29,19,.12)';
