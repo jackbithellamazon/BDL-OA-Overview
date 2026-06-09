@@ -113,6 +113,18 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions, pr
   }
 };
 
+// Delete a single inventory snapshot (by its unique date)
+window._supabaseDeleteSnapshot = async function(date) {
+  try {
+    if (!supabase) return false;
+    await supabase.from('bdl_snapshots').delete().eq('date', date);
+    return true;
+  } catch(e) {
+    console.error('Supabase snapshot delete error:', e);
+    return false;
+  }
+};
+
 // Delete a single provider snapshot row (by date + provider)
 window._supabaseDeleteProvider = async function(date, provider) {
   try {
@@ -137,6 +149,38 @@ window._supabaseDeleteProviderAll = async function(provider) {
   }
 };
 
+// Save the master provider list (bdl_providers): active (ordered) + archived. Deletes only names in neither.
+window._supabaseSaveProviderDefs = async function(activeDefs, archivedNames) {
+  try {
+    if (!supabase) return false;
+    activeDefs = activeDefs || [];
+    archivedNames = archivedNames || [];
+    for (let i = 0; i < activeDefs.length; i++) {
+      await supabase.from('bdl_providers').upsert(
+        { name: activeDefs[i], provider_order: i, archived: false, updated_at: new Date().toISOString() },
+        { onConflict: 'name' }
+      );
+    }
+    for (let i = 0; i < archivedNames.length; i++) {
+      await supabase.from('bdl_providers').upsert(
+        { name: archivedNames[i], provider_order: 1000 + i, archived: true, updated_at: new Date().toISOString() },
+        { onConflict: 'name' }
+      );
+    }
+    const { data: existing } = await supabase.from('bdl_providers').select('name');
+    const keep = new Set([...activeDefs, ...archivedNames].map(n => n.toLowerCase()));
+    for (const row of (existing || [])) {
+      if (!keep.has((row.name || '').toLowerCase())) {
+        await supabase.from('bdl_providers').delete().eq('name', row.name);
+      }
+    }
+    return true;
+  } catch(e) {
+    console.error('Supabase provider defs save error:', e);
+    return false;
+  }
+};
+
 // Load data from Supabase
 window._supabaseLoad = async function() {
   try {
@@ -149,7 +193,9 @@ window._supabaseLoad = async function() {
         sellers: [],
         competitorSessions: [],
         readings: [],
-        providerSnapshots: []
+        providerSnapshots: [],
+        providerDefs: [],
+        providerArchived: []
       };
     }
     
@@ -196,6 +242,15 @@ window._supabaseLoad = async function() {
     console.log('Provider snapshots loaded:', providerSnaps, 'Error:', provError);
     if (provError) throw provError;
     
+    // Load ordered provider master list
+    const { data: provDefs, error: provDefError } = await supabase
+      .from('bdl_providers')
+      .select('*')
+      .order('provider_order', { ascending: true });
+    
+    console.log('Provider defs loaded:', provDefs, 'Error:', provDefError);
+    if (provDefError) throw provDefError;
+    
     return {
       snapshots: snapshots?.map(s => ({
         date: s.date,
@@ -239,7 +294,9 @@ window._supabaseLoad = async function() {
         provider: p.provider_name,
         skus: p.sku_count || 0,
         notes: p.notes || ''
-      })) || []
+      })) || [],
+      providerDefs: (provDefs||[]).slice().sort((a,b)=>(a.provider_order||0)-(b.provider_order||0)).filter(p=>!p.archived).map(p => p.name),
+      providerArchived: (provDefs||[]).slice().sort((a,b)=>(a.provider_order||0)-(b.provider_order||0)).filter(p=>p.archived).map(p => p.name)
     };
   } catch(e) {
     console.error('Supabase load error:', e);
@@ -264,6 +321,8 @@ window._startupLoad = async function() {
     SELLERS = data.sellers || [];
     COMPETITOR_SESSIONS = data.competitorSessions || [];
     PROVIDER_SNAPSHOTS = data.providerSnapshots || [];
+    PROVIDER_DEFS = data.providerDefs || [];
+    ARCHIVED_PROVIDERS = data.providerArchived || [];
     console.log('DB length:', DB.length);
     console.log('SELLERS length:', SELLERS.length);
     console.log('COMPETITOR_SESSIONS length:', COMPETITOR_SESSIONS.length);
@@ -304,6 +363,7 @@ window._startupLoad = async function() {
   safeRun(renderCompTab, 'renderCompTab');
   safeRun(renderCompHistory, 'renderCompHistory');
   safeRun(renderProviderTab, 'renderProviderTab');
+  safeRun(renderSettingsTab, 'renderSettingsTab');
   safeRun(renderBadges, 'renderBadges');
 };
 
@@ -634,6 +694,9 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <div class="nav-item" onclick="switchTab('history',this)">
       <span class="nav-icon">▤</span> History
       <span class="nav-badge" id="histNavBadge">0</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('settings',this)">
+      <span class="nav-icon">⚙</span> Settings
     </div>
   </nav>
   <div class="sidebar-footer">
@@ -1099,6 +1162,35 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     </div>
   </div>
 
+  <!-- ══════════════ SETTINGS ══════════════ -->
+  <div class="tab-page" id="tab-settings">
+    <div class="card" style="max-width:640px">
+      <div class="card-hd">
+        <div class="card-title">Provider Order</div>
+        <div class="card-tag" id="settingsProvTag">—</div>
+      </div>
+      <div style="color:var(--muted2);font-family:var(--mono);font-size:11px;line-height:1.7;margin-bottom:16px">
+        Define your providers and drag to set the order they appear in across the Provider page, charts, and the snapshot form. New providers you type into a snapshot are added here automatically — reorder them any time. Removing a provider here only takes it off the ordered list; its history stays until you delete it from the provider's detail popup.
+      </div>
+      <div id="provDefRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
+      <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+        <button class="btn" onclick="addProvDefRow()" style="font-size:10px">+ Add Provider</button>
+        <button class="btn-g" onclick="saveProviderDefs()" style="font-size:11px;padding:9px 20px">Save Order</button>
+      </div>
+    </div>
+
+    <div class="card" style="max-width:640px;margin-top:16px">
+      <div class="card-hd">
+        <div class="card-title">Archived Providers</div>
+        <div class="card-tag" id="settingsArchTag">0 archived</div>
+      </div>
+      <div style="color:var(--muted2);font-family:var(--mono);font-size:11px;line-height:1.7;margin-bottom:14px">
+        Archived providers are hidden from the Provider page, charts, KPIs and the snapshot form — but every snapshot is kept and still appears under History → Provider Snapshots. Restore one any time to resume tracking. Logging a new snapshot for an archived provider also restores it automatically.
+      </div>
+      <div id="archivedProvRows" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -1236,6 +1328,8 @@ let DB = [];
 let SELLERS = [];
 let COMPETITOR_SESSIONS = [];
 let PROVIDER_SNAPSHOTS = [];
+let PROVIDER_DEFS = []; // ordered master list of ACTIVE provider names (from bdl_providers)
+let ARCHIVED_PROVIDERS = []; // provider names archived (hidden from active views, data retained)
 let editIdx = null;
 let rangeFrom = null, rangeTo = null;
 let chartInstances = {};
@@ -1270,7 +1364,7 @@ async function persist() {
   return false;
 }
 
-const TITLES = { overview:'Overview', daily:'Daily Summary', provider:'Provider', repricer:'Repricer', competitors:'Competitors', 'comp-history':'Competitor History', history:'History' };
+const TITLES = { overview:'Overview', daily:'Daily Summary', provider:'Provider', repricer:'Repricer', competitors:'Competitors', 'comp-history':'Competitor History', history:'History', settings:'Settings' };
 function switchTab(id, el) {
   document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1281,6 +1375,7 @@ function switchTab(id, el) {
   if (id === 'comp-history') renderCompHistory();
   if (id === 'history') renderHistory();
   if (id === 'provider') renderProviderTab();
+  if (id === 'settings') renderSettingsTab();
   updateLastUpdated();
 }
 
@@ -5354,8 +5449,18 @@ function setProviderRows(date){
   const wrap=document.getElementById('provRowsWrap');
   if(!wrap) return;
   wrap.innerHTML='';
-  const rows = date ? PROVIDER_SNAPSHOTS.filter(p=>p.date===date).sort((a,b)=>(b.skus||0)-(a.skus||0)) : [];
-  if(rows.length) rows.forEach(r=>addProviderRow(r.provider, r.skus));
+  const existing={};
+  (date?PROVIDER_SNAPSHOTS.filter(p=>p.date===date):[]).forEach(p=>existing[p.provider.toLowerCase()]=p.skus);
+  // master order first, then any reading for this date whose provider isn't in the master list
+  const names=PROVIDER_DEFS.slice();
+  const haveLower=new Set(names.map(n=>n.toLowerCase()));
+  Object.keys(existing).forEach(low=>{
+    if(!haveLower.has(low)){
+      const orig=PROVIDER_SNAPSHOTS.find(p=>p.date===date && p.provider.toLowerCase()===low);
+      names.push(orig?orig.provider:low); haveLower.add(low);
+    }
+  });
+  if(names.length) names.forEach(n=>addProviderRow(n, existing[n.toLowerCase()]??''));
   else addProviderRow();
 }
 function collectProviderRows(date){
@@ -5467,6 +5572,20 @@ async function saveSnap() {
   for (const r of removedProviders) {
     try { await window._supabaseDeleteProvider(date, r.provider); } catch(e){ console.error(e); }
   }
+
+  // Auto-register provider names: re-logging an archived provider un-archives it; brand-new names append to the active list
+  const known = new Set([...PROVIDER_DEFS, ...ARCHIVED_PROVIDERS].map(n => n.toLowerCase()));
+  let newDefs = false;
+  provRows.forEach(r => {
+    const low = r.provider.toLowerCase();
+    if (ARCHIVED_PROVIDERS.some(n => n.toLowerCase() === low)) {
+      ARCHIVED_PROVIDERS = ARCHIVED_PROVIDERS.filter(n => n.toLowerCase() !== low);
+      PROVIDER_DEFS.push(r.provider); newDefs = true;
+    } else if (!known.has(low)) {
+      known.add(low); PROVIDER_DEFS.push(r.provider); newDefs = true;
+    }
+  });
+  if (newDefs) { try { await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS); } catch(e){ console.error(e); } }
   showSyncStatus('saved');
 
   closeOverlay('snapModal');
@@ -5478,6 +5597,8 @@ async function saveSnap() {
       DB = data.snapshots || [];
       DB.sort((a,b) => a.date.localeCompare(b.date));
       PROVIDER_SNAPSHOTS = data.providerSnapshots || [];
+      PROVIDER_DEFS = data.providerDefs || [];
+      ARCHIVED_PROVIDERS = data.providerArchived || [];
     }
   } catch (err) {
     console.error('Auto-refresh failed:', err);
@@ -5486,12 +5607,22 @@ async function saveSnap() {
   renderAll();
   renderHistory();
   renderProviderTab();
+  renderSettingsTab();
   setTimeout(() => showSyncStatus(''), 2000);
 }
 
 async function deleteSnap(idx) {
+  if (idx == null || idx < 0 || idx >= DB.length) return;
   if (!confirm('Delete this snapshot?')) return;
-  DB.splice(idx,1); await persist(); renderAll(); renderHistory();
+  const removed = DB[idx];
+  DB.splice(idx,1);
+  renderAll(); renderHistory();           // update the UI instantly (optimistic)
+  if (removed && removed.date && window._supabaseDeleteSnapshot) {
+    showSyncStatus('loading');
+    const ok = await window._supabaseDeleteSnapshot(removed.date);   // only deletes that one row
+    showSyncStatus(ok ? 'saved' : 'error');
+    setTimeout(() => showSyncStatus(''), 1500);
+  }
 }
 
 function destroyChart(id) { if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];} }
@@ -5646,10 +5777,31 @@ function trendGlyph(diff){
   return '<span style="color:var(--muted2)">▬</span>';
 }
 
+// Master display order: defined providers first (in saved order), then any snapshot-only providers
+function orderedProviderNames(series){
+  const defs = PROVIDER_DEFS.slice();
+  const blocked = new Set([...defs, ...ARCHIVED_PROVIDERS].map(n => n.toLowerCase()));
+  const extras = series.map(s => s.provider).filter(n => !blocked.has(n.toLowerCase()))
+    .sort((a,b) => a.localeCompare(b));
+  return defs.concat(extras);
+}
+function isArchived(name){ return ARCHIVED_PROVIDERS.some(n => n.toLowerCase() === (name||'').toLowerCase()); }
+function placeholderProvider(name){
+  return { provider:name, points:[], current:0, previous:null, diff:null, pct:null,
+    firstDate:null, latestDate:null, isNew:false, maxInc:null, maxDec:null, peak:0, low:0 };
+}
+// Returns provider series in display order, including defined providers that have no snapshots yet
+function buildOrderedProviders(){
+  const series = buildProviderSeries();
+  const map = {}; series.forEach(s => map[s.provider.toLowerCase()] = s);
+  return orderedProviderNames(series).map(name => map[name.toLowerCase()] || placeholderProvider(name));
+}
+
 function renderProviderTab(){
   providerSearch=(document.getElementById('provSearch')?.value||'').toLowerCase();
-  const series=buildProviderSeries();
-  const totalProviders=series.length;
+  const series=buildProviderSeries().filter(s=>!isArchived(s.provider)); // active providers with snapshots (for KPIs)
+  const ordered=buildOrderedProviders();          // full active roster in display order (for table/charts)
+  const totalProviders=ordered.length;
 
   const badge=document.getElementById('providerNavBadge'); if(badge) badge.textContent=totalProviders;
 
@@ -5685,23 +5837,24 @@ function renderProviderTab(){
     }
   }
 
-  let rows=series.slice().sort((a,b)=>b.current-a.current);
+  let rows=ordered.slice();   // already in display order
   if(providerSearch) rows=rows.filter(s=>s.provider.toLowerCase().includes(providerSearch));
   provSetT('provMeta', `${rows.length} of ${totalProviders} providers`);
 
   const body=document.getElementById('provTableBody');
   if(body){
     if(!rows.length){
-      body.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">${totalProviders?'No providers match your search.':'No providers logged yet — add them in the snapshot form.'}</td></tr>`;
+      body.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">${totalProviders?'No providers match your search.':'No providers yet — add them in Settings or in the snapshot form.'}</td></tr>`;
     } else {
       body.innerHTML=rows.map((s,i)=>{
         const diffStr=s.diff==null?'—':(s.diff>0?'+':'')+s.diff;
         const diffColor=s.diff==null?'var(--muted2)':s.diff>0?'var(--g)':s.diff<0?'var(--r)':'var(--muted2)';
         const pctStr=s.pct==null?'—':(s.pct>0?'+':'')+s.pct.toFixed(1)+'%';
-        return `<tr style="cursor:pointer" onclick="openProviderDetail('${s.provider.replace(/'/g,"\\'")}')">
-          <td style="color:var(--muted2)">#${i+1}</td>
-          <td><strong>${s.provider}</strong>${s.isNew?' <span class="pill" style="background:var(--y2);color:var(--y);font-size:8px;padding:1px 5px">NEW</span>':''}</td>
-          <td style="color:var(--g);font-weight:700">${s.current.toLocaleString()}</td>
+        const noData=!s.points.length;
+        return `<tr style="cursor:${noData?'default':'pointer'}"${noData?'':` onclick="openProviderDetail('${s.provider.replace(/'/g,"\\'")}')"`}>
+          <td style="color:var(--muted2)">${i+1}</td>
+          <td><strong>${s.provider}</strong>${s.isNew?' <span class="pill" style="background:var(--y2);color:var(--y);font-size:8px;padding:1px 5px">NEW</span>':''}${noData?' <span style="color:var(--muted);font-size:9px;font-family:var(--mono)">no data yet</span>':''}</td>
+          <td style="color:${noData?'var(--muted2)':'var(--g)'};font-weight:700">${s.current.toLocaleString()}</td>
           <td style="color:var(--muted2)">${s.previous==null?'—':s.previous.toLocaleString()}</td>
           <td style="color:${diffColor};font-weight:600">${diffStr}</td>
           <td style="color:${diffColor}">${pctStr}</td>
@@ -5711,8 +5864,8 @@ function renderProviderTab(){
     }
   }
 
-  renderProviderTrendChart(series);
-  renderProviderShareChart(series);
+  renderProviderTrendChart(ordered);
+  renderProviderShareChart(ordered);
 }
 
 function renderProviderTrendChart(series){
@@ -5728,7 +5881,8 @@ function renderProviderTrendChart(series){
     c.fillText('Log providers to see trends', c.canvas.width/2, c.canvas.height/2);
     return;
   }
-  const sorted=series.slice().sort((a,b)=>b.current-a.current);
+  const sorted=series.filter(s=>s.points && s.points.length);  // keep display order, only those with data
+  if(!sorted.length){ if(tag) tag.textContent='No data'; c.clearRect(0,0,c.canvas.width,c.canvas.height); c.fillStyle='#4a5568'; c.font="11px 'DM Mono'"; c.textAlign='center'; c.fillText('Log providers to see trends', c.canvas.width/2, c.canvas.height/2); const fd=document.getElementById('provChartFilters'); if(fd) fd.innerHTML=''; return; }
   if(trackedProviders.size===0) sorted.slice(0,8).forEach(s=>trackedProviders.add(s.provider));
 
   const fdiv=document.getElementById('provChartFilters');
@@ -5758,7 +5912,7 @@ function renderProviderTrendChart(series){
 }
 function toggleProvider(name){
   if(trackedProviders.has(name)) trackedProviders.delete(name); else trackedProviders.add(name);
-  renderProviderTrendChart(buildProviderSeries());
+  renderProviderTrendChart(buildOrderedProviders());
 }
 
 function renderProviderShareChart(series){
@@ -5795,7 +5949,7 @@ function renderProviderShareChart(series){
 function openProviderDetail(name){
   const s=buildProviderSeries().find(x=>x.provider===name);
   if(!s) return;
-  document.getElementById('provDetailTitle').textContent=s.provider;
+  document.getElementById('provDetailTitle').innerHTML = s.provider + (isArchived(s.provider) ? ' <span class="pill" style="background:var(--s3);color:var(--muted2);font-size:9px;padding:2px 7px;vertical-align:middle">ARCHIVED</span>' : '');
 
   const diffColor=s.diff==null?'var(--muted2)':s.diff>0?'var(--g)':s.diff<0?'var(--r)':'var(--muted2)';
   const diffStr=s.diff==null?'—':(s.diff>0?'+':'')+s.diff+(s.pct!=null?` (${s.pct>0?'+':''}${s.pct.toFixed(1)}%)`:'');
@@ -5846,7 +6000,10 @@ function openProviderDetail(name){
     </tr>`;
   }).join('');
   body+=`</tbody></table></div>
-  <div style="display:flex;justify-content:flex-end;margin-top:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px;flex-wrap:wrap">
+    ${isArchived(s.provider)
+      ? `<button class="btn-g" onclick="unarchiveProvider('${s.provider.replace(/'/g,"\\'")}')" style="font-size:11px">↩ Restore to Active</button>`
+      : `<button class="btn" onclick="archiveProvider('${s.provider.replace(/'/g,"\\'")}')">📦 Archive (keep data)</button>`}
     <button class="btn" onclick="deleteProviderAll('${s.provider.replace(/'/g,"\\'")}')" style="border-color:var(--r);color:var(--r)">Delete All Snapshots</button>
   </div>`;
 
@@ -5880,13 +6037,17 @@ async function deleteProviderReading(date, provider){
   setTimeout(()=>showSyncStatus(''),1500);
 }
 async function deleteProviderAll(provider){
-  if(!confirm(`Delete ALL snapshots for "${provider}"? This cannot be undone.`)) return;
+  if(!confirm(`Permanently DELETE all snapshots for "${provider}"?\n\nThis erases the data and cannot be undone. (To just stop tracking it while keeping the data, use Archive instead.)`)) return;
   PROVIDER_SNAPSHOTS=PROVIDER_SNAPSHOTS.filter(p=>p.provider!==provider);
+  const wasInList=PROVIDER_DEFS.some(n=>n.toLowerCase()===provider.toLowerCase())||ARCHIVED_PROVIDERS.some(n=>n.toLowerCase()===provider.toLowerCase());
+  PROVIDER_DEFS=PROVIDER_DEFS.filter(n=>n.toLowerCase()!==provider.toLowerCase());
+  ARCHIVED_PROVIDERS=ARCHIVED_PROVIDERS.filter(n=>n.toLowerCase()!==provider.toLowerCase());
   showSyncStatus('loading');
   await window._supabaseDeleteProviderAll(provider);
+  if(wasInList) await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
   showSyncStatus('saved');
   closeOverlay('providerDetailModal');
-  renderProviderTab(); renderHistory();
+  renderProviderTab(); renderHistory(); renderSettingsTab(); renderBadges();
   setTimeout(()=>showSyncStatus(''),1500);
 }
 
@@ -5923,7 +6084,7 @@ function renderProviderHistoryTable(search, hFrom, hTo){
     const dStr=r.delta==null?'—':(r.delta>0?'+':'')+r.delta;
     return `<tr>
       <td style="color:var(--g)">${fmt(r.date)}</td>
-      <td style="color:var(--text);cursor:pointer" onclick="switchTab('provider',document.querySelector('[onclick*=\\'provider\\']'));openProviderDetail('${r.provider.replace(/'/g,"\\'")}')"><strong>${r.provider}</strong></td>
+      <td style="color:var(--text);cursor:pointer" onclick="openProviderDetail('${r.provider.replace(/'/g,"\\'")}')"><strong>${r.provider}</strong>${isArchived(r.provider)?' <span class="pill" style="background:var(--s3);color:var(--muted2);font-size:8px;padding:1px 5px">ARCHIVED</span>':''}</td>
       <td style="font-weight:700">${(r.skus||0).toLocaleString()}</td>
       <td style="color:${dColor}">${dStr}</td>
       <td style="color:var(--muted2)">${r.notes||'—'}</td>
@@ -5933,11 +6094,109 @@ function renderProviderHistoryTable(search, hFrom, hTo){
   return rows.length;
 }
 
+// ── Settings: provider order management ──
+let provDefRowCount = 0;
+function renderSettingsTab(){
+  provDefRowCount = 0;
+  const wrap = document.getElementById('provDefRows');
+  if(!wrap) return;
+  wrap.innerHTML='';
+  const tag=document.getElementById('settingsProvTag');
+  if(tag) tag.textContent = `${PROVIDER_DEFS.length} provider${PROVIDER_DEFS.length!==1?'s':''}`;
+  if(PROVIDER_DEFS.length) PROVIDER_DEFS.forEach(n=>addProvDefRow(n));
+  else addProvDefRow();
+
+  // Archived section
+  const aWrap=document.getElementById('archivedProvRows');
+  const aTag=document.getElementById('settingsArchTag');
+  if(aTag) aTag.textContent=`${ARCHIVED_PROVIDERS.length} archived`;
+  if(aWrap){
+    if(!ARCHIVED_PROVIDERS.length){
+      aWrap.innerHTML='<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:8px 2px">No archived providers. Archive one from its detail popup to stop tracking it while keeping the data.</div>';
+    } else {
+      aWrap.innerHTML=ARCHIVED_PROVIDERS.map(name=>{
+        const snaps=PROVIDER_SNAPSHOTS.filter(p=>p.provider.toLowerCase()===name.toLowerCase()).length;
+        const esc=name.replace(/'/g,"\\'");
+        return `<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:9px 11px;background:var(--s2);border:1px solid var(--border);border-radius:2px">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>${name}</strong> <span style="color:var(--muted2);font-family:var(--mono);font-size:10px">· ${snaps} snapshot${snaps!==1?'s':''}</span></div>
+          <button class="btn" onclick="openProviderDetail('${esc}')" style="font-size:10px;padding:6px 12px">View</button>
+          <button class="btn-g" onclick="unarchiveProvider('${esc}')" style="font-size:10px;padding:6px 12px">Restore</button>
+        </div>`;
+      }).join('');
+    }
+  }
+}
+function addProvDefRow(name=''){
+  provDefRowCount++;
+  const wrap=document.getElementById('provDefRows');
+  if(!wrap) return;
+  const id=provDefRowCount;
+  const safe=String(name).replace(/"/g,'&quot;');
+  const row=document.createElement('div');
+  row.id='pdr_'+id;
+  row.className='provdef-row';
+  row.draggable=true;
+  row.style.cssText='display:grid;grid-template-columns:20px 1fr 32px;gap:8px;align-items:center;padding:6px;background:var(--s2);border:1px solid var(--border);border-radius:2px;cursor:grab;transition:opacity .2s,background .15s';
+  row.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:14px;user-select:none">⋮</div>
+    <input type="text" value="${safe}" placeholder="Provider name" style="width:100%;background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:9px 11px;outline:none" onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='var(--border)'">
+    <button class="comp-rm" onclick="document.getElementById('pdr_${id}').remove()" style="margin-bottom:0">×</button>`;
+  wrap.appendChild(row);
+  row.addEventListener('dragstart',()=>{ draggedRow=row; row.style.opacity='0.5'; row.style.background='var(--s3)'; });
+  row.addEventListener('dragover',e=>{ e.preventDefault(); if(draggedRow&&draggedRow!==row) row.style.borderTop='2px solid var(--g)'; });
+  row.addEventListener('dragleave',()=>{ row.style.borderTop=''; });
+  row.addEventListener('drop',e=>{ e.preventDefault(); if(draggedRow&&draggedRow!==row) wrap.insertBefore(draggedRow,row); });
+  row.addEventListener('dragend',()=>{ document.querySelectorAll('.provdef-row').forEach(r=>{r.style.borderTop='';r.style.opacity='1';r.style.background='';}); draggedRow=null; });
+}
+async function saveProviderDefs(){
+  const rows=document.querySelectorAll('#provDefRows .provdef-row');
+  const seen=new Set(); const defs=[];
+  rows.forEach(row=>{
+    const name=(row.querySelector('input')?.value||'').trim();
+    if(name && !seen.has(name.toLowerCase())){ seen.add(name.toLowerCase()); defs.push(name); }
+  });
+  PROVIDER_DEFS=defs;
+  showSyncStatus('loading');
+  await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  try{ const data=await window._supabaseLoad(); if(data){ PROVIDER_DEFS=data.providerDefs||PROVIDER_DEFS; ARCHIVED_PROVIDERS=data.providerArchived||ARCHIVED_PROVIDERS; } }catch(e){ console.error('reload defs failed',e); }
+  showSyncStatus('saved');
+  renderSettingsTab(); renderProviderTab(); renderBadges();
+  if(typeof showToast==='function') showToast(`✓ Provider order saved — ${PROVIDER_DEFS.length} provider${PROVIDER_DEFS.length!==1?'s':''}`);
+  setTimeout(()=>showSyncStatus(''),1500);
+}
+
+// ── Archive / restore (hide from active views but keep all data) ──
+async function archiveProvider(name){
+  if(!confirm(`Archive "${name}"?\n\nIt will be hidden from the Provider page, charts and snapshot form, but all its snapshots are kept. You can restore it any time from Settings.`)) return;
+  PROVIDER_DEFS=PROVIDER_DEFS.filter(n=>n.toLowerCase()!==name.toLowerCase());
+  if(!ARCHIVED_PROVIDERS.some(n=>n.toLowerCase()===name.toLowerCase())) ARCHIVED_PROVIDERS.push(name);
+  showSyncStatus('loading');
+  await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  try{ const d=await window._supabaseLoad(); if(d){ PROVIDER_DEFS=d.providerDefs||PROVIDER_DEFS; ARCHIVED_PROVIDERS=d.providerArchived||ARCHIVED_PROVIDERS; } }catch(e){ console.error(e); }
+  showSyncStatus('saved');
+  closeOverlay('providerDetailModal');
+  renderProviderTab(); renderSettingsTab(); renderHistory(); renderBadges();
+  if(typeof showToast==='function') showToast(`✓ Archived "${name}" — data retained`);
+  setTimeout(()=>showSyncStatus(''),1500);
+}
+async function unarchiveProvider(name){
+  ARCHIVED_PROVIDERS=ARCHIVED_PROVIDERS.filter(n=>n.toLowerCase()!==name.toLowerCase());
+  if(!PROVIDER_DEFS.some(n=>n.toLowerCase()===name.toLowerCase())) PROVIDER_DEFS.push(name);
+  showSyncStatus('loading');
+  await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  try{ const d=await window._supabaseLoad(); if(d){ PROVIDER_DEFS=d.providerDefs||PROVIDER_DEFS; ARCHIVED_PROVIDERS=d.providerArchived||ARCHIVED_PROVIDERS; } }catch(e){ console.error(e); }
+  showSyncStatus('saved');
+  closeOverlay('providerDetailModal');
+  renderProviderTab(); renderSettingsTab(); renderHistory(); renderBadges();
+  if(typeof showToast==='function') showToast(`✓ Restored "${name}" to active tracking`);
+  setTimeout(()=>showSyncStatus(''),1500);
+}
+
 function renderBadges() {
   document.getElementById('histNavBadge').textContent = DB.length;
   document.getElementById('compNavBadge').textContent = SELLERS.length||0;
   const pBadge=document.getElementById('providerNavBadge');
-  if(pBadge) pBadge.textContent=[...new Set(PROVIDER_SNAPSHOTS.map(p=>p.provider))].length;
+  if(pBadge){ const have=new Set(PROVIDER_DEFS.map(n=>n.toLowerCase())); const extra=new Set(PROVIDER_SNAPSHOTS.map(p=>p.provider.toLowerCase())); extra.forEach(x=>have.add(x)); pBadge.textContent=have.size; }
   // Count total sessions (not competitor entries)
   document.getElementById('compHistNavBadge').textContent = COMPETITOR_SESSIONS.length;
 }
