@@ -499,6 +499,9 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .seller-id{color:var(--muted2);font-size:10px}
 .pct-val{font-size:14px;font-weight:600}
 .sparkline-cell canvas{display:block}
+.kpi-range-btn{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--s2);color:var(--muted2);cursor:pointer;transition:all .15s}
+.kpi-range-btn:hover{color:var(--text)}
+.kpi-range-btn.active{background:rgba(0,245,160,.12);border-color:rgba(0,245,160,.4);color:var(--g)}
 .rank-badge{display:inline-block;font-family:var(--mono);font-size:10px;background:var(--s3);padding:2px 7px;color:var(--muted2)}
 .rank-badge.me{background:var(--g2);color:var(--g)}
 .history-controls{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
@@ -764,12 +767,14 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       <div class="kpi-tile" onclick="openKpiModal('winbb')">
         <div class="kpi-label">Win BB %</div>
         <div class="kpi-value" id="kRepWinPct">—</div>
+        <div id="kRepWinSkus" style="font-family:var(--mono);font-size:13px;font-weight:600;color:#cbd5e1;margin:3px 0 5px;letter-spacing:.02em"></div>
         <div class="kpi-change"><span id="kRepWinPctPill"></span></div>
         <div class="kpi-mini-insight" id="kWinBBInsight"></div>
       </div>
       <div class="kpi-tile" onclick="openKpiModal('matchbb')">
         <div class="kpi-label">Match BB %</div>
         <div class="kpi-value" id="kRepMatchPct">—</div>
+        <div id="kRepMatchSkus" style="font-family:var(--mono);font-size:13px;font-weight:600;color:#cbd5e1;margin:3px 0 5px;letter-spacing:.02em"></div>
         <div class="kpi-change"><span id="kRepMatchPctPill"></span></div>
         <div class="kpi-mini-insight" id="kMatchBBInsight"></div>
       </div>
@@ -878,6 +883,12 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="kpi-val" id="provKpiNew">—</div>
         <div class="kpi-footer"><span id="provKpiNewSub" style="font-size:9px;color:var(--muted2);margin-top:4px;display:block">Added in latest snapshot</span></div>
       </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--b)"></div>
+        <div class="kpi-label">Top 3 Coverage</div>
+        <div class="kpi-val" id="provKpiConc">—</div>
+        <div class="kpi-footer"><span id="provKpiConcPill"></span><span id="provKpiConcSub" style="font-size:9px;color:var(--muted2);margin-top:4px;display:block">Share of SKUs from top 3</span></div>
+      </div>
     </div>
 
     <div class="insight-box" id="provInsightBox" style="padding:0">
@@ -887,26 +898,14 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
       </div>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-g" onclick="openSnap()" style="font-size:11px;padding:9px 18px">+ Add Snapshot</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px" id="provChartGrid">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title">SKU Coverage by Provider (latest)</div>
+          <div class="card-tag" id="provShareTag">—</div>
+        </div>
+        <div class="chart-wrap tall" style="position:relative"><canvas id="provShareCanvas"></canvas></div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <input type="text" class="comp-search" id="provSearch" placeholder="Search provider..." oninput="renderProviderTab()" style="width:200px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="provMeta"></div>
-      </div>
-    </div>
-
-    <div class="comp-table-wrap">
-      <table class="comp-table">
-        <thead><tr>
-          <th>Rank</th><th>Provider</th><th>Current SKUs</th><th>Previous SKUs</th><th>Difference</th><th>% Change</th><th style="text-align:center">Trend</th>
-        </tr></thead>
-        <tbody id="provTableBody"></tbody>
-      </table>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px" id="provChartGrid">
       <div class="card">
         <div class="card-hd">
           <div class="card-title">Provider SKU Trends</div>
@@ -918,12 +917,23 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         </div>
         <div class="chart-wrap tall" style="position:relative"><canvas id="provTrendCanvas"></canvas></div>
       </div>
-      <div class="card">
-        <div class="card-hd">
-          <div class="card-title">SKU Share (latest)</div>
-          <div class="card-tag" id="provShareTag">—</div>
+    </div>
+
+    <div class="card" style="padding:0">
+      <div class="card-hd" style="padding:16px 18px 12px">
+        <div class="card-title">Stock Coverage by Provider</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="text" class="comp-search" id="provSearch" placeholder="Search provider..." oninput="renderProviderTab()" style="width:180px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="provMeta"></div>
         </div>
-        <div class="chart-wrap tall" style="position:relative"><canvas id="provShareCanvas"></canvas></div>
+      </div>
+      <div class="comp-table-wrap" style="border:none">
+        <table class="comp-table">
+          <thead><tr>
+            <th>Rank</th><th>Provider</th><th>Current SKUs</th><th>Previous SKUs</th><th>Difference</th><th>% Change</th><th style="text-align:center">Trend</th>
+          </tr></thead>
+          <tbody id="provTableBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -950,6 +960,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="kpi-val" id="repKpiWin">—</div>
         <div class="kpi-footer">
           <span id="repKpiWinPill"></span>
+          <span id="repKpiWinSkus" style="font-family:var(--mono);font-size:12px;font-weight:600;color:#cbd5e1;margin-top:5px;display:block"></span>
           <span id="repKpiWinHealth" style="font-size:9px;margin-top:4px;display:block"></span>
           <span style="font-size:9px;color:var(--muted2);margin-top:2px;display:block">You own the buy box. Higher = more visibility.</span>
         </div>
@@ -960,6 +971,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="kpi-val" id="repKpiMatch">—</div>
         <div class="kpi-footer">
           <span id="repKpiMatchPill"></span>
+          <span id="repKpiMatchSkus" style="font-family:var(--mono);font-size:12px;font-weight:600;color:#cbd5e1;margin-top:5px;display:block"></span>
           <span id="repKpiMatchHealth" style="font-size:9px;margin-top:4px;display:block"></span>
           <span style="font-size:9px;color:var(--muted2);margin-top:2px;display:block">Price-matched but not winning. Still competitive.</span>
         </div>
@@ -1018,7 +1030,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
     <!-- SKU Count Chart -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-hd">
-        <div class="card-title">SKU / ASIN Count Trends</div>
+        <div class="card-title">Buy Box SKU Counts (Winning vs Matching)</div>
         <div class="card-tag" id="repCountChartTag">—</div>
       </div>
       <div class="chart-wrap tall"><canvas id="repCountChart"></canvas></div>
@@ -1063,6 +1075,12 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
         <div class="kpi-label">Top Drop</div>
         <div class="kpi-val" id="compKpiDropper" style="font-size:13px">—</div>
         <div class="kpi-footer"><span id="compKpiDropperPill"></span><span id="compKpiDropperSub">—</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-stripe" style="background:var(--p)"></div>
+        <div class="kpi-label">Net Momentum</div>
+        <div class="kpi-val" id="compKpiMomentum" style="font-size:20px">—</div>
+        <div class="kpi-footer"><span id="compKpiMomentumPill"></span><span id="compKpiMomentumSub">—</span></div>
       </div>
     </div>
     <div class="insight-box" id="compInsightBox" style="padding:0">
@@ -1930,6 +1948,28 @@ function renderKpis(snaps) {
   setKpiPercent('kRepWinPct','kRepWinPctPill','_', repWinPct, prevRepWinPct, true, avgRepWinPct);
   setKpiPercent('kRepMatchPct','kRepMatchPctPill','_', repMatchPct, prevRepMatchPct, true, avgRepMatchPct);
 
+  // SKU counts winning / matching buy box (from snapshot)
+  (function(){
+    const repTot = latest.repricer?.total || 0;
+    const winN = latest.repricer?.winning;
+    const matchN = latest.repricer?.matching;
+    const prevWinN = prev?.repricer?.winning;
+    const prevMatchN = prev?.repricer?.matching;
+    const fmtDelta = (curr, prv) => {
+      if (prv === null || prv === undefined || curr === null || curr === undefined) return '';
+      const d = curr - prv;
+      if (d === 0) return ' <span style="color:var(--muted)">±0</span>';
+      const col = d > 0 ? '#22c55e' : '#dc2626';
+      return ` <span style="color:${col}">${d>0?'+':''}${d}</span>`;
+    };
+    const winEl = document.getElementById('kRepWinSkus');
+    const matchEl = document.getElementById('kRepMatchSkus');
+    if (winEl) winEl.innerHTML = (winN !== undefined && winN !== null)
+      ? `${winN} SKUs${fmtDelta(winN, prevWinN)}` : '';
+    if (matchEl) matchEl.innerHTML = (matchN !== undefined && matchN !== null)
+      ? `${matchN} SKUs${fmtDelta(matchN, prevMatchN)}` : '';
+  })();
+
   // setTileColor — must be defined before any calls below
   const setTileColor = (tileId, curr, prevVal) => {
     const el = document.getElementById(tileId);
@@ -2378,7 +2418,7 @@ function openAgedStockModal(snaps, modal, title, body) {
     </div>`;
 }
 
-function openKpiModal(key) {
+function openKpiModal(key, metric) {
   const snaps = filteredSnaps();
   if (!snaps || snaps.length === 0) return;
   const modal = document.getElementById('kpiModal');
@@ -2396,7 +2436,22 @@ function openKpiModal(key) {
     matchbb:    { label:'Match BB %',      getter:s=>s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0), fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:true },
     agedrisk:   { label:'Aged Risk 181+d', getter:s=>{ const ag=s.ageing||{}; const tot=(ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0); const aged=(ag.a181||0)+(ag.a271||0)+(ag.a365||0); return tot>0?parseFloat(((aged/tot)*100).toFixed(1)):0; }, fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:false },
   };
-  const cfg = configs[key]; if (!cfg) return;
+  let cfg = configs[key]; if (!cfg) return;
+  const showMetricToggle = (key==='winbb' || key==='matchbb');
+  metric = showMetricToggle ? (metric || 'pct') : 'pct';
+  if (showMetricToggle && metric==='count') {
+    const cg = key==='winbb' ? (s=>s.repricer?.winning ?? 0) : (s=>s.repricer?.matching ?? 0);
+    cfg = { label: (key==='winbb'?'Winning SKUs':'Matching SKUs'),
+      getter: cg, fmt: v=>Math.round(v).toLocaleString(), fmtDiff: v=>Math.round(Math.abs(v)).toLocaleString(),
+      unit:'SKUs', upGood:true };
+  }
+  const metricToggleHtml = showMetricToggle
+    ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border)">
+         <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2)">Show</span>
+         <button class="kpi-range-btn ${metric!=='count'?'active':''}" onclick="openKpiModal('${key}','pct')">Percentage</button>
+         <button class="kpi-range-btn ${metric==='count'?'active':''}" onclick="openKpiModal('${key}','count')">Number of SKUs</button>
+       </div>`
+    : '';
 
   // Aged stock gets its own full popup
   if (key === 'agedrisk') { openAgedStockModal(snaps, modal, title, body); return; }
@@ -2749,6 +2804,7 @@ function openKpiModal(key) {
 
   title.textContent = cfg.label;
   body.innerHTML = `
+    ${metricToggleHtml}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
 
       <!-- LEFT -->
@@ -2794,7 +2850,13 @@ function openKpiModal(key) {
         </div>
         ${histRows}
 
-        <div style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-top:18px;margin-bottom:8px">Trend chart</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;margin-bottom:8px">
+          <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2)">Trend chart</span>
+          <div style="display:flex;gap:4px;align-items:center">
+            <button id="kpiRangePeriod" class="kpi-range-btn active" onclick="renderKpiModalChart('period')">This period</button>
+            <button id="kpiRangeAll" class="kpi-range-btn" onclick="renderKpiModalChart('all')">All time</button>
+          </div>
+        </div>
         <div style="position:relative;height:160px"><canvas id="kpiModalCanvas"></canvas></div>
       </div>
 
@@ -2842,17 +2904,39 @@ function openKpiModal(key) {
 
   modal.style.display = 'block';
 
-  setTimeout(()=>{
-    const canvas=document.getElementById('kpiModalCanvas');
-    if(!canvas)return;
-    if(chartInstances._kpiModalChart){chartInstances._kpiModalChart.destroy();delete chartInstances._kpiModalChart;}
-    const lineColor=diff===null?'#00f5a0':diff>0?'#00f5a0':'#ff8c42';
-    chartInstances._kpiModalChart=new Chart(canvas.getContext('2d'),{
-      type:'line',
-      data:{labels:last6.map(s=>{const d=s.date?.split('-');return d?`${d[2]}/${d[1]}`:s.date;}),datasets:[{label:cfg.label,data:last6vals,borderColor:lineColor,backgroundColor:lineColor+'22',tension:.35,fill:true,pointRadius:5,pointBackgroundColor:lineColor,pointBorderColor:'#16181a',pointBorderWidth:2,borderWidth:2.5}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+cfg.fmt(ctx.parsed.y)}}},scales:{x:{ticks:{font:{size:10},color:'#6b7a8d'},grid:{color:'rgba(255,255,255,.05)'}},y:{ticks:{font:{size:10},color:'#6b7a8d',callback:v=>cfg.fmt(v)},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:false}}}
-    });
-  },50);
+  // Store state so the period/all-time toggle can re-render the chart on demand
+  window._kpiChart = {
+    cfg,
+    periodSnaps: last6,
+    allSnaps: [...DB].sort((a,b)=>a.date.localeCompare(b.date)),
+    mode: 'period'
+  };
+  setTimeout(()=>renderKpiModalChart('period'), 50);
+}
+
+// Renders the KPI modal trend chart in either the current period ('period') or full history ('all').
+function renderKpiModalChart(mode){
+  const st = window._kpiChart; if(!st) return;
+  if(mode) st.mode = mode; else mode = st.mode || 'period';
+  const canvas = document.getElementById('kpiModalCanvas'); if(!canvas) return;
+  if(chartInstances._kpiModalChart){chartInstances._kpiModalChart.destroy();delete chartInstances._kpiModalChart;}
+  const cfg = st.cfg;
+  const getter = cfg.getter, fmt = cfg.fmt;
+  const src = ((mode==='all' ? st.allSnaps : st.periodSnaps) || []).filter(s=>getter(s)!=null);
+  const vals = src.map(getter);
+  const net = vals.length>=2 ? vals[vals.length-1]-vals[0] : 0;
+  const lineColor = net>=0 ? '#00f5a0' : '#ff8c42';
+  const manyPoints = src.length > 8;
+  chartInstances._kpiModalChart=new Chart(canvas.getContext('2d'),{
+    type:'line',
+    data:{labels:src.map(s=>{const d=s.date?.split('-');return d?`${d[2]}/${d[1]}`:s.date;}),datasets:[{label:cfg.label,data:vals,borderColor:lineColor,backgroundColor:lineColor+'22',tension:.35,fill:true,pointRadius:manyPoints?3:5,pointBackgroundColor:lineColor,pointBorderColor:'#16181a',pointBorderWidth:2,borderWidth:2.5}]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:22,right:14,left:2}},plugins:{legend:{display:false},
+      datalabels:{ display: ctx => !manyPoints && ctx.dataIndex===ctx.dataset.data.length-1, align:'top', offset:6, clip:false, color:lineColor, font:{family:'DM Mono',size:10,weight:'600'}, formatter:v=>fmt(v) },
+      tooltip:{backgroundColor:'#11161f',borderColor:'#2a3545',borderWidth:1,padding:10,titleFont:{family:'DM Mono',size:11},bodyFont:{family:'DM Mono',size:11},callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
+      scales:{x:{ticks:{font:{size:10},color:'#6b7a8d',maxRotation:0,autoSkip:true,maxTicksLimit:manyPoints?8:12},grid:{color:'rgba(255,255,255,.05)'}},y:{grace:'12%',ticks:{font:{size:10},color:'#6b7a8d',callback:v=>fmt(v)},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:false}}}
+  });
+  document.getElementById('kpiRangePeriod')?.classList.toggle('active', mode!=='all');
+  document.getElementById('kpiRangeAll')?.classList.toggle('active', mode==='all');
 }
 
 function updateKpiMiniInsights(snaps) {
@@ -3860,6 +3944,28 @@ function renderRepricerTab(snaps) {
   setRepKpi('repKpiAsins', latest.asins, prev?.asins, null, true);
 
   // Win BB KPI
+  // Mini-box for a winning/matching SKU count: bordered, colour-coded by the
+  // trend across the last (up to) 6 snapshots, with vs-last delta inside.
+  const skuCountBox = (n, prevN, getter) => {
+    if (n == null) return '';
+    const hist = snaps.map(getter).filter(v => v != null);
+    const last6 = hist.slice(-6);
+    const t6 = last6.length >= 2 ? last6[last6.length-1] - last6[0] : null;
+    const up = t6 != null && t6 > 0, down = t6 != null && t6 < 0;
+    const bcol = up ? 'rgba(34,197,94,.45)' : down ? 'rgba(220,38,38,.45)' : 'var(--border)';
+    const bg   = up ? 'rgba(34,197,94,.10)' : down ? 'rgba(220,38,38,.10)' : 'rgba(255,255,255,.03)';
+    let delta = '';
+    if (prevN != null) {
+      const dv = n - prevN;
+      delta = dv === 0 ? ' <span style="color:var(--muted)">±0</span>'
+        : ` <span style="color:${dv>0?'#22c55e':'#dc2626'}">${dv>0?'+':''}${dv}</span>`;
+    }
+    const t6line = (t6 != null) ? `<div style="font-family:var(--mono);font-size:9px;color:${up?'#22c55e':down?'#dc2626':'var(--muted2)'};margin-top:4px">${up?'↑':down?'↓':'→'} ${t6>0?'+':''}${t6} over last ${last6.length}</div>` : '';
+    return `<span style="display:inline-flex;align-items:center;padding:4px 10px;border:1px solid ${bcol};background:${bg};border-radius:6px;font-family:var(--mono);font-size:12px;font-weight:600;color:#e2e8f0">${n} SKUs${delta}</span>${t6line}`;
+  };
+  const getWinN = s => (s.repricer && s.repricer.winning != null) ? s.repricer.winning : null;
+  const getMatchN = s => (s.repricer && s.repricer.matching != null) ? s.repricer.matching : null;
+
   const winEl = document.getElementById('repKpiWin');
   const winPillEl = document.getElementById('repKpiWinPill');
   const winHealthEl = document.getElementById('repKpiWinHealth');
@@ -3874,6 +3980,9 @@ function renderRepricerTab(snaps) {
     const h = repHealthLabel(wPct);
     winHealthEl.innerHTML = `<span class="${h.cls}">${h.text}</span>`;
   }
+  // Win SKU count + count movement (independent of %)
+  const winSkusEl = document.getElementById('repKpiWinSkus');
+  if (winSkusEl) winSkusEl.innerHTML = skuCountBox(r.winning, prev?.repricer?.winning, getWinN);
 
   // Match BB KPI
   const matchEl = document.getElementById('repKpiMatch');
@@ -3890,6 +3999,9 @@ function renderRepricerTab(snaps) {
     const h = repHealthLabel(mPct);
     matchHealthEl.innerHTML = `<span class="${h.cls}">${h.text}</span>`;
   }
+  // Match SKU count + count movement (independent of %)
+  const matchSkusEl = document.getElementById('repKpiMatchSkus');
+  if (matchSkusEl) matchSkusEl.innerHTML = skuCountBox(r.matching, prev?.repricer?.matching, getMatchN);
 
   // Win trend card
   const winTrendEl = document.getElementById('repKpiWinTrend');
@@ -4143,6 +4255,63 @@ function renderRepricerPercentChart(snaps) {
   opts.scales.y.ticks.callback = v => v + '%';
   opts.plugins.legend = { display: false };
 
+  // SKU counts per point — surfaced in the hover tooltip alongside the %
+  const winCounts = windowed.map(s => (s.repricer && s.repricer.winning != null) ? s.repricer.winning : null);
+  const matchCounts = windowed.map(s => (s.repricer && s.repricer.matching != null) ? s.repricer.matching : null);
+  const totals = windowed.map(s => (s.repricer && s.repricer.total != null) ? s.repricer.total : null);
+
+  opts.interaction = { mode: 'index', intersect: false };
+  // Declutter: only label the most recent point on each line; hover reveals the rest
+  opts.plugins.datalabels = {
+    display: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 && ctx.datasetIndex < 2,
+    align: 'top',
+    offset: 4,
+    color: ctx => ctx.datasetIndex === 0 ? '#00f5a0' : '#ffd166',
+    font: { family: 'DM Mono', size: 11, weight: '600' },
+    formatter: v => v != null ? v.toFixed(1) + '%' : ''
+  };
+  opts.plugins.tooltip = {
+    backgroundColor: '#11161f',
+    borderColor: '#2a3545',
+    borderWidth: 1,
+    padding: 12,
+    titleColor: '#e2e8f0',
+    titleFont: { family: 'DM Mono', size: 11, weight: '600' },
+    bodyFont: { family: 'DM Mono', size: 11 },
+    bodySpacing: 6,
+    boxPadding: 6,
+    usePointStyle: true,
+    callbacks: {
+      title: items => items.length ? `${fmt(windowed[items[0].dataIndex].date)}` : '',
+      label: ctx => {
+        const i = ctx.dataIndex;
+        if (ctx.datasetIndex === 0) {
+          const n = winCounts[i];
+          const tot = totals[i];
+          return `  Win BB   ${ctx.parsed.y.toFixed(1)}%${n!=null?`  ·  ${n}${tot?`/${tot}`:''} SKUs`:''}`;
+        }
+        if (ctx.datasetIndex === 1) {
+          const n = matchCounts[i];
+          const tot = totals[i];
+          return `  Match BB ${ctx.parsed.y.toFixed(1)}%${n!=null?`  ·  ${n}${tot?`/${tot}`:''} SKUs`:''}`;
+        }
+        return null; // hide the 10% target line from tooltip
+      },
+      labelColor: ctx => {
+        if (ctx.datasetIndex === 0) return { borderColor: '#00f5a0', backgroundColor: '#00f5a0', borderWidth: 0, borderRadius: 3 };
+        if (ctx.datasetIndex === 1) return { borderColor: '#ffd166', backgroundColor: '#ffd166', borderWidth: 0, borderRadius: 3 };
+        return { borderColor: 'transparent', backgroundColor: 'transparent' };
+      },
+      afterBody: items => {
+        const i = items[0]?.dataIndex;
+        if (i == null) return '';
+        const w = winData[i], m = matchData[i];
+        if (w == null || m == null) return '';
+        return `\n  Gap ${(m - w).toFixed(1)}pp (match but not winning)`;
+      }
+    }
+  };
+
   chartInstances.repricerChart = new Chart(chartCtx, {
     type: 'line',
     data: {
@@ -4171,21 +4340,56 @@ function renderRepricerCountChart(snaps) {
   }
   
   tag.textContent = `${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)}`;
-  
-  const maxSkus = Math.max(...snaps.map(s => s.repricer?.total || s.skus || 0));
-  const maxAsins = Math.max(...snaps.map(s => s.repricer?.asins || s.asins || 0));
-  
+
+  const winCount = s => (s.repricer && s.repricer.winning != null) ? s.repricer.winning : null;
+  const matchCount = s => (s.repricer && s.repricer.matching != null) ? s.repricer.matching : null;
+  const totalCount = s => s.repricer?.total || s.skus || 0;
+
   destroyChart('repCountChart');
+  // Persisted per-line visibility for this chart (saved locally, survives reloads)
+  let countHidden = {};
+  try { countHidden = JSON.parse(localStorage.getItem('repCountHidden') || '{}') || {}; } catch(e) { countHidden = {}; }
+  const countOpts = {...chartOpts()};
+  countOpts.interaction = { mode:'index', intersect:false };
+  countOpts.plugins = {...countOpts.plugins,
+    legend:{ position:'top', labels:{ boxWidth:10, padding:14, color:'#6b7a8d', font:{family:'DM Mono',size:10}, usePointStyle:true },
+      onClick:(e, item, legend)=>{
+        const ci = legend.chart, idx = item.datasetIndex;
+        const nowHidden = ci.isDatasetVisible(idx); // about to hide if currently visible
+        ci.setDatasetVisibility(idx, !ci.isDatasetVisible(idx));
+        ci.update();
+        const lbl = ci.data.datasets[idx].label;
+        try {
+          const cur = JSON.parse(localStorage.getItem('repCountHidden') || '{}') || {};
+          cur[lbl] = nowHidden;
+          localStorage.setItem('repCountHidden', JSON.stringify(cur));
+        } catch(e) {}
+      }
+    },
+    datalabels:{ display: ctx => ctx.dataIndex === ctx.dataset.data.length-1 && ctx.datasetIndex < 2,
+      align:'top', offset:4, color: ctx => ctx.datasetIndex===0?'#00f5a0':'#ffd166',
+      font:{family:'DM Mono',size:11,weight:'600'}, formatter:v=>v!=null?v:'' },
+    tooltip:{ backgroundColor:'#11161f', borderColor:'#2a3545', borderWidth:1, padding:12,
+      titleFont:{family:'DM Mono',size:11,weight:'600'}, bodyFont:{family:'DM Mono',size:11}, bodySpacing:6, usePointStyle:true,
+      callbacks:{ label: ctx => `  ${ctx.dataset.label}: ${ctx.parsed.y} SKUs` } }
+  };
+  countOpts.scales = {
+    x:{grid:{color:'#1c2330'}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}}},
+    y:{grid:{color:'#1c2330'}, ticks:{color:'#4a5568',font:{family:'DM Mono',size:10}}, position:'left', beginAtZero:false, grace:'15%', title:{display:true,text:'Winning / Matching',color:'#4a5568',font:{family:'DM Mono',size:9}}},
+    y1:{grid:{display:false}, ticks:{color:'#3a4250',font:{family:'DM Mono',size:10}}, position:'right', beginAtZero:false, grace:'10%', title:{display:true,text:'Total in repricer',color:'#3a4250',font:{family:'DM Mono',size:9}}}
+  };
+
   chartInstances.repCountChart = new Chart(chartCtx, {
     type:'line',
     data:{
       labels: snaps.map(s=>fmtShort(s.date)),
       datasets:[
-        { label:'Total SKUs', data:snaps.map(s=>s.repricer?.total||s.skus||0), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.08)', tension:.35, fill:false, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2, yAxisID:'y' },
-        { label:'Total ASINs', data:snaps.map(s=>s.repricer?.asins||s.asins||0), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.08)', tension:.35, fill:false, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2, yAxisID:'y1' },
+        { label:'Winning SKUs', hidden: !!countHidden['Winning SKUs'], data:snaps.map(winCount), borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.10)', tension:.35, fill:true, pointRadius:5, pointBackgroundColor:'#00f5a0', pointBorderColor:'#07090c', pointBorderWidth:2, borderWidth:2.5, spanGaps:true, yAxisID:'y' },
+        { label:'Matching SKUs', hidden: !!countHidden['Matching SKUs'], data:snaps.map(matchCount), borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.05)', tension:.35, fill:false, pointRadius:5, pointBackgroundColor:'#ffd166', pointBorderColor:'#07090c', pointBorderWidth:2, borderWidth:2, borderDash:[5,3], spanGaps:true, yAxisID:'y' },
+        { label:'Total SKUs in repricer', hidden: !!countHidden['Total SKUs in repricer'], data:snaps.map(totalCount), borderColor:'rgba(107,122,141,0.5)', tension:.35, fill:false, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
       ]
     },
-    options: {...chartOpts(), ...{scales:{x:{grid:{color:'#1c2330'}}, y:{grid:{color:'#1c2330'}, position:'left'}, y1:{grid:{color:'#1c2330'}, position:'right'}}}}
+    options: countOpts
   });
 }
 
@@ -4397,7 +4601,29 @@ function renderCompTab() {
     document.getElementById('compKpiDropperSub').textContent = 'Need 2+ sessions';
   }
 
-  meta.textContent = `${sellers.length} seller${sellers.length!==1?'s':''} · ${COMPETITOR_SESSIONS.length} session${COMPETITOR_SESSIONS.length!==1?'s':''}`;
+  // Net Momentum — collective overlap shift across all competitors since last snapshot.
+  // Positive = competitors gaining ground on you overall; negative = pulling back.
+  const momEl = document.getElementById('compKpiMomentum');
+  const momPill = document.getElementById('compKpiMomentumPill');
+  const momSub = document.getElementById('compKpiMomentumSub');
+  if (momEl) {
+    if (withPrevKpi.length > 0) {
+      const gained = withPrevKpi.filter(s => (s.latest - s.prev) > 0.05);
+      const dropped = withPrevKpi.filter(s => (s.latest - s.prev) < -0.05);
+      const net = parseFloat(withPrevKpi.reduce((sum,s)=>sum+(s.latest-s.prev),0).toFixed(1));
+      // up overlap = more competitive pressure = bad for you → orange; down = green
+      const col = net > 0.1 ? '#ff8c42' : net < -0.1 ? '#22c55e' : 'var(--muted2)';
+      const arrow = net > 0.1 ? '↑' : net < -0.1 ? '↓' : '→';
+      momEl.innerHTML = `<span style="color:${col}">${net>0?'+':''}${net}pp</span>`;
+      momPill.innerHTML = `<span style="font-family:var(--mono);font-size:11px;color:${col};font-weight:600">${arrow} ${gained.length} up · ${dropped.length} down</span>`;
+      momSub.textContent = net > 0.1 ? 'Competitors gaining on you'
+        : net < -0.1 ? 'Competitors pulling back'
+        : 'Market steady this entry';
+    } else {
+      momEl.textContent = '—';
+      momSub.textContent = 'Need 2+ sessions';
+    }
+  }
   document.getElementById('compNavBadge').textContent = Object.keys(sellerMap).length;
 
   if (!sellers.length) {
@@ -4924,25 +5150,28 @@ function renderCompInsights(snaps) {
   const fastestGaining = with3.filter(s=>s.trend3>0).sort((a,b)=>b.trend3-a.trend3)[0];
   const fastestDropping = with3.filter(s=>s.trend3<0).sort((a,b)=>a.trend3-b.trend3)[0];
 
+  // Threats — meaningful overlap AND rising = competitors closing in on your space
+  const threats = sellers.filter(s=>s.latest>=20 && s.trend3!==null && s.trend3>0.5)
+    .sort((a,b)=>b.latest-a.latest);
+
   // Net gainers over full history
   const netGainers = sellers.filter(s=>s.netChange!==null&&s.netChange>0).sort((a,b)=>b.netChange-a.netChange);
   const netDroppers = sellers.filter(s=>s.netChange!==null&&s.netChange<0).sort((a,b)=>a.netChange-b.netChange);
 
   const statRow = (label, val, color='var(--text)', sub='') =>
-    `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+    `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05)">
       <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);padding-right:8px">${label}${sub?`<br><span style="font-size:9px;color:rgba(255,255,255,.25)">${sub}</span>`:''}</span>
       <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${color};text-align:right;flex-shrink:0">${val}</span>
     </div>`;
 
   const section = (title, html) =>
-    `<div style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin:14px 0 8px">${title}</div>${html}`;
+    `<div style="font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin:6px 0 3px">${title}</div>${html}`;
 
   // Left column
   const leftHtml = `
     ${section('Overview', `
       ${statRow('Competitors tracked', `${activeSellers.length} active${zeroSellers.length?' · '+zeroSellers.length+' no data':''}`)}
-      ${activeAvg!==null ? statRow('Avg overlap (active only)', activeAvg+'%', activeAvg>50?'#22c55e':activeAvg>30?'#ca8a04':'var(--muted2)', 'excludes competitors with 0% overlap') : ''}
-      ${overallAvg !== activeAvg ? statRow('Avg overlap (all incl. zeros)', overallAvg+'%', 'var(--muted2)', 'diluted by '+zeroSellers.length+' zero-overlap entries') : ''}
+      ${activeAvg!==null ? statRow('Avg overlap', `${activeAvg}% active${overallAvg!==activeAvg?` · ${overallAvg}% all`:''}`, activeAvg>50?'#22c55e':activeAvg>30?'#ca8a04':'var(--muted2)', overallAvg!==activeAvg?'all incl. '+zeroSellers.length+' zero-overlap':'') : ''}
       ${statRow('This entry', `↑ ${up.length} · ↓ ${down.length} · → ${flat.length}`, up.length>down.length?'#22c55e':down.length>up.length?'#ea580c':'var(--muted2)')}
     `)}
     ${section('Top 3 by overlap', top3.map(s=>{
@@ -4953,7 +5182,7 @@ function renderCompInsights(snaps) {
         <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${col}">${s.latest.toFixed(1)}%${diffStr}</span>
       </div>`;
     }).join(''))}
-    ${netGainers.length ? section('Biggest net gain (all time)', netGainers.slice(0,3).map(s=>statRow(s.name, '+'+s.netChange+'pp', '#22c55e')).join('')) : ''}
+    ${netGainers.length ? section('Biggest net gain (all time)', netGainers.slice(0,2).map(s=>statRow(s.name, '+'+s.netChange+'pp', '#22c55e')).join('')) : ''}
     ${netDroppers.length ? section('Biggest net drop (all time)', netDroppers.slice(0,2).map(s=>statRow(s.name, s.netChange+'pp', '#ea580c')).join('')) : ''}
   `;
 
@@ -4966,6 +5195,10 @@ function renderCompInsights(snaps) {
       ${trendingDown.length ? statRow('Trending down', trendingDown.slice(0,3).map(s=>s.name).join(', '), '#ea580c') : statRow('Trending down', 'None', 'var(--muted2)')}
       ${flatliners.length ? statRow('Flatliners', flatliners.map(s=>s.name).join(', '), 'var(--muted2)', 'active but not moving') : ''}
     `)}
+    ${threats.length ? section('Watch closely', `
+      ${threats.slice(0,3).map(s=>statRow(s.name, `${s.latest.toFixed(0)}% <span style="color:#22c55e;font-size:9px">↑${s.trend3>0?'+':''}${s.trend3}pp</span>`, '#ca8a04')).join('')}
+      <div style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.25);padding-top:3px">high overlap and rising — closing in on your catalogue</div>
+    `) : ''}
     ${hotStreak.length ? section('Consecutive movement', `
       ${sellers.filter(s=>s.streak>=2).map(s=>statRow(s.name, (s.streak>0?'↑ up ':'↓ down ')+Math.abs(s.streak)+'× in a row', s.streak>0?'#22c55e':'#ea580c')).join('')}
     `) : ''}
@@ -4983,8 +5216,8 @@ function renderCompInsights(snaps) {
       <div class="insight-hd" style="margin-bottom:0"><span class="insight-badge">✦ Competitor Analysis</span></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
-      <div style="padding:16px 20px;border-right:1px solid rgba(0,245,160,.1)">${leftHtml}</div>
-      <div style="padding:16px 20px">${rightHtml}</div>
+      <div style="padding:12px 18px;border-right:1px solid rgba(0,245,160,.1)">${leftHtml}</div>
+      <div style="padding:12px 18px">${rightHtml}</div>
     </div>`;
 }
 
@@ -5731,6 +5964,7 @@ function updateLastUpdated() {
 const PROV_COLORS = ['#00f5a0','#3d9eff','#ffd166','#ff8c42','#ff4d6d','#c084fc','#66ffcc','#ff99cc','#ffcc00','#00ffff','#ff6b6b','#9b8cff','#4ade80','#f472b6','#38bdf8'];
 
 function provSetT(id,v){ const el=document.getElementById(id); if(el) el.textContent=v; }
+function provSetHTML(id,v){ const el=document.getElementById(id); if(el) el.innerHTML=v; }
 function provSetPill(id,kind,txt){ const el=document.getElementById(id); if(!el) return; if(!txt){el.innerHTML='';return;} el.className='pill '+kind; el.textContent=txt; }
 
 function provMaxStep(points, dir){
@@ -5824,6 +6058,23 @@ function renderProviderTab(){
   provSetPill('provKpiGrowerPill', (grower&&grower.diff>0)?'up':'flat', (grower&&grower.diff>0)?`+${grower.diff}`:'');
   provSetPill('provKpiDeclinePill', (decliner&&decliner.diff<0)?'down':'flat', (decliner&&decliner.diff<0)?`${decliner.diff}`:'');
 
+  // Top 3 coverage — supplier concentration / stock dependence
+  const sortedByCurrent = series.slice().sort((a,b)=>b.current-a.current);
+  const top3Sum = sortedByCurrent.slice(0,3).reduce((a,s)=>a+s.current,0);
+  const concPct = totalSkus>0 ? Math.round((top3Sum/totalSkus)*100) : null;
+  if (concPct!=null) {
+    const concCol = concPct>=70?'#ff8c42':concPct>=50?'#ca8a04':'#22c55e';
+    provSetHTML('provKpiConc', `<span style="color:${concCol}">${concPct}%</span>`);
+    provSetT('provKpiConcSub', concPct>=70?'High dependence — concentrated risk'
+      : concPct>=50?'Moderate concentration'
+      : 'Well diversified across suppliers');
+    const namesTop3 = sortedByCurrent.slice(0,3).map(s=>s.provider).filter(Boolean);
+    provSetHTML('provKpiConcPill', namesTop3.length?`<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${namesTop3.join(', ')}</span>`:'');
+  } else {
+    provSetT('provKpiConc','—');
+    provSetT('provKpiConcSub','Share of SKUs from top 3');
+  }
+
   const insight=document.getElementById('provInsightInner');
   if(insight){
     if(!totalProviders){
@@ -5851,16 +6102,96 @@ function renderProviderTab(){
         const diffColor=s.diff==null?'var(--muted2)':s.diff>0?'var(--g)':s.diff<0?'var(--r)':'var(--muted2)';
         const pctStr=s.pct==null?'—':(s.pct>0?'+':'')+s.pct.toFixed(1)+'%';
         const noData=!s.points.length;
-        return `<tr style="cursor:${noData?'default':'pointer'}"${noData?'':` onclick="openProviderDetail('${s.provider.replace(/'/g,"\\'")}')"`}>
+        const safe=s.provider.replace(/[^\w]/g,'_');
+        const esc=s.provider.replace(/'/g,"\\'");
+
+        // Movement history (last 5 entries) + verdict — mirrors the competitor table
+        const counts=s.points.map(p=>p.skus);
+        const dates=s.points.map(p=>p.date);
+        const n=counts.length;
+        const last5=counts.slice(-5), last5d=dates.slice(-5);
+        const moveHistory = last5.length>=2
+          ? last5.slice(1).map((v,k)=>{
+              const d=v-last5[k];
+              const col=d>0?'#00f5a0':d<0?'#ff8c42':'#4a5568';
+              const dd=last5d[k+1]?.split('-'); const lbl=dd?`${dd[2]}/${dd[1]}`:'';
+              return `<span style="font-family:var(--mono);font-size:10px;color:${col}">${lbl} <strong>${d>0?'+':''}${d}</strong></span>`;
+            }).join('<span style="color:var(--border2);margin:0 3px">→</span>')
+          : '';
+        // streak
+        let streak=0;
+        for(let k=counts.length-1;k>=1;k--){
+          const d=counts[k]-counts[k-1];
+          if(k===counts.length-1) streak=d>0?1:d<0?-1:0;
+          else if((streak>0&&d>0)||(streak<0&&d<0)) streak+=streak>0?1:-1;
+          else break;
+        }
+        const trend3 = counts.slice(-3).length>=2 ? counts[counts.length-1]-counts.slice(-3)[0] : null;
+        const net = n>=2 ? counts[n-1]-counts[0] : null;
+        let verdict;
+        if(noData) verdict='No snapshots logged yet — add this provider in a snapshot to start tracking stock coverage.';
+        else if(n<2) verdict=`First reading — ${s.current.toLocaleString()} SKUs logged. Baseline set; trend appears from the next snapshot.`;
+        else if(streak>=3) verdict=`Growing ${streak} snapshots in a row — steady expansion of this supplier's stock coverage.`;
+        else if(streak<=-3) verdict=`Shrinking ${Math.abs(streak)} snapshots in a row — sustained decline. Worth checking if this supplier is winding down.`;
+        else if(s.diff!=null&&s.diff>0) verdict=`Up ${s.diff} SKUs this snapshot${trend3!=null?` (${trend3>0?'+':''}${trend3} over last 3)`:''}. Coverage growing.`;
+        else if(s.diff!=null&&s.diff<0) verdict=`Down ${Math.abs(s.diff)} SKUs this snapshot${trend3!=null?` (${trend3>0?'+':''}${trend3} over last 3)`:''}. Coverage slipping.`;
+        else verdict='Flat this snapshot — no change in stock coverage.';
+
+        const stats = noData?'':`<div style="display:flex;gap:16px;flex-wrap:wrap">
+          ${net!=null?`<span style="font-family:var(--mono);font-size:10px">Net all-time: <span style="color:${net>0?'var(--g)':net<0?'var(--r)':'var(--muted2)'};font-weight:600">${net>0?'+':''}${net} SKUs</span></span>`:''}
+          ${streak!==0?`<span style="font-family:var(--mono);font-size:10px">Streak: <span style="color:${streak>0?'var(--g)':'var(--r)'};font-weight:600">${streak>0?'↑':'↓'} ${Math.abs(streak)}×</span></span>`:''}
+          <span style="font-family:var(--mono);font-size:10px">Snapshots: <span style="color:var(--muted2);font-weight:600">${n}</span></span>
+          <span style="font-family:var(--mono);font-size:10px">Range: <span style="color:var(--muted2);font-weight:600">${s.low.toLocaleString()}–${s.peak.toLocaleString()}</span></span>
+        </div>`;
+
+        const sparkCell = noData
+          ? `<span style="color:var(--muted2);font-size:15px">${trendGlyph(s.diff)}</span>`
+          : `<canvas id="provspark_${safe}" width="180" height="44" style="display:block;margin:0 auto;max-width:100%"></canvas>`;
+
+        return `<tr style="cursor:${noData?'default':'pointer'};transition:background .15s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''"${noData?'':` onclick="openProviderDetail('${esc}')"`}>
           <td style="color:var(--muted2)">${i+1}</td>
           <td><strong>${s.provider}</strong>${s.isNew?' <span class="pill" style="background:var(--y2);color:var(--y);font-size:8px;padding:1px 5px">NEW</span>':''}${noData?' <span style="color:var(--muted);font-size:9px;font-family:var(--mono)">no data yet</span>':''}</td>
           <td style="color:${noData?'var(--muted2)':'var(--g)'};font-weight:700">${s.current.toLocaleString()}</td>
           <td style="color:var(--muted2)">${s.previous==null?'—':s.previous.toLocaleString()}</td>
           <td style="color:${diffColor};font-weight:600">${diffStr}</td>
           <td style="color:${diffColor}">${pctStr}</td>
-          <td style="text-align:center;font-size:15px">${trendGlyph(s.diff)}</td>
-        </tr>`;
+          <td style="text-align:center;width:200px">${sparkCell}</td>
+        </tr>
+        ${noData?'':`<tr style="background:var(--s2);border-bottom:2px solid var(--border)">
+          <td colspan="7" style="padding:10px 16px">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.6">${verdict}</div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:16px">
+                ${moveHistory?`<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${moveHistory}</div>`:''}
+                ${stats}
+              </div>
+            </div>
+          </td>
+        </tr>`}`;
       }).join('');
+
+      // Render row sparklines (SKU count history) — like the competitor table
+      setTimeout(()=>{
+        rows.forEach(s=>{
+          if(!s.points.length) return;
+          const cv=document.getElementById('provspark_'+s.provider.replace(/[^\w]/g,'_'));
+          if(!cv) return;
+          const id='provspark_'+s.provider.replace(/[^\w]/g,'_');
+          destroyChart(id);
+          const data=s.points.map(p=>p.skus);
+          const dlabels=s.points.map(p=>p.date);
+          const col=(s.diff>0)?'#00f5a0':(s.diff<0)?'#ff4d6d':'#6b7a8d';
+          chartInstances[id]=new Chart(cv.getContext('2d'),{
+            type:'line',
+            data:{ labels:data.map((_,k)=>k), datasets:[{ data, borderColor:col, backgroundColor:col+'22', borderWidth:2, pointRadius:2, pointHoverRadius:4, pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1, tension:.4, fill:true }] },
+            options:{ responsive:false, interaction:{mode:'nearest',intersect:false},
+              plugins:{ legend:{display:false}, datalabels:{display:false},
+                tooltip:{ enabled:true, backgroundColor:'rgba(7,9,12,0.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0', borderColor:col, borderWidth:1, padding:8, displayColors:false,
+                  callbacks:{ title:items=>{const dd=dlabels[items[0].dataIndex]?.split('-'); return dd?`${dd[2]}/${dd[1]}/${dd[0]}`:'';}, label:ctx=>`${ctx.parsed.y.toLocaleString()} SKUs` } } },
+              scales:{ x:{display:false}, y:{display:false} } }
+          });
+        });
+      },0);
     }
   }
 
