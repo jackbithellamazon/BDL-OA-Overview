@@ -56,6 +56,13 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions, pr
           ageing_a181: snap.ageing?.a181,
           ageing_a271: snap.ageing?.a271,
           ageing_a365: snap.ageing?.a365,
+          ageing_value_a0: snap.ageingValue?.a0||0,
+          ageing_value_a31: snap.ageingValue?.a31||0,
+          ageing_value_a61: snap.ageingValue?.a61||0,
+          ageing_value_a91: snap.ageingValue?.a91||0,
+          ageing_value_a181: snap.ageingValue?.a181||0,
+          ageing_value_a271: snap.ageingValue?.a271||0,
+          ageing_value_a365: snap.ageingValue?.a365||0,
           repricer_total: snap.repricer?.total,
           repricer_winning: snap.repricer?.winning,
           repricer_win_pct: snap.repricer?.winPct,
@@ -318,6 +325,15 @@ window._supabaseLoad = async function() {
           a181: s.ageing_a181,
           a271: s.ageing_a271,
           a365: s.ageing_a365
+        },
+        ageingValue: {
+          a0: s.ageing_value_a0||0,
+          a31: s.ageing_value_a31||0,
+          a61: s.ageing_value_a61||0,
+          a91: s.ageing_value_a91||0,
+          a181: s.ageing_value_a181||0,
+          a271: s.ageing_value_a271||0,
+          a365: s.ageing_value_a365||0
         },
         repricer: {
           total: s.repricer_total,
@@ -672,6 +688,15 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 
 /* ── SKU import / provider classification (inside Add Snapshot modal) ── */
 .imp-drop{border:1.5px dashed var(--border2);background:var(--s2);border-radius:12px;padding:30px 20px;text-align:center;transition:border-color .15s,background .15s;cursor:default}
+
+/* ── Inline ageing-file importer in Add Snapshot's FBA Stock section ── */
+.age-drop{border:1.5px dashed var(--border2);background:var(--s1);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.age-val{display:block;font-family:var(--mono);font-size:10.5px;color:var(--o);margin-top:5px;min-height:14px}
+.age-drop:hover,.age-drop.drag{border-color:var(--o);background:var(--o2)}
+.age-drop-title{font-family:var(--mono);font-weight:600;font-size:12px;color:var(--text);margin-bottom:3px}
+.age-drop-sub{font-family:var(--mono);font-size:10.5px;color:var(--muted2)}
+.age-loaded{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--s1);border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:11.5px;color:var(--muted2)}
+.age-loaded b{color:var(--o)}
 .imp-drop.drag{border-color:var(--g);background:var(--g2)}
 .imp-drop h4{font-family:var(--mono);font-weight:600;font-size:13.5px;margin:10px 0 4px;color:var(--text)}
 .imp-drop p{margin:0;color:var(--muted2);font-size:11.5px;font-family:var(--mono)}
@@ -815,6 +840,15 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .prule-add-name input:focus{border-color:var(--g)}
 .prule-warning-banner{border:1px solid var(--y);background:var(--y2);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.6;padding:10px 13px;margin-bottom:12px}
 .prule-empty-badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--y);background:var(--y2);border:1px solid var(--y);padding:2px 7px;margin-left:8px}
+
+/* ── Provider tab: per-provider mini trend cards, Stock Health zone-card style ── */
+.prov-mini-card{background:var(--s2);border:1px solid var(--border);border-top:2px solid var(--mc,var(--g));border-radius:10px;padding:12px 14px;cursor:pointer;transition:transform .15s,border-color .15s}
+.prov-mini-card:hover{transform:translateY(-2px);border-color:var(--mc,var(--g))}
+.prov-mini-card .pmc-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.prov-mini-card .pmc-name{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mc,var(--g));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+.prov-mini-card .pmc-delta{font-family:var(--mono);font-size:10px;font-weight:700;flex:none}
+.prov-mini-card .pmc-val{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px}
+.prov-mini-card .pmc-chart{height:60px}
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
 .dot.g{background:var(--g);box-shadow:0 0 6px var(--g)}
 .dot.r{background:var(--r)}
@@ -1201,6 +1235,17 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       </div>
     </div>
 
+    <div class="card" id="provMiniGridCard" style="display:none;margin-bottom:20px">
+      <div class="card-hd" style="flex-wrap:wrap;gap:10px">
+        <div class="card-title">Provider Trends — click a card for full history</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="card-tag" id="provMiniGridTag">—</div>
+          <button class="btn" id="provMiniGridToggle" onclick="toggleProvMiniGridView()" style="font-size:10px;padding:6px 12px;display:none">Show all</button>
+        </div>
+      </div>
+      <div id="provMiniGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:4px 18px 18px"></div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px" id="provChartGrid">
       <div class="card">
         <div class="card-hd">
@@ -1516,14 +1561,25 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
           <span class="snap-section-title">Available FBA Stock</span>
           <span class="snap-section-sub">SKUs in each ageing bucket</span>
         </div>
+        <div class="fg full" style="margin-bottom:14px">
+          <div class="age-drop" id="ageDrop" onclick="document.getElementById('ageFile').click()">
+            <div class="age-drop-title" id="ageDropTitle">Drop the SellerToolKit Inventory Ageing export here to auto-fill</div>
+            <div class="age-drop-sub">Sums every SKU's 0-30 → 365+ buckets (and valuation) automatically. .csv or .txt — nothing leaves the browser. Or just type the numbers below yourself.</div>
+            <input type="file" id="ageFile" accept=".csv,.txt,.tsv,text/plain" hidden>
+          </div>
+          <div class="age-loaded" id="ageLoadedWrap" style="display:none">
+            <span>Loaded <b id="ageLoadedName">file</b> — <span id="ageSkuCount">0</span> SKUs summed<span id="ageErrSpan"></span></span>
+            <button class="btn" onclick="ageReset()" style="font-size:10px;padding:6px 12px;margin-left:auto">Load another file</button>
+          </div>
+        </div>
         <div class="snap-section-grid">
-          <div class="fg"><label>0–30 days</label><input type="number" id="fA0" placeholder="304"></div>
-          <div class="fg"><label>31–60 days</label><input type="number" id="fA31" placeholder="152"></div>
-          <div class="fg"><label>61–90 days</label><input type="number" id="fA61" placeholder="75"></div>
-          <div class="fg"><label>91–180 days</label><input type="number" id="fA91" placeholder="124"></div>
-          <div class="fg"><label>181–270 days</label><input type="number" id="fA181" placeholder="28"></div>
-          <div class="fg"><label>271–365 days</label><input type="number" id="fA271" placeholder="6"></div>
-          <div class="fg"><label>365+ days</label><input type="number" id="fA365" placeholder="2"></div>
+          <div class="fg"><label>0–30 days</label><input type="number" id="fA0" placeholder="304"><span class="age-val" id="ageValA0"></span></div>
+          <div class="fg"><label>31–60 days</label><input type="number" id="fA31" placeholder="152"><span class="age-val" id="ageValA31"></span></div>
+          <div class="fg"><label>61–90 days</label><input type="number" id="fA61" placeholder="75"><span class="age-val" id="ageValA61"></span></div>
+          <div class="fg"><label>91–180 days</label><input type="number" id="fA91" placeholder="124"><span class="age-val" id="ageValA91"></span></div>
+          <div class="fg"><label>181–270 days</label><input type="number" id="fA181" placeholder="28"><span class="age-val" id="ageValA181"></span></div>
+          <div class="fg"><label>271–365 days</label><input type="number" id="fA271" placeholder="6"><span class="age-val" id="ageValA271"></span></div>
+          <div class="fg"><label>365+ days</label><input type="number" id="fA365" placeholder="2"><span class="age-val" id="ageValA365"></span></div>
         </div>
       </div>
 
@@ -1545,11 +1601,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         <div class="snap-section-hd">
           <div class="snap-section-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
           <span class="snap-section-title">Providers</span>
-          <span class="snap-section-sub">import a SellerToolKit SKU export to auto-classify</span>
+          <span class="snap-section-sub">download the Stock Valuation report from SellerToolKit and upload it here to auto-classify</span>
         </div>
         <div class="fg full">
           <div class="imp-summary-card empty" id="impSummaryEmpty" onclick="openImpModal()">
-            <span style="font-family:var(--mono);font-size:12px;color:var(--muted2)">No SellerToolKit file imported yet — click to open the importer</span>
+            <span style="font-family:var(--mono);font-size:12px;color:var(--muted2)">No file imported yet — download <b style="color:var(--text)">Stock Valuation</b> from SellerToolKit (STK) and click here to upload it</span>
           </div>
           <div class="imp-summary-card" id="impSummaryFilled" style="display:none">
             <div class="imp-summary-stats">
@@ -1595,7 +1651,8 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
     <div class="imp-drop" id="impDrop">
       <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)">Stock valuation export</div>
       <h4 id="impDropTitle">Drop the SellerToolKit file here</h4>
-      <p>Tab or comma separated — .csv or .txt. Nothing leaves the browser.</p>
+      <p>Download the <b style="color:var(--text)">Stock Valuation</b> report from SellerToolKit (STK), then drop it here or choose it below.</p>
+      <p style="margin-top:4px">.csv or .txt — nothing leaves the browser.</p>
       <div class="imp-or">
         <button type="button" class="btn" id="impBtnPick" style="font-size:10px;padding:7px 14px">Choose file</button>
         <button type="button" class="btn" id="impBtnPaste" style="font-size:10px;padding:7px 14px">Paste text instead</button>
@@ -2548,6 +2605,11 @@ function shZones(s){ const a=s.ageing||{}; return {
   healthy:(a.a0||0)+(a.a31||0)+(a.a61||0),
   caution:(a.a91||0),
   action:(a.a181||0)+(a.a271||0)+(a.a365||0) }; }
+function shZoneValues(s){ const v=s.ageingValue||{}; return {
+  healthy:(v.a0||0)+(v.a31||0)+(v.a61||0),
+  caution:(v.a91||0),
+  action:(v.a181||0)+(v.a271||0)+(v.a365||0) }; }
+function shHasValuation(s){ const v=s.ageingValue||{}; return Object.values(v).some(x=>x>0); }
 
 // ════════════════════════════════════ PAGE ════════════════════════════════════
 function renderStockHealth(){
@@ -2560,7 +2622,7 @@ function renderStockHealth(){
     shHeroHtml(snaps) +
     shZoneSummaryHtml(snaps) +
     shGraphContainerHtml('shTrendChart') +
-    shZoneGraphsHtml('page') +
+    shZoneGraphsHtml('page', snaps) +
     shWhyContextHtml(snaps) +
     shPipelineHtml(snaps) +
     shRecentTableHtml(snaps);
@@ -2744,7 +2806,10 @@ function shZoneSummaryHtml(snaps){
   _shZoneSnaps=snaps;
   const latest=snaps[snaps.length-1], prev=snaps.length>1?snaps[snaps.length-2]:null;
   const z=shZones(latest), pz=prev?shZones(prev):null, total=shBucketTotal(latest)||1;
-  const card=(name,sub,val,zoneCol,delta,goodUp,zone)=>{
+  const hasVal = shHasValuation(latest);
+  const zv = hasVal ? shZoneValues(latest) : null;
+  const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const card=(name,sub,val,zoneCol,delta,goodUp,zone,valAmt)=>{
     let dHtml='';
     if(delta!=null){ const col=delta===0?NEUT:(goodUp?(delta>0?GOOD:BAD):(delta>0?BAD:GOOD));
       dHtml=`<span style="color:${col};font-weight:700">${delta>0?'▲ +':delta<0?'▼ ':'→ '}${Math.abs(delta)}</span> <span style="color:var(--muted2)">vs last</span>`; }
@@ -2755,14 +2820,14 @@ function shZoneSummaryHtml(snaps){
       </div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:10px">${sub}</div>
       <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--text);line-height:1">${val}</div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:8px">${((val/total)*100).toFixed(1)}% of stock</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:8px">${((val/total)*100).toFixed(1)}% of stock${valAmt!=null?` · <span style="color:${zoneCol}">${moneyFmt(valAmt)}</span>`:''}</div>
       <div style="font-family:var(--mono);font-size:11px;margin-top:4px">${dHtml||'<span style=\"color:var(--muted2)\">—</span>'}</div>
     </div>`;
   };
   return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
-    ${card('Healthy','sells within 90 days',z.healthy,GOOD, pz?z.healthy-pz.healthy:null, true,'healthy')}
-    ${card('Caution','91–180 days · early warning',z.caution,AMBER, pz?z.caution-pz.caution:null, false,'caution')}
-    ${card('Action','181+ days · clear these',z.action,'#ea580c', pz?z.action-pz.action:null, false,'action')}
+    ${card('Healthy','sells within 90 days',z.healthy,GOOD, pz?z.healthy-pz.healthy:null, true,'healthy', zv?zv.healthy:null)}
+    ${card('Caution','91–180 days · early warning',z.caution,AMBER, pz?z.caution-pz.caution:null, false,'caution', zv?zv.caution:null)}
+    ${card('Action','181+ days · clear these',z.action,'#ea580c', pz?z.action-pz.action:null, false,'action', zv?zv.action:null)}
   </div>`;
 }
 
@@ -2937,10 +3002,30 @@ function shWhyContextHtml(snaps){
 }
 
 // ── Zone graphs section (Healthy / Caution / Action over time) ──────────────
-function shZoneGraphsHtml(pageId){
+let shZoneMetric = 'skus'; // 'skus' | 'value' — which series the 3 mini zone charts show
+
+function shZoneToggleHtml(pageId, metric){
+  return `<div style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <button onclick="shSetZoneMetric('skus','${pageId}')" id="shZMetricBtn_skus_${pageId}" style="font-family:var(--mono);font-size:10px;padding:6px 12px;background:${metric==='skus'?'var(--g)':'none'};color:${metric==='skus'?'var(--bg)':'var(--muted2)'};border:none;cursor:pointer;font-weight:700">SKUs</button>
+      <button onclick="shSetZoneMetric('value','${pageId}')" id="shZMetricBtn_value_${pageId}" style="font-family:var(--mono);font-size:10px;padding:6px 12px;background:${metric==='value'?'#3d9eff':'none'};color:${metric==='value'?'#07090c':'var(--muted2)'};border:none;cursor:pointer;font-weight:700">Valuation</button>
+    </div>`;
+}
+
+function shZoneGraphsHtml(pageId, snaps){
   // pageId differentiates canvas IDs between page and popup
+  const latest = snaps && snaps.length ? snaps[snaps.length-1] : null;
+  const hasVal = latest ? shHasValuation(latest) : false;
+  const metric = hasVal ? shZoneMetric : 'skus';
+  const toggle = hasVal ? shZoneToggleHtml(pageId, metric) : '';
+  return `<div id="shZoneGraphsHost_${pageId}">${shZoneGraphsInnerHtml(pageId, metric, toggle)}</div>`;
+}
+
+function shZoneGraphsInnerHtml(pageId, metric, toggle){
   return `<div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px">
-    <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text);margin-bottom:14px">Zone counts over time — click a zone to focus</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text)">Zone ${metric==='value'?'valuation':'counts'} over time — click a zone to focus</div>
+      ${toggle}
+    </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
       <div style="background:var(--s2);border:1px solid var(--border);border-top:2px solid ${GOOD};border-radius:10px;padding:12px 14px">
         <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:${GOOD};margin-bottom:8px">Healthy 0–90d</div>
@@ -2956,20 +3041,46 @@ function shZoneGraphsHtml(pageId){
       </div>
     </div>
     <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:10px">
-      Goal: Healthy ↑ over time · Caution &amp; Action ↓ over time. If Healthy isn't rising but score improves, it may be new stock buying, not clearing.
+      ${metric==='value'
+        ? 'Goal: Healthy ↑ over time · Caution &amp; Action ↓ over time. Capital tied up in Action stock is money not in your pocket.'
+        : 'Goal: Healthy ↑ over time · Caution &amp; Action ↓ over time. If Healthy isn\'t rising but score improves, it may be new stock buying, not clearing.'}
     </div>
   </div>`;
 }
 
+function shSetZoneMetric(metric, pageId){
+  shZoneMetric = metric;
+  // Re-render just this section in place rather than the whole page, so scroll position/other state isn't disturbed
+  const snaps = pageId==='popup' ? _shZoneSnaps : shFilteredSnaps();
+  if (!snaps || !snaps.length) return;
+  const host = document.getElementById('shZoneGraphsHost_'+pageId);
+  const latest = snaps[snaps.length-1];
+  const hasVal = shHasValuation(latest);
+  const effMetric = hasVal ? metric : 'skus';
+  const toggle = hasVal ? shZoneToggleHtml(pageId, effMetric) : '';
+  if (host) host.innerHTML = shZoneGraphsInnerHtml(pageId, effMetric, toggle);
+  setTimeout(()=>shDrawZoneCharts(snaps, pageId), 30);
+}
+
 function shDrawZoneCharts(snaps, pageId){
+  const latest = snaps[snaps.length-1];
+  const hasVal = shHasValuation(latest);
+  const metric = hasVal ? shZoneMetric : 'skus';
   const labels=snaps.map(s=>fmtShort(s.date));
   const zones=['healthy','caution','action'];
   const cols={healthy:GOOD, caution:AMBER, action:'#ea580c'};
-  const getters={
+  const skuGetters={
     healthy:s=>{ const a=s.ageing||{}; return (a.a0||0)+(a.a31||0)+(a.a61||0); },
     caution:s=>{ const a=s.ageing||{}; return a.a91||0; },
     action:s=>{ const a=s.ageing||{}; return (a.a181||0)+(a.a271||0)+(a.a365||0); }
   };
+  const valGetters={
+    healthy:s=>shHasValuation(s)?shZoneValues(s).healthy:0,
+    caution:s=>shHasValuation(s)?shZoneValues(s).caution:0,
+    action:s=>shHasValuation(s)?shZoneValues(s).action:0
+  };
+  const getters = metric==='value' ? valGetters : skuGetters;
+  const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
   zones.forEach(zone=>{
     const cv=document.getElementById(`shZChart_${zone}_${pageId}`);
     if(!cv||typeof Chart==='undefined') return;
@@ -2977,14 +3088,14 @@ function shDrawZoneCharts(snaps, pageId){
     destroyChart(id);
     const data=snaps.map(getters[zone]);
     const col=cols[zone];
-    const lo=Math.max(0,Math.min(...data)-5), hi=Math.max(...data)+5;
+    const lo=Math.max(0,Math.min(...data)-(metric==='value'?Math.max(...data)*0.1:5)), hi=Math.max(...data)+(metric==='value'?Math.max(...data)*0.1||1:5);
     chartInstances[id]=new Chart(cv.getContext('2d'),{
       type:'line',
       data:{ labels, datasets:[{ data, borderColor:col, backgroundColor:col+'18', borderWidth:1.6, tension:.3, fill:true, pointRadius:2, pointHoverRadius:4, pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1.5 }] },
       options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
         plugins:{ legend:{display:false}, datalabels:{display:false},
-          tooltip:{ callbacks:{ title:items=>fmt(snaps[items[0].dataIndex].date), label:item=>`${item.parsed.y} SKUs` } } },
-        scales:{ y:{ min:lo, max:hi, display:true, grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#a7b4c4',font:{size:10},maxTicksLimit:4} },
+          tooltip:{ callbacks:{ title:items=>fmt(snaps[items[0].dataIndex].date), label:item=>metric==='value'?moneyFmt(item.parsed.y):`${item.parsed.y} SKUs` } } },
+        scales:{ y:{ min:lo, max:hi, display:true, grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#a7b4c4',font:{size:10},maxTicksLimit:4,callback:v=>metric==='value'?moneyFmt(v):v} },
           x:{ display:false } } }
     });
   });
@@ -3130,7 +3241,7 @@ function openAgedStockModal(snaps, modal, title, body){
     shHeroHtml(snaps) +
     shZoneSummaryHtml(snaps) +
     shGraphContainerHtml('shModalChart') +
-    shZoneGraphsHtml('popup') +
+    shZoneGraphsHtml('popup', snaps) +
     shWhyContextHtml(snaps) +
     shPipelineHtml(snaps) +
     shRecentTableHtml(snaps);
@@ -6612,6 +6723,7 @@ function impIsNoise(t){
   if (t==='') return true;
   if (/^[\d.]+$/.test(t)) return true;
   if (IMP_HOUSEKEEP.has(t.toLowerCase())) return true;
+  if (IMP_GENERIC_WORDS.has(t.toLowerCase())) return true;
   if (/^B0[A-Z0-9]{8}$/i.test(t)) return true;
   return false;
 }
@@ -6664,6 +6776,128 @@ function impParseMoney(raw){
   const n = parseFloat(String(raw).replace(/[£$,\s]/g,''));
   return isFinite(n) ? n : 0;
 }
+
+// ── Inventory Ageing file importer (Add Snapshot → Available FBA Stock) ──
+// Separate from the SKU/provider importer above: this file has one row per SKU (no
+// disposition duplication). Each bucket counts DISTINCT SKUs, not units — a SKU with
+// 140 units sitting in one bucket is still 1 SKU, not 140. A SKU is assigned to exactly
+// one bucket: if its stock spans more than one age range (rare — 4 of 638 SKUs in the
+// reference file), it's counted in its OLDEST bucket, since that's the one that should
+// drive attention, and its full valuation (summed across every bucket it touches) moves
+// with it — so nothing is split or double-counted, and bucket counts always sum to the
+// true SKU total. Valuation is the exact figure from the file, never rounded.
+const AGE_BUCKET_COLS = [
+  {field:'fA0',   ageCol:'age 0-30',   valCol:'value 0-30'},
+  {field:'fA31',  ageCol:'age 31-60',  valCol:'value 31-60'},
+  {field:'fA61',  ageCol:'age 61-90',  valCol:'value 61-90'},
+  {field:'fA91',  ageCol:'age 91-180', valCol:'value 91-180'},
+  {field:'fA181', ageCol:'age 181-270',valCol:'value 181-270'},
+  {field:'fA271', ageCol:'age 271-365',valCol:'value 271-365'},
+  {field:'fA365', ageCol:'age 365+',   valCol:'value 365+'},
+];
+let ageValuation = { a0:0, a31:0, a61:0, a91:0, a181:0, a271:0, a365:0 }; // picked up by saveSnap()
+let ageHasValuation = false;
+
+function ageIngest(text, fname){
+  const recs = impParseTable(text);
+  if (!recs.length){ showToast('Nothing to read in that file'); return; }
+  const header = recs[0].map(h=>h.trim().toLowerCase());
+  const colIdx = {};
+  AGE_BUCKET_COLS.forEach(b=>{ colIdx[b.field+'_age']=header.indexOf(b.ageCol); colIdx[b.field+'_val']=header.indexOf(b.valCol); });
+  const skuIdx = header.indexOf('sku');
+
+  if (skuIdx===-1 || AGE_BUCKET_COLS.every(b=>colIdx[b.field+'_age']===-1)){
+    showToast("That doesn't look like an Inventory Ageing export — couldn't find the age bucket columns");
+    return;
+  }
+
+  const skuCounts = {}; AGE_BUCKET_COLS.forEach(b=>skuCounts[b.field]=0);   // distinct SKUs per bucket
+  const valSums = {}; AGE_BUCKET_COLS.forEach(b=>valSums[b.field]=0);       // exact £ total per bucket, no rounding
+  let skuCount = 0;
+  let anyValuation = false;
+  let splitSkuCount = 0;
+  let blankSkuRows = 0;     // rows with no SKU value at all — skipped, can't be placed anywhere
+  let zeroUnitSkus = 0;     // SKU present but every bucket showed 0 units (e.g. fully Inbound/Reserved, nothing Available)
+
+  for (let i=1;i<recs.length;i++){
+    const r = recs[i];
+    const sku = (r[skuIdx]||'').trim();
+    if (!sku){ if (r.join('').trim()!=='') blankSkuRows++; continue; }
+    skuCount++;
+
+    // Which buckets does this SKU have units in, and what's its full valuation across all of them?
+    let bucketsWithUnits = [];
+    let skuTotalValue = 0;
+    AGE_BUCKET_COLS.forEach((b,idx)=>{
+      const ai = colIdx[b.field+'_age'];
+      const units = ai>=0 ? (parseFloat(r[ai])||0) : 0;
+      const vi = colIdx[b.field+'_val'];
+      const val = vi>=0 ? impParseMoney(r[vi]) : 0;
+      if (val>0) anyValuation = true;
+      skuTotalValue += val;
+      if (units>0) bucketsWithUnits.push(idx);
+    });
+
+    if (!bucketsWithUnits.length){ zeroUnitSkus++; continue; }
+    if (bucketsWithUnits.length>1) splitSkuCount++;
+
+    // Oldest bucket = highest index in AGE_BUCKET_COLS (0-30 is index 0, 365+ is index 6)
+    const oldestIdx = Math.max(...bucketsWithUnits);
+    const targetField = AGE_BUCKET_COLS[oldestIdx].field;
+    skuCounts[targetField]++;
+    valSums[targetField] += skuTotalValue;
+  }
+
+  AGE_BUCKET_COLS.forEach(b=>{ document.getElementById(b.field).value = skuCounts[b.field] || 0; });
+  ageHasValuation = anyValuation;
+  ageValuation = { a0:valSums.fA0, a31:valSums.fA31, a61:valSums.fA61, a91:valSums.fA91, a181:valSums.fA181, a271:valSums.fA271, a365:valSums.fA365 };
+
+  // Per-bucket £ readout under each input, so the valuation being captured is visible before you even save
+  AGE_BUCKET_COLS.forEach(b=>{
+    const el=document.getElementById('ageVal'+b.field.replace('f',''));
+    if (!el) return;
+    el.textContent = (anyValuation && valSums[b.field]>0) ? '£'+valSums[b.field].toLocaleString(undefined,{maximumFractionDigits:2}) : '';
+  });
+
+  document.getElementById('ageDrop').style.display = 'none';
+  document.getElementById('ageLoadedWrap').style.display = '';
+  document.getElementById('ageLoadedName').textContent = fname || 'pasted text';
+  const placedCount = Object.values(skuCounts).reduce((s,v)=>s+v,0);
+  document.getElementById('ageSkuCount').textContent = placedCount;
+
+  // Errors/anomalies — shown persistently next to the loaded-file line, not just a toast that disappears
+  const errParts = [];
+  if (blankSkuRows>0) errParts.push(`${blankSkuRows} row${blankSkuRows!==1?'s':''} with no SKU skipped`);
+  if (zeroUnitSkus>0) errParts.push(`${zeroUnitSkus} SKU${zeroUnitSkus!==1?'s':''} had 0 units in every bucket`);
+  if (splitSkuCount>0) errParts.push(`${splitSkuCount} SKU${splitSkuCount!==1?'s':''} spanned multiple buckets (counted in oldest)`);
+  if (!anyValuation) errParts.push(`no valuation columns found`);
+  const errEl=document.getElementById('ageErrSpan');
+  errEl.textContent = errParts.length ? ` · ⚠ ${errParts.join(' · ')}` : '';
+  errEl.style.color = errParts.length ? 'var(--y)' : '';
+
+  showToast(`Filled ageing buckets from ${placedCount.toLocaleString()} SKUs`);
+}
+
+function ageReset(){
+  document.getElementById('ageDrop').style.display = '';
+  document.getElementById('ageLoadedWrap').style.display = 'none';
+  document.getElementById('ageFile').value = '';
+  ageValuation = { a0:0, a31:0, a61:0, a91:0, a181:0, a271:0, a365:0 };
+  ageHasValuation = false;
+  AGE_BUCKET_COLS.forEach(b=>{ const el=document.getElementById('ageVal'+b.field.replace('f','')); if (el) el.textContent=''; });
+  const errEl=document.getElementById('ageErrSpan'); if (errEl){ errEl.textContent=''; errEl.style.color=''; }
+}
+
+document.getElementById('ageDrop').addEventListener('dragover', e=>{ e.preventDefault(); document.getElementById('ageDrop').classList.add('drag'); });
+document.getElementById('ageDrop').addEventListener('dragleave', ()=>document.getElementById('ageDrop').classList.remove('drag'));
+document.getElementById('ageDrop').addEventListener('drop', e=>{
+  e.preventDefault(); document.getElementById('ageDrop').classList.remove('drag');
+  const f=e.dataTransfer.files[0]; if (f) f.text().then(t=>ageIngest(t, f.name));
+});
+document.getElementById('ageFile').addEventListener('change', e=>{
+  const f=e.target.files[0]; if (f) f.text().then(t=>ageIngest(t, f.name));
+});
+
 const IMP_ACTIVE_DISPOSITIONS = new Set(['available']); // only disposition counted as real, sellable stock — excludes Inbound/Transfer/Processing/Customer Order/Stranded/Damaged/etc
 function impIngest(text, fname){
   const recs=impParseTable(text);
@@ -7134,6 +7368,7 @@ function openSnap(prefill=null) {
   document.getElementById('impStatUnres').style.display='';
   document.getElementById('impGate').style.display='';
   impResetModalState();
+  ageReset();
   document.getElementById('snapModal').classList.add('open');
 }
 
@@ -7146,6 +7381,22 @@ function editSnap(idx) {
   document.getElementById('impGate').style.display='';
   impResetModalState();
   impShowExistingSummary(s.date);
+  ageReset();
+  const savedVal = s.ageingValue;
+  const hasSavedVal = savedVal && Object.values(savedVal).some(v=>v>0);
+  if (hasSavedVal){
+    document.getElementById('ageLoadedWrap').style.display='';
+    document.getElementById('ageDrop').style.display='none';
+    document.getElementById('ageLoadedName').textContent='saved snapshot (not re-imported)';
+    document.getElementById('ageSkuCount').textContent='—';
+    const errEl=document.getElementById('ageErrSpan');
+    if (errEl) errEl.textContent=' · valuation already saved, shown per bucket below';
+    AGE_BUCKET_COLS.forEach(b=>{
+      const key=b.field.replace('fA','a');
+      const el=document.getElementById('ageVal'+b.field.replace('f',''));
+      if (el) el.textContent = (savedVal[key]||0)>0 ? '£'+savedVal[key].toLocaleString(undefined,{maximumFractionDigits:2}) : '';
+    });
+  }
   document.getElementById('snapModal').classList.add('open');
 }
 
@@ -7202,6 +7453,7 @@ async function saveSnap() {
     stockValue,
     totalUnits: units,
     ageing: { a0:+document.getElementById('fA0').value||0, a31:+document.getElementById('fA31').value||0, a61:+document.getElementById('fA61').value||0, a91:+document.getElementById('fA91').value||0, a181:+document.getElementById('fA181').value||0, a271:+document.getElementById('fA271').value||0, a365:+document.getElementById('fA365').value||0 },
+    ageingValue: ageHasValuation ? {...ageValuation} : (editIdx!==null ? (DB[editIdx]?.ageingValue || {a0:0,a31:0,a61:0,a91:0,a181:0,a271:0,a365:0}) : {a0:0,a31:0,a61:0,a91:0,a181:0,a271:0,a365:0}),
     repricer: { total: repTotal, winning: repWinNum, winPct: repWinPct, matching: repMatchNum, matchPct: repMatchPct },
     notes: document.getElementById('fNotes').value,
   };
@@ -7598,6 +7850,74 @@ function renderProviderTab(){
 
   renderProviderTrendChart(ordered);
   renderProviderShareChart(ordered);
+  renderProviderMiniGrid(series);
+}
+
+// ── Provider tab: per-provider mini trend cards, Stock Health zone-card style ──
+const PROV_MINI_PALETTE = ['#00f5a0','#3d9eff','#ffd166','#c084fc','#ff8c42','#22c55e','#ef4444','#ca8a04','#2dd4bf','#f472b6'];
+let provMiniShowAll = false;
+function provMiniColor(i){ return PROV_MINI_PALETTE[i % PROV_MINI_PALETTE.length]; }
+function toggleProvMiniGridView(){
+  provMiniShowAll = !provMiniShowAll;
+  renderProviderTab();
+}
+function renderProviderMiniGrid(series){
+  const card=document.getElementById('provMiniGridCard');
+  const wrap=document.getElementById('provMiniGrid');
+  const tag=document.getElementById('provMiniGridTag');
+  const toggleBtn=document.getElementById('provMiniGridToggle');
+  if (!card || !wrap) return;
+
+  // Only providers with at least 2 snapshots have a meaningful trend line to show
+  const withTrend = series.filter(s=>s.points.length>=2).slice().sort((a,b)=>b.current-a.current);
+  if (!withTrend.length){ card.style.display='none'; return; }
+  card.style.display='';
+
+  const CAP=6;
+  const showing = provMiniShowAll ? withTrend : withTrend.slice(0,CAP);
+  if (tag) tag.textContent = `${showing.length} of ${withTrend.length}`;
+  if (toggleBtn){
+    toggleBtn.style.display = withTrend.length>CAP ? '' : 'none';
+    toggleBtn.textContent = provMiniShowAll ? 'Show less' : `Show all ${withTrend.length}`;
+  }
+
+  wrap.innerHTML = showing.map((s,i)=>{
+    const col=provMiniColor(i);
+    const safe=s.provider.replace(/[^\w]/g,'_');
+    const esc=s.provider.replace(/'/g,"\\'");
+    const dCol=s.diff==null?NEUT:s.diff>0?GOOD:s.diff<0?BAD:NEUT;
+    const dStr=s.diff==null?'—':(s.diff>0?'▲ +':s.diff<0?'▼ ':'→ ')+Math.abs(s.diff);
+    return `<div class="prov-mini-card" style="--mc:${col}" onclick="openProviderDetail('${esc}')">
+      <div class="pmc-hd">
+        <span class="pmc-name" title="${escapeHtmlImp(s.provider)}">${escapeHtmlImp(s.provider)}</span>
+        <span class="pmc-delta" style="color:${dCol}">${dStr}</span>
+      </div>
+      <div class="pmc-val">${s.current.toLocaleString()} <span style="font-size:10px;color:var(--muted2);font-weight:400">SKUs</span></div>
+      <div class="pmc-chart"><canvas id="provMini_${safe}"></canvas></div>
+    </div>`;
+  }).join('');
+
+  setTimeout(()=>{
+    showing.forEach((s,i)=>{
+      const cv=document.getElementById('provMini_'+s.provider.replace(/[^\w]/g,'_'));
+      if (!cv || typeof Chart==='undefined') return;
+      const id='provMini_'+s.provider.replace(/[^\w]/g,'_');
+      destroyChart(id);
+      const col=provMiniColor(i);
+      const data=s.points.map(p=>p.skus);
+      const labels=s.points.map(p=>fmtShort(p.date));
+      const lo=Math.max(0,Math.min(...data)-Math.max(1,Math.round(Math.min(...data)*0.1)));
+      const hi=Math.max(...data)+Math.max(1,Math.round(Math.max(...data)*0.1));
+      chartInstances[id]=new Chart(cv.getContext('2d'),{
+        type:'line',
+        data:{ labels, datasets:[{ data, borderColor:col, backgroundColor:col+'18', borderWidth:1.6, tension:.3, fill:true, pointRadius:2, pointHoverRadius:4, pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1.5 }] },
+        options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+          plugins:{ legend:{display:false}, datalabels:{display:false},
+            tooltip:{ callbacks:{ title:items=>fmt(s.points[items[0].dataIndex].date), label:item=>`${item.parsed.y.toLocaleString()} SKUs` } } },
+          scales:{ y:{ min:lo, max:hi, display:false }, x:{ display:false } } }
+      });
+    });
+  },60);
 }
 
 function renderProviderTrendChart(series){
