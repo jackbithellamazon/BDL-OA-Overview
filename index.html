@@ -24,25 +24,27 @@ if (window.supabase) {
 
 // Save data to Supabase
 window._supabaseSave = async function(snapshots, sellers, competitorSessions, providerSnapshots) {
+  if (!supabase) return { ok: false, error: new Error('Supabase client not initialised — check your URL and anon key') };
   try {
     // Save provider snapshots (one row per provider per date)
     if (providerSnapshots && providerSnapshots.length > 0) {
       for (const p of providerSnapshots) {
         if (!p.date || !p.provider) continue;
-        await supabase.from('bdl_provider_snapshots').upsert({
+        const { error: psErr } = await supabase.from('bdl_provider_snapshots').upsert({
           date: p.date,
           provider_name: p.provider,
           sku_count: p.skus || 0,
           total_valuation: p.value || 0,
           notes: p.notes || null
         }, { onConflict: 'date,provider_name' });
+        if (psErr) throw Object.assign(new Error(psErr.message || 'Provider snapshot save failed'), { table: 'bdl_provider_snapshots', supabaseCode: psErr.code, hint: psErr.hint });
       }
     }
 
     // Save snapshots
     if (snapshots && snapshots.length > 0) {
       for (const snap of snapshots) {
-        await supabase.from('bdl_snapshots').upsert({
+        const { error: snapErr } = await supabase.from('bdl_snapshots').upsert({
           date: snap.date,
           asins: snap.asins,
           skus: snap.skus,
@@ -70,6 +72,7 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions, pr
           repricer_match_pct: snap.repricer?.matchPct,
           notes: snap.notes
         }, { onConflict: 'date' });
+        if (snapErr) throw Object.assign(new Error(snapErr.message || 'Snapshot save failed'), { table: 'bdl_snapshots', supabaseCode: snapErr.code, hint: snapErr.hint });
       }
     }
     
@@ -77,11 +80,12 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions, pr
     if (sellers && sellers.length > 0) {
       for (let idx = 0; idx < sellers.length; idx++) {
         const seller = sellers[idx];
-        await supabase.from('bdl_sellers').upsert({
+        const { error: selErr } = await supabase.from('bdl_sellers').upsert({
           seller_id: seller.sellerId,
           name: seller.name,
           seller_order: idx
         }, { onConflict: 'seller_id' });
+        if (selErr) throw Object.assign(new Error(selErr.message || 'Seller save failed'), { table: 'bdl_sellers', supabaseCode: selErr.code, hint: selErr.hint });
       }
     }
     
@@ -95,14 +99,14 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions, pr
           .select()
           .single();
         
-        if (sessError) throw sessError;
+        if (sessError) throw Object.assign(new Error(sessError.message || 'Competitor session save failed'), { table: 'bdl_competitor_sessions', supabaseCode: sessError.code, hint: sessError.hint });
         
         // Delete old readings for this session
         await supabase.from('bdl_competitor_readings').delete().eq('session_id', sessionData.id);
         
         // Insert new readings
         if (session.competitors && session.competitors.length > 0) {
-          await supabase.from('bdl_competitor_readings').insert(
+          const { error: readErr } = await supabase.from('bdl_competitor_readings').insert(
             session.competitors.map(c => ({
               session_id: sessionData.id,
               seller_id: c.sellerId,
@@ -110,14 +114,15 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions, pr
               overlap_pct: c.pct
             }))
           );
+          if (readErr) throw Object.assign(new Error(readErr.message || 'Competitor readings save failed'), { table: 'bdl_competitor_readings', supabaseCode: readErr.code, hint: readErr.hint });
         }
       }
     }
     
-    return true;
+    return { ok: true };
   } catch(e) {
     console.error('Supabase save error:', e);
-    return false;
+    return { ok: false, error: e };
   }
 };
 
@@ -177,18 +182,23 @@ window._supabaseNukeProviderSnapshots = async function() {
 // Save (upsert) one provider's classification rules (aliases/stems/title keywords) for the SKU importer
 window._supabaseSaveProviderRule = async function(rule) {
   try {
-    if (!supabase || !rule || !rule.name) return false;
-    await supabase.from('bdl_provider_rules').upsert({
+    if (!supabase || !rule || !rule.name) return { ok: false, error: new Error('No supabase client or missing rule name') };
+    const { error } = await supabase.from('bdl_provider_rules').upsert({
       provider_name: rule.name,
       aliases: rule.aliases || [],
       stems: rule.stems || [],
       title_keywords: rule.titleKeywords || [],
       updated_at: new Date().toISOString()
     }, { onConflict: 'provider_name' });
-    return true;
+    if (error) {
+      const err = Object.assign(new Error(error.message || 'Provider rule save failed'), { table: 'bdl_provider_rules', supabaseCode: error.code, hint: error.hint });
+      console.error('Supabase provider rule save error:', err);
+      return { ok: false, error: err };
+    }
+    return { ok: true };
   } catch(e) {
     console.error('Supabase provider rule save error:', e);
-    return false;
+    return { ok: false, error: e };
   }
 };
 
@@ -410,7 +420,10 @@ window._startupLoad = async function() {
           name: p.name, aliases: p.aliases||[], stems: p.stems||[], titleKeywords: p.titleKeywords||[]
         }));
         await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
-        for (const r of PROVIDER_RULES) { await window._supabaseSaveProviderRule(r); }
+        for (const r of PROVIDER_RULES) {
+          const res = await window._supabaseSaveProviderRule(r);
+          if (!res || !res.ok) { console.warn('Seed: provider rule save failed for', r.name, res && res.error); break; }
+        }
       } catch(seedErr) {
         console.error('Default provider seed failed:', seedErr);
       }
@@ -425,6 +438,7 @@ window._startupLoad = async function() {
     // alone) and never touches non-default provider names.
     try {
       let backfilled = [];
+      let backfillFailReason = null;
       for (const name of PROVIDER_DEFS) {
         const def = DEFAULT_PROVIDERS.find(p => p.name.toLowerCase() === name.toLowerCase());
         if (!def) continue; // not one of the known defaults, nothing to backfill from
@@ -437,12 +451,25 @@ window._startupLoad = async function() {
         if (isEmpty) {
           const rule = { name, aliases:[...(def.aliases||[])], stems:[...(def.stems||[])], titleKeywords:[...(def.titleKeywords||[])] };
           if (existing) Object.assign(existing, rule); else PROVIDER_RULES.push(rule);
-          await window._supabaseSaveProviderRule(rule);
+          const result = await window._supabaseSaveProviderRule(rule);
+          if (!result || !result.ok) {
+            // Stop on first failure — all rules will fail the same way (e.g. RLS)
+            backfillFailReason = result && result.error;
+            console.warn('Provider rule backfill blocked for', name, '— stopping. Reason:', backfillFailReason);
+            break;
+          }
           backfilled.push(name);
         }
       }
       if (backfilled.length) {
         console.warn('Backfilled empty matching rules for:', backfilled.join(', '));
+      }
+      if (backfillFailReason) {
+        const code = backfillFailReason.supabaseCode;
+        const isRLS = code === '42501' || (backfillFailReason.message||'').toLowerCase().includes('row-level security') || (backfillFailReason.message||'').toLowerCase().includes('permission denied') || (backfillFailReason.message||'').includes('401');
+        if (isRLS) {
+          console.warn('Provider rule backfill blocked by RLS. Run the following in your Supabase SQL editor:\n\nalter table bdl_provider_rules enable row level security;\n\ncreate policy "allow_all_provider_rules"\n  on bdl_provider_rules\n  for all\n  using (true)\n  with check (true);');
+        }
       }
     } catch(backfillErr) {
       console.error('Provider rule backfill failed:', backfillErr);
@@ -1500,6 +1527,18 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       </div>
       <div id="archivedProvRows" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
+
+    <div class="card" style="max-width:640px;margin-top:16px">
+      <div class="card-hd">
+        <div class="card-title">Supabase Connection Test</div>
+        <div class="card-tag" id="diagTag">—</div>
+      </div>
+      <div style="color:var(--muted2);font-family:var(--mono);font-size:11px;line-height:1.7;margin-bottom:14px">
+        Tests read and write access on every table. Run this if saves are failing — it will tell you exactly which table is blocked and why.
+      </div>
+      <button class="btn-g" onclick="runSupabaseDiag()" id="diagBtn" style="font-size:11px;padding:9px 20px;margin-bottom:14px">Run connection test</button>
+      <div id="diagResults" style="display:none;flex-direction:column;gap:6px"></div>
+    </div>
   </div>
 
 </div>
@@ -1825,25 +1864,82 @@ let trackedCompetitors = new Set(); // Track which competitors are visible
 let trackedProviders = new Set(); // Track which providers are visible on the trend chart
 let providerSearch = '';
 
-function showSyncStatus(state) {
+function showSyncStatus(state, errDetail) {
   let el = document.getElementById('syncStatus');
   if (!el) {
     el = document.createElement('div');
     el.id = 'syncStatus';
-    el.style.cssText = 'position:fixed;top:14px;right:20px;font-family:var(--mono);font-size:10px;padding:5px 10px;z-index:8000;border-radius:2px;transition:all .3s';
+    el.style.cssText = 'position:fixed;top:14px;right:20px;font-family:var(--mono);font-size:10px;padding:5px 10px;z-index:8000;border-radius:2px;transition:all .3s;cursor:default';
     document.body.appendChild(el);
   }
-  if (state==='loading') { el.style.background='var(--s3)'; el.style.color='var(--muted2)'; el.textContent='⟳ Syncing...'; el.style.opacity='1'; }
-  else if (state==='saved') { el.style.background='var(--g2)'; el.style.color='var(--g)'; el.textContent='✓ Saved'; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0',2000); }
-  else if (state==='error') { el.style.background='var(--r2)'; el.style.color='var(--r)'; el.textContent='⚠ Sync failed — saved locally'; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0',4000); }
+  if (state==='loading') { el.style.background='var(--s3)'; el.style.color='var(--muted2)'; el.textContent='⟳ Syncing...'; el.style.opacity='1'; el.onclick=null; }
+  else if (state==='saved') { el.style.background='var(--g2)'; el.style.color='var(--g)'; el.textContent='✓ Saved'; el.style.opacity='1'; el.onclick=null; setTimeout(()=>el.style.opacity='0',2000); }
+  else if (state==='error') {
+    el.style.background='var(--r2)'; el.style.color='var(--r)'; el.textContent='⚠ Save failed — tap for details'; el.style.opacity='1'; el.style.cursor='pointer';
+    el.onclick = () => showSaveErrorPopup(errDetail);
+    setTimeout(()=>{ el.style.opacity='0'; el.onclick=null; },8000);
+  }
 }
 function hideSyncStatus() { showSyncStatus(''); const el=document.getElementById('syncStatus'); if(el) el.style.opacity='0'; }
+
+// Show a detailed modal explaining exactly why a save failed
+function showSaveErrorPopup(err) {
+  const existing = document.getElementById('saveErrorModal');
+  if (existing) existing.remove();
+
+  const code = err && err.supabaseCode;
+  const table = err && err.table;
+  const hint = err && err.hint;
+  const msg = (err && err.message) || 'Unknown error';
+
+  // Produce a plain-English diagnosis
+  let diagnosis = '';
+  let fix = '';
+  if (code === '42501' || (msg && msg.toLowerCase().includes('row-level security')) || (msg && msg.toLowerCase().includes('permission denied'))) {
+    diagnosis = 'Row Level Security (RLS) is blocking the write.';
+    fix = `The table <b>${table || 'bdl_provider_rules'}</b> exists but has no RLS policy that allows inserts/updates from the anon key.<br><br>
+Run this in your <b>Supabase SQL editor</b>:<br>
+<pre style="background:var(--s3);padding:10px;border-radius:3px;font-size:10px;white-space:pre-wrap;word-break:break-all;margin:8px 0">alter table ${table || 'bdl_provider_rules'} enable row level security;
+
+create policy "allow_all_${(table||'bdl_provider_rules').replace(/[^a-z0-9]/g,'_')}"
+  on ${table || 'bdl_provider_rules'}
+  for all
+  using (true)
+  with check (true);</pre>`;
+  } else if (code === '401' || (msg && msg.includes('401'))) {
+    diagnosis = '401 Unauthorized — the anon key was rejected.';
+    fix = 'Check that your Supabase anon key is correct and that the table has an RLS policy allowing anonymous reads/writes.';
+  } else if (code === 'PGRST204' || (msg && msg.toLowerCase().includes('not found'))) {
+    diagnosis = `Table <b>${table}</b> does not exist yet.`;
+    fix = 'Run the migration SQL to create the missing table. Check the setup instructions for this app.';
+  } else {
+    diagnosis = msg;
+    fix = hint ? `Supabase hint: ${hint}` : 'Check the browser console (F12) for more detail.';
+  }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'saveErrorModal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:20000;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--s1);border:1px solid var(--r);border-radius:4px;padding:24px 28px;max-width:520px;width:90%;font-family:var(--mono);position:relative">
+      <div style="font-size:13px;font-weight:700;color:var(--r);margin-bottom:12px">⚠ Save failed</div>
+      <div style="font-size:11px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">What went wrong</div>
+      <div style="font-size:12px;color:var(--fg);margin-bottom:14px">${diagnosis}</div>
+      ${table ? `<div style="font-size:11px;color:var(--muted2);margin-bottom:4px">Table: <span style="color:var(--fg)">${table}</span>${code ? `&nbsp;&nbsp;Code: <span style="color:var(--fg)">${code}</span>` : ''}</div>` : ''}
+      <div style="font-size:11px;color:var(--muted2);margin-top:14px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">How to fix</div>
+      <div style="font-size:12px;color:var(--fg);line-height:1.6">${fix}</div>
+      <button onclick="document.getElementById('saveErrorModal').remove()" style="margin-top:20px;padding:7px 18px;background:var(--r);color:#fff;border:none;border-radius:2px;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer">Dismiss</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
 
 async function persist() {
   if (window._supabaseSave) {
     showSyncStatus('loading');
-    const ok = await window._supabaseSave(DB, SELLERS, COMPETITOR_SESSIONS, PROVIDER_SNAPSHOTS);
-    showSyncStatus(ok ? 'saved' : 'error');
+    const result = await window._supabaseSave(DB, SELLERS, COMPETITOR_SESSIONS, PROVIDER_SNAPSHOTS);
+    const ok = result && result.ok;
+    showSyncStatus(ok ? 'saved' : 'error', result && result.error);
     return ok;
   }
   return false;
@@ -6605,8 +6701,9 @@ async function saveBulkUpdate() {
   }
   
   showSyncStatus('loading');
-  await persist();
-  
+  const bulkSaveOk = await persist();
+  if (!bulkSaveOk) return; // persist() already showed the error popup — keep modal open
+
   // Reload from Supabase to ensure fresh data
   try {
     const data = await window._supabaseLoad();
@@ -6625,7 +6722,6 @@ async function saveBulkUpdate() {
   renderCompHistory();
   renderCompInsights(filteredSnaps());
   renderBadges();
-  showSyncStatus('saved');
   
   if (saved) showToast(`✓ Saved ${saved} overlap reading${saved!==1?'s':''} for ${fmt(today)}`);
 }
@@ -6708,8 +6804,9 @@ async function saveSellerList() {
     const sellerId = document.getElementById('mid_'+i)?.value.trim()||''
     if (name) SELLERS.push({name, sellerId});
   });
-  await persist();
-  
+  const sellerSaveOk = await persist();
+  if (!sellerSaveOk) return; // persist() showed error popup — keep modal open
+
   // Reload from Supabase to ensure order is correct
   try {
     const data = await window._supabaseLoad();
@@ -7286,7 +7383,8 @@ async function impAssignCode(code, provName, pseudo){
     if (provName.toLowerCase()!==alias && !(r.aliases||[]).map(a=>a.toLowerCase()).includes(alias)){
       r.aliases=r.aliases||[]; r.aliases.push(code);
     }
-    try { await window._supabaseSaveProviderRule(r); } catch(e){ console.error('rule save failed', e); }
+    const assignResult = await window._supabaseSaveProviderRule(r);
+    if (!assignResult || !assignResult.ok) showSyncStatus('error', assignResult && assignResult.error);
   }
   impRender();
   showToast(`${escapeHtmlImp(code)} → ${escapeHtmlImp(provName)}`);
@@ -7563,7 +7661,11 @@ async function saveSnap() {
   PROVIDER_SNAPSHOTS = PROVIDER_SNAPSHOTS.filter(p => p.date !== date).concat(provRows);
 
   showSyncStatus('loading');
-  await persist();
+  const saveOk = await persist();
+  if (!saveOk) {
+    // persist() already called showSyncStatus('error') with the reason — don't close modal
+    return;
+  }
   // remove provider rows the user deleted for this date
   for (const r of removedProviders) {
     try { await window._supabaseDeleteProvider(date, r.provider); } catch(e){ console.error(e); }
@@ -7582,8 +7684,8 @@ async function saveSnap() {
     }
   });
   if (newDefs) { try { await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS); } catch(e){ console.error(e); } }
-  showSyncStatus('saved');
 
+  showSyncStatus('saved');
   closeOverlay('snapModal');
   closeOverlay('impModal');
 
@@ -7607,7 +7709,6 @@ async function saveSnap() {
   renderHistory();
   renderProviderTab();
   renderSettingsTab();
-  setTimeout(() => showSyncStatus(''), 2000);
 }
 
 async function deleteSnap(idx) {
@@ -7619,8 +7720,8 @@ async function deleteSnap(idx) {
   if (removed && removed.date && window._supabaseDeleteSnapshot) {
     showSyncStatus('loading');
     const ok = await window._supabaseDeleteSnapshot(removed.date);   // only deletes that one row
-    showSyncStatus(ok ? 'saved' : 'error');
-    setTimeout(() => showSyncStatus(''), 1500);
+    showSyncStatus(ok ? 'saved' : 'error', ok ? null : new Error('Delete failed — check Supabase logs'));
+    if (ok) setTimeout(() => showSyncStatus(''), 1500);
   }
 }
 
@@ -8348,6 +8449,120 @@ function renderSettingsTab(){
     }
   }
 }
+async function runSupabaseDiag() {
+  const btn = document.getElementById('diagBtn');
+  const tag = document.getElementById('diagTag');
+  const wrap = document.getElementById('diagResults');
+  if (!btn || !wrap) return;
+
+  btn.disabled = true;
+  btn.textContent = '⟳ Testing...';
+  tag.textContent = 'running';
+  wrap.style.display = 'flex';
+  wrap.innerHTML = '';
+
+  const TABLES = [
+    { name: 'bdl_snapshots',            writeRow: { date: '__diag_test__', asins: 0, skus: 0 }, delCol: 'date', delVal: '__diag_test__' },
+    { name: 'bdl_sellers',              writeRow: { seller_id: '__diag_test__', name: '__diag__', seller_order: 9999 }, delCol: 'seller_id', delVal: '__diag_test__' },
+    { name: 'bdl_provider_snapshots',   writeRow: { date: '__diag_test__', provider_name: '__diag__', sku_count: 0, total_valuation: 0 }, delCol: 'date', delVal: '__diag_test__' },
+    { name: 'bdl_providers',            writeRow: { name: '__diag_test__', provider_order: 9999, archived: false }, delCol: 'name', delVal: '__diag_test__' },
+    { name: 'bdl_provider_rules',       writeRow: { provider_name: '__diag_test__', aliases: [], stems: [], title_keywords: [] }, delCol: 'provider_name', delVal: '__diag_test__' },
+    { name: 'bdl_competitor_sessions',  writeRow: { date: '__diag_test__' }, delCol: 'date', delVal: '__diag_test__' },
+  ];
+
+  let allOk = true;
+  const supabaseClient = window._getSupabaseClient ? window._getSupabaseClient() : null;
+
+  // We can't access the module-scoped `supabase` var directly, so we do it via fetch
+  const SUPABASE_URL = 'https://ffbdazepqrsyurhouxif.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmYmRhemVwcXJzeXVyaG91eGlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTM5MjIsImV4cCI6MjA5MDQ2OTkyMn0.BAuodLUDGzO9A7IfoRRn0HZ1MgWOXNPeYKPDBNaNWeg';
+
+  async function diagFetch(method, table, body) {
+    const url = `${SUPABASE_URL}/rest/v1/${table}`;
+    const headers = {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal,resolution=merge-duplicates'
+    };
+    const opts = { method, headers };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, text: await res.text() };
+  }
+
+  async function diagDelete(table, col, val) {
+    const url = `${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+    });
+    return res.ok;
+  }
+
+  function diagRow(label, readOk, writeOk, readStatus, writeStatus, detail) {
+    const r = document.createElement('div');
+    r.style.cssText = 'display:grid;grid-template-columns:1fr 60px 60px;gap:8px;align-items:center;padding:9px 12px;background:var(--s2);border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:11px';
+    const readBadge = readOk ? `<span style="color:var(--g);font-weight:700">✓ ${readStatus}</span>` : `<span style="color:var(--r);font-weight:700">✗ ${readStatus}</span>`;
+    const writeBadge = writeOk ? `<span style="color:var(--g);font-weight:700">✓ ${writeStatus}</span>` : `<span style="color:var(--r);font-weight:700">✗ ${writeStatus}</span>`;
+    r.innerHTML = `<div><span style="color:var(--fg)">${label}</span>${detail ? `<br><span style="color:var(--muted2);font-size:10px">${detail}</span>` : ''}</div><div>${readBadge}</div><div>${writeBadge}</div>`;
+    return r;
+  }
+
+  // Header row
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:grid;grid-template-columns:1fr 60px 60px;gap:8px;padding:4px 12px;font-family:var(--mono);font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em';
+  hdr.innerHTML = '<div>Table</div><div>Read</div><div>Write</div>';
+  wrap.appendChild(hdr);
+
+  for (const t of TABLES) {
+    // READ test
+    let readOk = false, readStatus = '', readDetail = '';
+    try {
+      const r = await diagFetch('GET', t.name + '?limit=1', null);
+      readOk = r.ok;
+      readStatus = String(r.status);
+      if (!r.ok) {
+        try { const j = JSON.parse(r.text); readDetail = j.message || j.hint || r.text.slice(0,80); } catch { readDetail = r.text.slice(0,80); }
+      }
+    } catch(e) { readStatus = 'ERR'; readDetail = e.message; }
+
+    // WRITE test (upsert then delete)
+    let writeOk = false, writeStatus = '', writeDetail = '';
+    try {
+      const r = await diagFetch('POST', t.name + `?on_conflict=${Object.keys(t.writeRow)[0]}`, t.writeRow);
+      // Supabase upsert returns 201 (insert) or 204 (update) or error
+      writeOk = r.status === 201 || r.status === 204 || r.status === 200;
+      writeStatus = String(r.status);
+      if (!writeOk) {
+        try { const j = JSON.parse(r.text); writeDetail = j.message || j.hint || r.text.slice(0,100); } catch { writeDetail = r.text.slice(0,100); }
+        // Decode common codes
+        if (r.status === 401) writeDetail = 'Unauthorized — check anon key';
+        if (r.status === 403 || (writeDetail && writeDetail.toLowerCase().includes('row-level security'))) writeDetail = 'RLS blocking write — policy missing or wrong role';
+        if (r.status === 404) writeDetail = 'Table not found — run migration SQL';
+        if (r.status === 409) { writeOk = true; writeStatus = '409'; writeDetail = 'Conflict (row exists — write OK)'; } // conflict = write reached DB
+      } else {
+        // Clean up test row
+        await diagDelete(t.name, t.delCol, t.delVal);
+      }
+    } catch(e) { writeStatus = 'ERR'; writeDetail = e.message; }
+
+    if (!readOk || !writeOk) allOk = false;
+    const detail = [readDetail, writeDetail].filter(Boolean).join(' · ');
+    wrap.appendChild(diagRow(t.name, readOk, writeOk, readStatus, writeStatus, detail));
+  }
+
+  // Summary row
+  const summ = document.createElement('div');
+  summ.style.cssText = `margin-top:4px;padding:10px 12px;border-radius:3px;font-family:var(--mono);font-size:11px;font-weight:700;background:${allOk?'var(--g2)':'var(--r2)'};color:${allOk?'var(--g)':'var(--r)'}`;
+  summ.textContent = allOk ? '✓ All tables readable and writable — saves should work.' : '✗ One or more tables are blocked. Fix the failing writes above, then test again.';
+  wrap.appendChild(summ);
+
+  tag.textContent = allOk ? '✓ all ok' : '✗ issues found';
+  btn.disabled = false;
+  btn.textContent = 'Run connection test';
+}
+
 function addProvDefRow(name=''){
   provDefRowCount++;
   const wrap=document.getElementById('provDefRows');
@@ -8380,10 +8595,10 @@ function getOrCreateRule(name){
   return r;
 }
 async function saveOneRule(rule){
-  showSyncStatus('loading');
-  try { await window._supabaseSaveProviderRule(rule); showSyncStatus('saved'); }
-  catch(e){ console.error('rule save failed', e); showSyncStatus('error'); }
-  setTimeout(()=>showSyncStatus(''),1200);
+  showSyncStatus("loading");
+  const result = await window._supabaseSaveProviderRule(rule);
+  if (result && result.ok) { showSyncStatus("saved"); setTimeout(()=>showSyncStatus(""),1200); }
+  else { showSyncStatus("error", result && result.error); }
 }
 function renderProviderRules(){
   const wrap=document.getElementById('provRuleRows');
@@ -8482,7 +8697,10 @@ async function loadDefaultProviders(){
   });
   showSyncStatus('loading');
   await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
-  for(const p of missing){ try{ await window._supabaseSaveProviderRule(PROVIDER_RULES.find(r=>r.name===p.name)); }catch(e){ console.error(e); } }
+  for(const p of missing){
+    const res = await window._supabaseSaveProviderRule(PROVIDER_RULES.find(r=>r.name===p.name));
+    if (!res || !res.ok) { showSyncStatus('error', res && res.error); break; }
+  }
   showSyncStatus('saved');
   renderSettingsTab(); renderProviderTab(); renderBadges();
   showToast(`✓ Added ${missing.length} default provider${missing.length!==1?'s':''}`);
