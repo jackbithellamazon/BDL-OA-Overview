@@ -162,6 +162,22 @@ window._supabaseDeleteProviderAll = async function(provider) {
   }
 };
 
+// Delete a competitor session (and its readings) by date
+window._supabaseDeleteCompetitorSession = async function(date) {
+  try {
+    if (!supabase) return false;
+    const { data, error: fetchErr } = await supabase
+      .from('bdl_competitor_sessions').select('id').eq('date', date).single();
+    if (fetchErr || !data) return false;
+    await supabase.from('bdl_competitor_readings').delete().eq('session_id', data.id);
+    await supabase.from('bdl_competitor_sessions').delete().eq('id', data.id);
+    return true;
+  } catch(e) {
+    console.error('Supabase competitor session delete error:', e);
+    return false;
+  }
+};
+
 // Delete ALL provider snapshot data (all rows, all providers, all dates)
 window._supabaseNukeProviderSnapshots = async function() {
   try {
@@ -1785,7 +1801,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
   </div>
   <div class="imp-modal-foot">
     <div class="txt" id="impFootGate" style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">Import a file to get started.</div>
-    <button type="button" class="btn-g" onclick="closeImpModal()" style="font-size:11px;padding:9px 22px">Done</button>
+    <button type="button" class="btn-g" id="btnImpDone" onclick="impDone()" style="font-size:11px;padding:9px 22px">Done</button>
   </div>
 </div>
 </div>
@@ -7234,6 +7250,18 @@ function impRender(){
 
   const btn=document.getElementById('btnSaveSnap');
   if (btn) btn.disabled = impHasImport && c.unresolved>0;
+  const doneBtn=document.getElementById('btnImpDone');
+  if (doneBtn) {
+    if (!impHasImport) {
+      doneBtn.textContent='Done';
+    } else if (c.unresolved===0) {
+      doneBtn.textContent='Save Snapshot ✓';
+      doneBtn.style.background='var(--g)';
+    } else {
+      doneBtn.textContent='Done';
+      doneBtn.style.background='';
+    }
+  }
 
   const footGate=document.getElementById('impFootGate');
   if (footGate){
@@ -7402,6 +7430,7 @@ function impSendRemaining(){
   showToast(`Sent ${items.length} remaining → N/A`);
 }
 function impResetModalState(){
+  const doneBtn=document.getElementById('btnImpDone'); if(doneBtn){doneBtn.textContent='Done';doneBtn.style.background='';}
   impRows=[]; impFileName=''; impCountMode='unique'; impSkuOverride=new Map();
   impIgnoredCodes=new Set(); impComputed=null; impHasImport=false; impHasValuation=false;
   impHasDisposition=false; impExcludedRows=0;
@@ -7451,6 +7480,19 @@ function impShowExistingSummary(date){
 // ── Full-screen importer modal open/close + compact summary card shown in Add Snapshot ──
 function openImpModal(){
   document.getElementById('impModal').classList.add('open');
+}
+function impDone(){
+  // If a file is loaded and everything is resolved, go straight to saveSnap
+  if (impHasImport && impComputed && impComputed.unresolved === 0) {
+    closeImpModal();
+    saveSnap();
+  } else if (!impHasImport) {
+    // No file loaded — just close
+    closeImpModal();
+  } else {
+    // Still has unresolved — shouldn't happen (button should be labelled Review), but guard anyway
+    closeImpModal();
+  }
 }
 function closeImpModal(){
   document.getElementById('impModal').classList.remove('open');
@@ -8364,6 +8406,18 @@ async function deleteProviderAll(provider){
   closeOverlay('providerDetailModal');
   renderProviderTab(); renderHistory(); renderSettingsTab(); renderBadges();
   setTimeout(()=>showSyncStatus(''),1500);
+}
+
+async function deleteCompetitorSession(date){
+  if(!confirm(`Delete competitor overlap session for ${date}?\n\nThis removes all overlap readings for this date.`)) return;
+  COMPETITOR_SESSIONS = COMPETITOR_SESSIONS.filter(s => s.date !== date);
+  showSyncStatus('loading');
+  const ok = await window._supabaseDeleteCompetitorSession(date);
+  showSyncStatus(ok ? 'saved' : 'error', ok ? null : new Error('Competitor session delete failed'));
+  if (ok) setTimeout(() => showSyncStatus(''), 1500);
+  renderCompTab();
+  renderCompHistory();
+  renderBadges();
 }
 
 // ── History tab: view toggle (Inventory / Providers) ──
