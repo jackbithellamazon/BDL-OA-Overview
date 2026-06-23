@@ -2723,6 +2723,17 @@ function shZoneValues(s){ const v=s.ageingValue||{}; return {
   action:(v.a181||0)+(v.a271||0)+(v.a365||0) }; }
 function shHasValuation(s){ const v=s.ageingValue||{}; return Object.values(v).some(x=>x>0); }
 
+// ── Granular zones: 0–90 peak selling kept whole; everything past 90 broken out ──
+const SH_DZONES = [
+  {key:'peak',  label:'Peak 0–90d',     sub:'peak selling window',   col:GOOD,      goodUp:true,  buckets:['a0','a31','a61']},
+  {key:'watch', label:'Watch 91–180d',  sub:'past peak · start clearing', col:AMBER, goodUp:false, buckets:['a91']},
+  {key:'aged',  label:'Aged 181–270d',  sub:'⚠ issue · clear now',   col:'#ea580c', goodUp:false, buckets:['a181']},
+  {key:'stale', label:'Stale 271–365d', sub:'⚠ issue · clear urgently', col:'#dc2626', goodUp:false, buckets:['a271']},
+  {key:'dead',  label:'Dead 365d+',     sub:'⚠ write-off risk',      col:'#991b1b', goodUp:false, buckets:['a365']},
+];
+function shDZoneSku(s,z){ const a=s.ageing||{}; return z.buckets.reduce((x,k)=>x+(a[k]||0),0); }
+function shDZoneVal(s,z){ const v=s.ageingValue||{}; return z.buckets.reduce((x,k)=>x+(v[k]||0),0); }
+
 // ════════════════════════════════════ PAGE ════════════════════════════════════
 function renderStockHealth(){
   const c=document.getElementById('stockHealthContainer'); if(!c) return;
@@ -2732,6 +2743,7 @@ function renderStockHealth(){
   c.innerHTML =
     shControlsHtml() +
     shHeroHtml(snaps) +
+    shCapitalAtRiskHtml(snaps) +
     shZoneSummaryHtml(snaps) +
     shGraphContainerHtml('shTrendChart') +
     shZoneGraphsHtml('page', snaps) +
@@ -2829,16 +2841,27 @@ function shHeroHtml(snaps){
 }
 
 // 3-zone summary — clickable cards, each opens a trend popup for that zone
-let _shZoneSnaps=null, _shZoneCurrent=null, _shZoneRange='all';
+let _shZoneSnaps=null, _shZoneCurrent=null, _shZoneRange='all', _shZoneMetric='sku';
+// SKU-count getters per zone (legacy 3-zone keys kept for back-compat)
 const _shZoneGetters={
   healthy:s=>{const a=s.ageing||{};return (a.a0||0)+(a.a31||0)+(a.a61||0);},
   caution:s=>{const a=s.ageing||{};return a.a91||0;},
   action:s=>{const a=s.ageing||{};return (a.a181||0)+(a.a271||0)+(a.a365||0);}
 };
+const _shZoneValGetters={};
 const _shZoneCols={healthy:GOOD,caution:AMBER,action:'#ea580c'};
 const _shZoneLabels={healthy:'Healthy 0–90d',caution:'Caution 91–180d',action:'Action 181d+'};
-// Higher = better for Healthy; lower = better for Caution/Action
-function _shZoneGoodCol(zone,net){ return zone==='healthy'?(net>0?GOOD:BAD):(net>0?BAD:GOOD); }
+const _shZoneGoodUp={healthy:true,caution:false,action:false};
+// Register the granular zones into the popup config
+SH_DZONES.forEach(z=>{
+  _shZoneGetters[z.key]   = s=>shDZoneSku(s,z);
+  _shZoneValGetters[z.key]= s=>shDZoneVal(s,z);
+  _shZoneCols[z.key]      = z.col;
+  _shZoneLabels[z.key]    = z.label;
+  _shZoneGoodUp[z.key]    = z.goodUp;
+});
+// Higher = better for peak/healthy; lower = better for the rest
+function _shZoneGoodCol(zone,net){ const up=_shZoneGoodUp[zone]; return net===0?NEUT:(up?(net>0?GOOD:BAD):(net>0?BAD:GOOD)); }
 
 function shSetZoneRange(r){ _shZoneRange=r; shRenderZonePopup(); }
 
@@ -2847,122 +2870,262 @@ function shRenderZonePopup(){
   const allSnaps=[..._shZoneSnaps].sort((a,b)=>a.date.localeCompare(b.date));
   // apply range
   let snaps=allSnaps;
-  if(_shZoneRange!=='all'){
+  if(_shZoneRange==='n6'){
+    snaps=allSnaps.slice(-6);
+  } else if(_shZoneRange!=='all'){
     const days={d30:30,d90:90,d180:180}[_shZoneRange]||9999;
     const maxD=allSnaps[allSnaps.length-1]?.date;
     if(maxD){const cut=new Date(maxD+'T00:00:00');cut.setDate(cut.getDate()-days);const cs=cut.toISOString().split('T')[0];snaps=allSnaps.filter(s=>s.date>=cs);}
   }
   if(!snaps.length) snaps=allSnaps;
-  const col=_shZoneCols[zone], getter=_shZoneGetters[zone];
-  const data=snaps.map(getter);
-  const lo=Math.max(0,Math.min(...data)-5), hi=Math.max(...data)+5;
-  const first=data[0],last=data[data.length-1],net=last-first;
-  const peak=Math.max(...data), trough=Math.min(...data);
+
+  const col=_shZoneCols[zone];
+  const skuGet=_shZoneGetters[zone], valGet=_shZoneValGetters[zone];
+  const skuData=snaps.map(skuGet);
+  const valDataRaw=snaps.map(valGet);
+  // does this zone have any £ saved across the visible range?
+  const valHasData = valDataRaw.some(v=>v>0);
+  // honour the user's choice — even when there's no £ data we still switch and show a message
+  let metric = _shZoneMetric;
+
+  const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const goodUp=_shZoneGoodUp[zone];
+
+  const first=skuData[0],last=skuData[skuData.length-1],net=last-first;
+  const peak=Math.max(...skuData), trough=Math.min(...skuData);
+  const vFirst=valDataRaw[0]||0, vLast=valDataRaw[valDataRaw.length-1]||0, vNet=vLast-vFirst;
+  const avgPer = last>0 ? vLast/last : 0;
   const periodLabel=snaps.length===allSnaps.length?`All data (${snaps.length} snapshots)`
     :`${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)} (${snaps.length} snapshots)`;
 
-  // stats — peak/trough colour depends on zone direction
-  const peakCol  = zone==='healthy'?GOOD:BAD;
-  const troughCol= zone==='healthy'?BAD:GOOD;
-  const netCol=_shZoneGoodCol(zone,net);
+  const peakCol  = goodUp?GOOD:BAD;
+  const troughCol= goodUp?BAD:GOOD;
+  const netCol   = _shZoneGoodCol(zone,net);
+  const vNetCol  = _shZoneGoodCol(zone,vNet);
 
   const el=id=>document.getElementById(id);
-  if(el('shZonePopupTitle')) el('shZonePopupTitle').textContent=_shZoneLabels[zone]+' over time';
-  if(el('shZonePopupTitle')) el('shZonePopupTitle').style.color=col;
+  const mTitle = metric==='both'?' · SKUs & £':metric==='val'?' · valuation':' · SKUs';
+  if(el('shZonePopupTitle')){ el('shZonePopupTitle').textContent=_shZoneLabels[zone]+mTitle+' over time'; el('shZonePopupTitle').style.color=col; }
   if(el('shZonePopupPeriod')) el('shZonePopupPeriod').textContent=periodLabel;
 
+  // metric toggle (SKUs / £ / Both) — always clickable; a press always responds
+  ['sku','val','both'].forEach(m=>{
+    const btn=el('shZM_'+m);
+    if(btn){ const on=metric===m; const noData=(m!=='sku'&&!valHasData);
+      btn.style.background=on?col+'28':'var(--s3)';
+      btn.style.color=on?col:(noData?'var(--muted)':'var(--muted2)');
+      btn.style.borderColor=on?col:'var(--border)';
+      btn.style.opacity=noData?'.6':'1';
+      btn.style.pointerEvents='auto';
+      btn.style.cursor='pointer';
+      btn.title=noData?'No £ valuation saved for this zone in this range yet':''; }
+  });
+
   // range button active states
-  ['all','d180','d90','d30'].forEach(r=>{
+  ['n6','all','d180','d90','d30'].forEach(r=>{
     const btn=el('shZRP_'+r);
     if(btn){ btn.style.background=_shZoneRange===r?col+'28':'var(--s3)';
       btn.style.color=_shZoneRange===r?col:'var(--muted2)';
       btn.style.borderColor=_shZoneRange===r?col:'var(--border)'; }
   });
 
-  if(el('shZonePopupStats')) el('shZonePopupStats').innerHTML=
-    `<div style="display:flex;gap:22px;flex-wrap:wrap">
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">First: <b style="color:var(--text)">${first}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Latest: <b style="color:${col}">${last}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Net: <b style="color:${netCol}">${net>0?'+':''}${net}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Peak: <b style="color:${peakCol}">${peak}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Trough: <b style="color:${troughCol}">${trough}</b></span>
-    </div>`;
+  // stats row — SKU movement always; £ movement + avg £/SKU when valuation exists
+  const stat=(lbl,val,c)=>`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${lbl}: <b style="color:${c||'var(--text)'}">${val}</b></span>`;
+  let stats = stat('First',first)+stat('Latest',last,col)
+    +stat('Net SKU',`${net>0?'+':net<0?'\u2212':''}${Math.abs(net)}`,netCol)
+    +stat('Peak',peak,peakCol)+stat('Trough',trough,troughCol);
+  if(valHasData){
+    stats += `<span style="opacity:.4">·</span>`
+      +stat('Latest £',moneyFmt(vLast),'#3d9eff')
+      +stat('Net £',`${vNet>0?'+':vNet<0?'\u2212':''}${moneyFmt(Math.abs(vNet))}`,vNetCol)
+      +stat('Avg £/SKU',moneyFmt(avgPer),'#3d9eff');
+  }
+  if(el('shZonePopupStats')) el('shZonePopupStats').innerHTML=`<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">${stats}</div>`;
+
+  // verdict line — interprets this zone for the user
+  let verdict='', vcol=col, vicon='';
+  const rising = net>0;
+  if(zone==='peak'){
+    vicon='●'; vcol=GOOD;
+    verdict = rising ? 'Peak selling stock is growing — healthy inflow into your fast-moving window.'
+                     : 'Peak stock is shrinking — keep replenishment up so the front end stays full.';
+  } else if(zone==='watch'){
+    vicon='▲'; vcol=AMBER;
+    verdict = rising ? 'Past the 90-day selling window and still growing — start clearing before it tips into 180d+.'
+                     : 'Past the selling window but trending down — clearance is working, keep it moving.';
+  } else { // aged / stale / dead — 180d+ is the issue
+    vicon='⚠'; vcol=col;
+    verdict = (zone==='dead' ? 'Dead capital — over a year old and effectively frozen. Liquidate or write off.'
+              : 'This is aged capital past 180 days — money stuck in stock that isn\'t selling. Prioritise clearance.')
+              + (rising ? ' It\'s still climbing, so the problem is getting worse.' : ' It\'s falling, so clearance is landing.');
+  }
+  if(el('shZonePopupVerdict')) el('shZonePopupVerdict').innerHTML=`<span style="color:${vcol};font-weight:700;margin-right:6px">${vicon}</span><span style="color:var(--text)">${verdict}</span>`;
+
+  // build datasets per mode
+  const showSku = metric==='sku'||metric==='both';
+  const showVal = (metric==='val'||metric==='both') && valHasData;
+  const el2=id=>document.getElementById(id);
+  const cvWrap=el2('shZonePopupChart'), emptyEl=el2('shZonePopupEmpty');
+
+  // nothing to plot (shouldn't happen for sku, but guard val-only no-data)
+  if(!showSku && !showVal){
+    destroyChart('shZonePopup');
+    if(cvWrap) cvWrap.style.display='none';
+    if(emptyEl){ emptyEl.style.display='block'; emptyEl.textContent='No £ valuation saved for this zone in this range — import a Stock Valuation file on those snapshots to see money over time.'; }
+    return;
+  }
+  if(cvWrap) cvWrap.style.display='';
+  if(emptyEl) emptyEl.style.display='none';
+
+  const datasets=[];
+  if(showSku) datasets.push({label:'SKUs',data:skuData,yAxisID:'y',borderColor:col,backgroundColor:(ctx)=>{const a=ctx.chart.ctx;const g=a.createLinearGradient(0,0,0,280);g.addColorStop(0,col+'40');g.addColorStop(1,col+'00');return g;},borderWidth:2.5,tension:.35,fill:metric!=='both',pointRadius:3.5,pointHoverRadius:7,pointBackgroundColor:col,pointBorderColor:'#07090c',pointBorderWidth:1.5});
+  if(showVal) datasets.push({label:'£ Value',data:valDataRaw,yAxisID:'y1',borderColor:'#3d9eff',backgroundColor:'#3d9eff14',borderWidth:2.5,borderDash:metric==='both'?[5,3]:[],tension:.35,fill:metric==='val',pointRadius:3.5,pointHoverRadius:7,pointBackgroundColor:'#3d9eff',pointBorderColor:'#07090c',pointBorderWidth:1.5});
 
   destroyChart('shZonePopup');
   setTimeout(()=>{
-    const cv=el('shZonePopupChart'); if(!cv||typeof Chart==='undefined') return;
+    const cv=el2('shZonePopupChart'); if(!cv||typeof Chart==='undefined') return;
     chartInstances['shZonePopup']=new Chart(cv.getContext('2d'),{
       type:'line',
-      data:{labels:snaps.map(s=>fmtShort(s.date)),datasets:[{
-        data, borderColor:col, backgroundColor:col+'18', borderWidth:2,
-        tension:.3, fill:true, pointRadius:3.5, pointHoverRadius:6,
-        pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1.5
-      }]},
+      data:{labels:snaps.map(s=>fmtShort(s.date)),datasets},
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
-        plugins:{legend:{display:false},datalabels:{display:false},
-          tooltip:{callbacks:{title:items=>fmt(snaps[items[0].dataIndex].date),label:ctx=>ctx.parsed.y+' SKUs'}}},
+        plugins:{legend:{display:metric==='both',labels:{color:'#a7b4c4',font:{family:'var(--mono)',size:10},boxWidth:12,usePointStyle:true,pointStyle:'line'}},datalabels:{display:false},
+          tooltip:{backgroundColor:'#1c2330',borderColor:'#2a3545',borderWidth:1,padding:10,callbacks:{title:items=>fmt(snaps[items[0].dataIndex].date),
+            label:ctx=>ctx.dataset.label==='£ Value'?'  £'+ctx.parsed.y.toLocaleString(undefined,{maximumFractionDigits:0}):'  '+ctx.parsed.y+' SKUs'}}},
         scales:{
-          y:{min:lo,max:hi,grid:{color:'#1c2330'},ticks:{color:'#a7b4c4',callback:v=>v}},
-          x:{grid:{display:false},ticks:{color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:10}}
+          y:{display:showSku,position:'left',beginAtZero:false,grid:{color:'#1c2330'},border:{display:false},ticks:{color:'#8b99ab',font:{size:10},padding:6},title:{display:metric==='both',text:'SKUs',color:'#8b99ab',font:{size:10}}},
+          y1:{display:showVal,position:'right',beginAtZero:false,grid:{drawOnChartArea:false},border:{display:false},ticks:{color:'#3d9eff',font:{size:10},callback:v=>'£'+(v>=1000?(v/1000).toFixed(1).replace(/\.0$/,'')+'k':v)},title:{display:metric==='both',text:'£',color:'#3d9eff',font:{size:10}}},
+          x:{grid:{display:false},border:{display:false},ticks:{color:'#8b99ab',font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:10}}
         }}
     });
   },30);
 }
 
+function shSetPopupMetric(m){ _shZoneMetric=m; shRenderZonePopup(); }
 function shOpenZonePopup(zone){
   if(!_shZoneSnaps||!_shZoneSnaps.length) return;
   _shZoneCurrent=zone;
-  _shZoneRange='all';
+  _shZoneRange='n6';
+  _shZoneMetric='sku';
   let modal=document.getElementById('shZoneModal');
   if(!modal){
     modal=document.createElement('div');
     modal.id='shZoneModal';
     modal.style.cssText='display:none;position:fixed;inset:0;z-index:9999;background:rgba(7,9,12,.82);backdrop-filter:blur(4px);align-items:center;justify-content:center';
-    const rBtn=(r,l)=>`<button id="shZRP_${r}" onclick="shSetZoneRange('${r}')" style="font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--s3);color:var(--muted2)">${l}</button>`;
+    const rBtn=(r,l)=>`<button data-r="${r}" id="shZRP_${r}" style="font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--s3);color:var(--muted2)">${l}</button>`;
+    const mBtn=(m,l)=>`<button data-m="${m}" id="shZM_${m}" style="font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--s3);color:var(--muted2)">${l}</button>`;
     modal.innerHTML=`<div style="background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:24px 26px;width:min(720px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.6)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span id="shZonePopupTitle" style="font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:700"></span>
-        <button onclick="document.getElementById('shZoneModal').style.display='none'" style="background:var(--s3);border:1px solid var(--border);color:var(--muted2);font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px;line-height:1">×</button>
+        <button id="shZoneClose" style="background:var(--s3);border:1px solid var(--border);color:var(--muted2);font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px;line-height:1">×</button>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-        <span id="shZonePopupPeriod" style="font-family:var(--mono);font-size:10px;color:var(--muted2)"></span>
-        <div style="display:flex;gap:6px">${rBtn('d30','30d')}${rBtn('d90','90d')}${rBtn('d180','6m')}${rBtn('all','All')}</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span id="shZonePopupPeriod" style="font-family:var(--mono);font-size:10px;color:var(--muted2)"></span>
+          <div id="shZoneMetricBtns" style="display:flex;gap:6px">${mBtn('sku','SKUs')}${mBtn('val','£ Value')}${mBtn('both','Both')}</div>
+        </div>
+        <div id="shZoneRangeBtns" style="display:flex;gap:6px">${rBtn('n6','Last 6')}${rBtn('d30','30d')}${rBtn('d90','90d')}${rBtn('d180','6m')}${rBtn('all','All')}</div>
       </div>
-      <div style="height:260px"><canvas id="shZonePopupChart"></canvas></div>
+      <div style="height:280px"><canvas id="shZonePopupChart"></canvas></div>
+      <div id="shZonePopupEmpty" style="display:none;text-align:center;color:var(--muted2);font-family:var(--mono);font-size:12px;padding:30px 10px"></div>
       <div id="shZonePopupStats" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"></div>
+      <div id="shZonePopupVerdict" style="margin-top:10px;font-family:var(--mono);font-size:11px;line-height:1.5;background:var(--s3);border-radius:8px;padding:10px 12px"></div>
     </div>`;
-    modal.addEventListener('click',e=>{if(e.target===modal) modal.style.display='none';});
     document.body.appendChild(modal);
+    // ── programmatic binding (no reliance on inline onclick) ──
+    modal.addEventListener('click',e=>{if(e.target===modal) modal.style.display='none';});
+    document.getElementById('shZoneClose').addEventListener('click',()=>{modal.style.display='none';});
+    document.getElementById('shZoneMetricBtns').addEventListener('click',e=>{
+      const b=e.target.closest('button[data-m]'); if(b) shSetPopupMetric(b.dataset.m);
+    });
+    document.getElementById('shZoneRangeBtns').addEventListener('click',e=>{
+      const b=e.target.closest('button[data-r]'); if(b) shSetZoneRange(b.dataset.r);
+    });
   }
   modal.style.display='flex';
   shRenderZonePopup();
 }
+function shCapitalAtRiskHtml(snaps){
+  const latest=snaps[snaps.length-1], prev=snaps.length>1?snaps[snaps.length-2]:null;
+  if(!shHasValuation(latest)) return ''; // only when valuation exists
+  const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const v=latest.ageingValue||{}, a=latest.ageing||{};
+  const totalVal=Object.values(v).reduce((x,y)=>x+(y||0),0);
+  const totalSku=shBucketTotal(latest)||1;
+  const avgPer=totalVal/totalSku;
+  // 90d+ = everything past the peak selling window (should be moving out)
+  const clearVal=(v.a91||0)+(v.a181||0)+(v.a271||0)+(v.a365||0);
+  const clearSku=(a.a91||0)+(a.a181||0)+(a.a271||0)+(a.a365||0);
+  const clearPct=totalVal?((clearVal/totalVal)*100).toFixed(1):'0';
+  // 180d+ = the real issue
+  const issueVal=(v.a181||0)+(v.a271||0)+(v.a365||0);
+  const issueSku=(a.a181||0)+(a.a271||0)+(a.a365||0);
+  const issuePct=totalVal?((issueVal/totalVal)*100).toFixed(1):'0';
+  const dead=(v.a365||0);
+  // direction of the 180d+ issue vs previous snapshot
+  let issueDelta=null;
+  if(prev && shHasValuation(prev)){ const pv=prev.ageingValue||{}; issueDelta=issueVal-((pv.a181||0)+(pv.a271||0)+(pv.a365||0)); }
+  const dCol=issueDelta==null?NEUT:(issueDelta>0?BAD:issueDelta<0?GOOD:NEUT);
+  const dTxt=issueDelta==null?'—':`<span style="color:${dCol};font-weight:700">${issueDelta>0?'▲ +':issueDelta<0?'▼ \u2212':'→ '}${moneyFmt(Math.abs(issueDelta))}</span>`;
+
+  const cell=(lbl,val,sub,c,accent)=>`<div style="flex:1;min-width:138px;${accent?`border-left:2px solid ${accent};padding-left:12px`:''}">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);margin-bottom:5px">${lbl}</div>
+      <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${c||'var(--text)'};line-height:1">${val}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:5px">${sub||''}</div>
+    </div>`;
+
+  return `<div style="background:var(--s1);border:1px solid var(--border);border-left:3px solid #ea580c;border-radius:14px;padding:16px 20px;margin-bottom:16px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+    ${cell('Total stock value',moneyFmt(totalVal),`${totalSku} SKUs · ${moneyFmt(avgPer)}/SKU`,'var(--text)')}
+    ${cell('To clear · 90d+',moneyFmt(clearVal),`${clearSku} SKUs · ${clearPct}% of value`,AMBER,AMBER)}
+    ${cell('⚠ Issue · 180d+',moneyFmt(issueVal),`${issueSku} SKUs · ${issuePct}% of value`,'#ea580c','#ea580c')}
+    ${cell('Dead · 365d+',moneyFmt(dead),`${a.a365||0} SKUs`,'#991b1b')}
+    ${cell('180d+ movement',dTxt,'since last snapshot')}
+  </div>`;
+}
 function shZoneSummaryHtml(snaps){
   _shZoneSnaps=snaps;
   const latest=snaps[snaps.length-1], prev=snaps.length>1?snaps[snaps.length-2]:null;
-  const z=shZones(latest), pz=prev?shZones(prev):null, total=shBucketTotal(latest)||1;
+  const total=shBucketTotal(latest)||1;
   const hasVal = shHasValuation(latest);
-  const zv = hasVal ? shZoneValues(latest) : null;
+  const prevHasVal = prev && shHasValuation(prev);
   const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
-  const card=(name,sub,val,zoneCol,delta,goodUp,zone,valAmt)=>{
-    let dHtml='';
-    if(delta!=null){ const col=delta===0?NEUT:(goodUp?(delta>0?GOOD:BAD):(delta>0?BAD:GOOD));
-      dHtml=`<span style="color:${col};font-weight:700">${delta>0?'▲ +':delta<0?'▼ ':'→ '}${Math.abs(delta)}</span> <span style="color:var(--muted2)">vs last</span>`; }
-    return `<div onclick="shOpenZonePopup('${zone}')" style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${zoneCol};border-radius:12px;padding:16px 18px;cursor:pointer;transition:transform .15s,border-color .15s" onmouseover="this.style.borderColor='${zoneCol}';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
+
+  const card=(z)=>{
+    const sku=shDZoneSku(latest,z);
+    const pSku=prev?shDZoneSku(prev,z):null;
+    const dSku=pSku!=null?sku-pSku:null;
+    const valAmt=hasVal?shDZoneVal(latest,z):null;
+    const pVal=prevHasVal?shDZoneVal(prev,z):null;
+    const dVal=(valAmt!=null&&pVal!=null)?valAmt-pVal:null;
+    const pct=((sku/total)*100).toFixed(1);
+
+    // direction colour: for the peak zone up is good; for aged zones up is bad
+    const dirCol=d=>d==null?NEUT:(d===0?NEUT:(z.goodUp?(d>0?GOOD:BAD):(d>0?BAD:GOOD)));
+    const skuCol=dirCol(dSku), valCol=dirCol(dVal);
+
+    const skuDelta = dSku!=null
+      ? `<span style="color:${skuCol};font-weight:700">${dSku>0?'▲ +':dSku<0?'▼ \u2212':'→ '}${Math.abs(dSku)}</span> <span style="color:var(--muted2)">SKU vs last</span>`
+      : '<span style="color:var(--muted2)">—</span>';
+    const valDelta = (dVal!=null && dVal!==0)
+      ? `<div style="font-family:var(--mono);font-size:10px;margin-top:3px"><span style="color:${valCol};font-weight:700">${dVal>0?'+':'\u2212'}${moneyFmt(Math.abs(dVal))}</span> <span style="color:var(--muted2)">vs last</span></div>`
+      : '';
+
+    return `<div onclick="shOpenZonePopup('${z.key}')" title="Click for ${z.label} trend (SKU & £)" style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${z.col};border-radius:12px;padding:15px 16px;cursor:pointer;transition:transform .15s,border-color .15s" onmouseover="this.style.borderColor='${z.col}';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
-        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:${zoneCol}">${name}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">trend ↗</div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:${z.col}">${z.label}</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted2)">↗</div>
       </div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:10px">${sub}</div>
-      <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--text);line-height:1">${val}</div>
-      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:8px">${((val/total)*100).toFixed(1)}% of stock${valAmt!=null?` · <span style="color:${zoneCol}">${moneyFmt(valAmt)}</span>`:''}</div>
-      <div style="font-family:var(--mono);font-size:11px;margin-top:4px">${dHtml||'<span style=\"color:var(--muted2)\">—</span>'}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-bottom:9px">${z.sub}</div>
+      <div style="font-family:var(--mono);font-size:28px;font-weight:700;color:var(--text);line-height:1">${sku}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:7px">${pct}% of stock${valAmt!=null?` · <span style="color:${z.col}">${moneyFmt(valAmt)}</span>${sku>0?` · ${moneyFmt(valAmt/sku)}/SKU`:''}`:''}</div>
+      <div style="font-family:var(--mono);font-size:11px;margin-top:5px">${skuDelta}</div>
+      ${valDelta}
     </div>`;
   };
-  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
-    ${card('Healthy','sells within 90 days',z.healthy,GOOD, pz?z.healthy-pz.healthy:null, true,'healthy', zv?zv.healthy:null)}
-    ${card('Caution','91–180 days · early warning',z.caution,AMBER, pz?z.caution-pz.caution:null, false,'caution', zv?zv.caution:null)}
-    ${card('Action','181+ days · clear these',z.action,'#ea580c', pz?z.action-pz.action:null, false,'action', zv?zv.action:null)}
+
+  const cards = SH_DZONES.map(card).join('');
+  return `<div style="margin-bottom:6px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)">Ageing zones · SKU + valuation + direction <span style="color:var(--muted)">(0–90 is peak selling; everything past 90 broken out)</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
+    ${cards}
   </div>`;
 }
 
@@ -3440,6 +3603,7 @@ function openAgedStockModal(snaps, modal, title, body){
   modal.style.display='block';
   body.innerHTML =
     shHeroHtml(snaps) +
+    shCapitalAtRiskHtml(snaps) +
     shZoneSummaryHtml(snaps) +
     shGraphContainerHtml('shModalChart') +
     shZoneGraphsHtml('popup', snaps) +
@@ -7617,7 +7781,9 @@ function editSnap(idx) {
     document.getElementById('ageLoadedWrap').style.display='';
     document.getElementById('ageDrop').style.display='none';
     document.getElementById('ageLoadedName').textContent='saved snapshot (not re-imported)';
-    document.getElementById('ageSkuCount').textContent='—';
+    const ag=s.ageing||{};
+    const skuSum=['a0','a31','a61','a91','a181','a271','a365'].reduce((x,k)=>x+(parseInt(ag[k])||0),0);
+    document.getElementById('ageSkuCount').textContent=skuSum.toLocaleString();
     const errEl=document.getElementById('ageErrSpan');
     if (errEl) errEl.textContent=' · valuation already saved, shown per bucket below';
     AGE_BUCKET_COLS.forEach(b=>{
