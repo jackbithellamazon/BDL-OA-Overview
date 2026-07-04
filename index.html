@@ -1186,68 +1186,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 
   <!-- ══════════════ PROVIDER ══════════════ -->
   <div class="tab-page" id="tab-provider">
-    <!-- KPI Row -->
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:16px">
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--b)"></div>
-        <div class="kpi-label">Providers Tracked</div>
-        <div class="kpi-val" id="provKpiTotal">—</div>
-        <div class="kpi-footer"><span id="provKpiTotalSub" style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">Unique suppliers</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--g)"></div>
-        <div class="kpi-label">Total SKUs (latest)</div>
-        <div class="kpi-val" id="provKpiSkus">—</div>
-        <div class="kpi-footer"><span id="provKpiSkusPill"></span><span id="provKpiSkusSub" style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">Across all providers</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--y)"></div>
-        <div class="kpi-label">Largest Provider</div>
-        <div class="kpi-val" id="provKpiLargest" style="font-size:15px">—</div>
-        <div class="kpi-footer"><span id="provKpiLargestSub" style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">—</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--g)"></div>
-        <div class="kpi-label">Fastest Growing</div>
-        <div class="kpi-val" id="provKpiGrower" style="font-size:15px">—</div>
-        <div class="kpi-footer"><span id="provKpiGrowerPill"></span><span id="provKpiGrowerSub" style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">—</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--r)"></div>
-        <div class="kpi-label">Biggest Decline</div>
-        <div class="kpi-val" id="provKpiDecline" style="font-size:15px">—</div>
-        <div class="kpi-footer"><span id="provKpiDeclinePill"></span><span id="provKpiDeclineSub" style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">—</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--p)"></div>
-        <div class="kpi-label">New Providers</div>
-        <div class="kpi-val" id="provKpiNew">—</div>
-        <div class="kpi-footer"><span id="provKpiNewSub" style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">Added in latest snapshot</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-stripe" style="background:var(--b)"></div>
-        <div class="kpi-label">Top 3 Coverage</div>
-        <div class="kpi-val" id="provKpiConc">—</div>
-        <div class="kpi-footer"><span id="provKpiConcPill"></span><span id="provKpiConcSub" style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">Share of SKUs from top 3</span></div>
-      </div>
-    </div>
-
-    <div class="insight-box" id="provInsightBox" style="padding:0">
-      <div id="provInsightInner" style="padding:20px">
-        <div class="insight-hd"><span class="insight-badge">✦ Provider Intelligence</span></div>
-        <div style="color:var(--muted2);font-family:var(--mono);font-size:11px">Enter provider SKU counts in <strong style="color:var(--g)">+ Add Snapshot</strong> → Providers section. Each snapshot builds a history so you can track which suppliers are growing, shrinking, or flat.</div>
-      </div>
-    </div>
-
-    <div class="card" id="provMiniGridCard" style="display:none;margin-bottom:20px">
-      <div class="card-hd" style="flex-wrap:wrap;gap:10px">
-        <div class="card-title">Provider Trends — click a card for full history</div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="card-tag" id="provMiniGridTag">—</div>
-          <button class="btn" id="provMiniGridToggle" onclick="toggleProvMiniGridView()" style="font-size:10px;padding:6px 12px;display:none">Show all</button>
-        </div>
-      </div>
-      <div id="provMiniGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:4px 18px 18px"></div>
+    <!-- Rich KPI Row — rebuilt with directional context, color, and inline sparklines -->
+    <div id="provKpiRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+      <!-- Populated by renderProviderKpis() -->
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px" id="provChartGrid">
@@ -1271,26 +1212,23 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       </div>
     </div>
 
-    <div class="card" style="padding:0">
-      <div class="card-hd" style="padding:16px 18px 12px">
-        <div class="card-title">Stock Coverage by Provider</div>
-        <div style="display:flex;align-items:center;gap:12px">
+    <div id="provCoverageWrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text)">Stock Coverage by Provider</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div id="provMetricToggle" style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <button onclick="setProvCardMetric('skus')" id="provMetricBtnSkus" style="font-family:var(--mono);font-size:10px;padding:6px 12px;background:var(--g);color:var(--bg);border:none;cursor:pointer;font-weight:700">SKUs</button>
+            <button onclick="setProvCardMetric('value')" id="provMetricBtnVal" style="font-family:var(--mono);font-size:10px;padding:6px 12px;background:none;color:var(--muted2);border:none;cursor:pointer">£ Value</button>
+            <button onclick="setProvCardMetric('both')" id="provMetricBtnBoth" style="font-family:var(--mono);font-size:10px;padding:6px 12px;background:none;color:var(--muted2);border:none;cursor:pointer">Both</button>
+          </div>
           <input type="text" class="comp-search" id="provSearch" placeholder="Search provider..." oninput="renderProviderTab()" style="width:180px">
           <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)" id="provMeta"></div>
         </div>
       </div>
-      <div class="comp-table-wrap" style="border:none">
-        <table class="comp-table">
-          <thead><tr>
-            <th style="width:44px">Rank</th>
-            <th>Provider</th>
-            <th style="width:110px;text-align:right">SKUs</th>
-            <th style="width:90px;text-align:right">Change</th>
-            <th style="width:80px;text-align:right">% Chg</th>
-            <th style="width:160px;text-align:center">Trend</th>
-          </tr></thead>
-          <tbody id="provTableBody"></tbody>
-        </table>
+      <div id="provCardGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:20px"></div>
+      <div id="provNoDataSection" style="display:none">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Not yet tracked</div>
+        <div id="provNoDataList" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
     </div>
   </div>
@@ -1528,7 +1466,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
   </div>
 </div>
 
-<div class="overlay" id="snapModal">
+<div class="overlay" id="snapModal" data-no-dismiss="true">
 <div class="modal">
   <div class="modal-hd">
     <div class="modal-title" id="snapModalTitle">Add Snapshot</div>
@@ -1619,7 +1557,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
               <div class="imp-summary-stat" id="impSumValWrap" style="display:none"><span class="k">Total Valuation</span><span class="v" id="impSumVal" style="color:#3d9eff">—</span></div>
             </div>
             <span class="imp-summary-gate" id="impSumGate">Needs review</span>
-            <button type="button" class="btn" onclick="openImpModal()" style="font-size:10px;padding:8px 16px">Open importer</button>
+            <button type="button" class="btn" id="impSumOpenBtn" onclick="openImpModal()" style="font-size:10px;padding:8px 16px">Open importer</button>
           </div>
         </div>
       </div>
@@ -1641,7 +1579,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 </div>
 
 <!-- Full-screen SKU importer, launched from the Providers section in Add/Edit Snapshot -->
-<div class="overlay" id="impModal">
+<div class="overlay" id="impModal" data-no-dismiss="true">
 <div class="imp-modal-shell">
   <div class="imp-modal-hd">
     <div class="imp-modal-hd-l">
@@ -1768,7 +1706,23 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 </div>
 </div>
 
-<div class="overlay" id="bulkUpdateModal">
+<!-- Competitor detail popup — opens when clicking a competitor row -->
+<div class="overlay" id="compDetailModal">
+<div class="modal" style="max-width:860px">
+  <div class="modal-hd">
+    <div>
+      <div class="modal-title" id="compDetailTitle">Competitor</div>
+      <div id="compDetailSub" style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:2px"></div>
+    </div>
+    <button class="modal-x" onclick="closeOverlay('compDetailModal')">×</button>
+  </div>
+  <div class="modal-body">
+    <div id="compDetailBody"></div>
+  </div>
+</div>
+</div>
+
+<div class="overlay" id="bulkUpdateModal" data-no-dismiss="true">
 <div class="modal" style="max-width:540px">
   <div class="modal-hd">
     <div class="modal-title">⚡ Update Overlap %s</div>
@@ -1828,6 +1782,7 @@ let highlightedSeller = null;
 let trackedCompetitors = new Set(); // Track which competitors are visible
 let trackedProviders = new Set(); // Track which providers are visible on the trend chart
 let providerSearch = '';
+let provCardMetric = 'skus'; // 'skus' | 'value' | 'both' — what the provider cards show
 
 function showSyncStatus(state) {
   let el = document.getElementById('syncStatus');
@@ -5507,7 +5462,8 @@ function openAvgOverlapModal(){
   const modal=document.getElementById('kpiModal'), title=document.getElementById('kpiModalTitle'), body=document.getElementById('kpiModalBody');
   if(!modal||!title||!body) return;
   const concernEl=document.getElementById('kpiModalConcern'); if(concernEl){ concernEl.textContent=''; concernEl.style.display='none'; }
-  const sessions=[...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date));
+  // Use compSessionsInRange() so the chart respects the current date range (e.g. Last 30d)
+  const sessions=[...compSessionsInRange()].sort((a,b)=>a.date.localeCompare(b.date));
   const series=sessions.map(s=>{
     const active=(s.competitors||[]).filter(c=>(c.pct||0)>0);
     const avg=active.length?active.reduce((x,c)=>x+c.pct,0)/active.length:0;
@@ -5791,71 +5747,43 @@ function renderCompTab() {
         }).join('<span style="color:var(--border2);margin:0 3px">→</span>')
       : '';
 
-    // Rich multi-sentence analysis
+    // Compact single-line verdict — no waffle
     let verdict = '';
     const latestPct = h[h.length-1];
-    const firstPct = h[0];
     const sessionCount = h.length;
     const highPoint = Math.max(...h);
     const lowPoint = Math.min(...h);
-    const range = parseFloat((highPoint - lowPoint).toFixed(1));
-
-    // Position context
-    const posContext = latestPct >= 65 ? `At ${latestPct.toFixed(1)}%, you're deeply embedded in their catalogue — this is a high-overlap competitive relationship.`
-      : latestPct >= 45 ? `At ${latestPct.toFixed(1)}%, you're competing directly on a meaningful chunk of their portfolio.`
-      : latestPct >= 25 ? `At ${latestPct.toFixed(1)}%, you're adjacent competitors — some direct overlap but each with your own space.`
-      : `At ${latestPct.toFixed(1)}%, overlap is relatively low — limited direct competition right now.`;
-
-    // Trend sentence
-    let trendSentence = '';
     if (sessionCount < 2) {
-      trendSentence = 'First reading — baseline set. No trend to read yet, check back next session.';
+      verdict = `First reading. Baseline set at ${latestPct.toFixed(1)}%.`;
     } else if (streak >= 3) {
-      trendSentence = `Rising ${streak} entries in a row — this is a clear, sustained upward trend. Overlap is consistently growing.`;
+      verdict = `↑ Rising ${streak} entries in a row — sustained upward trend.`;
     } else if (streak <= -3) {
-      trendSentence = `Falling ${Math.abs(streak)} entries in a row — consistent and sustained decline. Something has changed, worth investigating.`;
+      verdict = `↓ Falling ${Math.abs(streak)} entries in a row — clear sustained decline.`;
     } else if (diffLast !== null && diffLast > 5) {
-      trendSentence = `Big jump this entry (+${diffLast.toFixed(1)}pp) — significant single-session move. Could be a genuine shift or a one-off. Watch closely next session to see if it holds.`;
+      verdict = `Big jump this entry (+${diffLast.toFixed(1)}pp) — watch next session to confirm.`;
     } else if (diffLast !== null && diffLast < -5) {
-      trendSentence = `Sharp drop this entry (${diffLast.toFixed(1)}pp) — notable single-session fall. Don't overreact to one data point — confirm the direction next session before changing strategy.`;
+      verdict = `Sharp drop this entry (${diffLast.toFixed(1)}pp) — confirm direction next session.`;
     } else if (trend3h !== null && trend3h > 2) {
-      trendSentence = `Gradual but sustained climb over last 3 entries (+${trend3h}pp). This is a positive multi-point trend, not just noise — overlap is building steadily.`;
+      verdict = `Gradual climb over last 3 entries (+${trend3h}pp) — building steadily.`;
     } else if (trend3h !== null && trend3h < -2) {
-      trendSentence = `Gradual decline over last 3 entries (${trend3h}pp). Not a crash but a slow drift — worth watching. If it continues another 2 entries, it becomes a real trend to act on.`;
+      verdict = `Gradual decline over last 3 entries (${trend3h}pp) — watch if it continues.`;
     } else if (diffLast !== null && Math.abs(diffLast) <= 0.5) {
-      trendSentence = `Flat this entry — stable overlap with no meaningful movement. Could be a pause in a longer trend, or genuine equilibrium. Check the broader direction over the last 4–5 entries.`;
+      verdict = `Flat this entry — stable, no meaningful movement.`;
     } else {
-      trendSentence = `Mixed movement across entries — no clean trend has formed yet. Need more consistent data points before drawing conclusions.`;
+      verdict = `Mixed movement — no clear trend yet.`;
     }
+    const posTag = latestPct >= 65 ? 'high-overlap' : latestPct >= 45 ? 'direct competitor' : latestPct >= 25 ? 'adjacent' : 'low overlap';
+    verdict += ` <span style="color:var(--muted)">${latestPct.toFixed(1)}% — ${posTag}</span>`;
 
-    // Volatility note
-    let volatilityNote = '';
-    if (sessionCount >= 4 && range > 10) {
-      volatilityNote = ` Overlap has swung ${range}pp between ${lowPoint.toFixed(1)}% and ${highPoint.toFixed(1)}% — fairly volatile. Single entries can be misleading here, focus on the multi-entry direction.`;
-    } else if (sessionCount >= 4 && range <= 3) {
-      volatilityNote = ` Very stable across ${sessionCount} sessions (${lowPoint.toFixed(1)}–${highPoint.toFixed(1)}%) — low volatility. Readings here are reliable.`;
-    }
-
-    // Net direction over all time
-    let netNote = '';
-    if (netChange !== null && sessionCount >= 3) {
-      netNote = netChange > 5 ? ` Overall you're up ${netChange}pp since first tracked — solid growth in overlap.`
-        : netChange < -5 ? ` Overall you're down ${Math.abs(netChange)}pp since first tracked — net decline across the full period.`
-        : ` Net movement since first tracked is minimal (${netChange > 0 ? '+' : ''}${netChange}pp) — broadly flat overall.`;
-    }
-
-    verdict = trendSentence + volatilityNote + netNote + ' ' + posContext;
-
-    analysisText = `<div style="display:flex;flex-direction:column;gap:8px">
-      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.65">${verdict}</div>
-      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:16px">
+    analysisText = `<div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-family:var(--mono);font-size:10.5px;color:var(--muted2);line-height:1.5">${verdict}</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
         ${moveHistory ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${moveHistory}</div>` : ''}
-        <div style="display:flex;gap:16px;flex-wrap:wrap">
-          ${netChange !== null ? `<span style="font-family:var(--mono);font-size:10px">Net all-time: <span style="color:${netColor};font-weight:600">${netChange > 0 ? '+' : ''}${netChange}pp</span></span>` : ''}
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          ${netChange !== null ? `<span style="font-family:var(--mono);font-size:10px">Net: <span style="color:${netColor};font-weight:600">${netChange > 0 ? '+' : ''}${netChange}pp</span></span>` : ''}
           ${trend3h !== null ? `<span style="font-family:var(--mono);font-size:10px">Last 3: <span style="color:${trend3h > 0 ? 'var(--g)' : trend3h < 0 ? 'var(--o)' : 'var(--muted2)'};font-weight:600">${trend3h > 0 ? '+' : ''}${trend3h}pp</span></span>` : ''}
-          ${streak !== 0 ? `<span style="font-family:var(--mono);font-size:10px">Streak: <span style="color:${streak > 0 ? 'var(--g)' : 'var(--o)'};font-weight:600">${streak > 0 ? '↑' : '↓'} ${Math.abs(streak)}×</span></span>` : ''}
-          <span style="font-family:var(--mono);font-size:10px">Sessions: <span style="color:var(--muted2);font-weight:600">${sessionCount}</span></span>
-          <span style="font-family:var(--mono);font-size:10px">Range: <span style="color:var(--muted2);font-weight:600">${lowPoint.toFixed(1)}–${highPoint.toFixed(1)}%</span></span>
+          ${streak !== 0 ? `<span style="font-family:var(--mono);font-size:10px">Streak: <span style="color:${streak > 0 ? 'var(--g)' : 'var(--o)'};font-weight:600">${streak > 0 ? '↑' : '↓'}${Math.abs(streak)}×</span></span>` : ''}
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${sessionCount} sessions · ${lowPoint.toFixed(1)}–${highPoint.toFixed(1)}%</span>
         </div>
       </div>
     </div>`;
@@ -5870,20 +5798,20 @@ function renderCompTab() {
     // Sparkline
     const sparkId = 'spark_' + s.name.replace(/[^\w]/g,'_');
 
-    return `<tr style="cursor:pointer;transition:all 0.15s;height:52px" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''" onclick="highlightCompetitor('${s.name.replace(/'/g, "\\'")}')">
-      <td style="text-align:center;font-weight:700;color:var(--g);font-size:15px;padding:10px 12px">#${s.rank}</td>
-      <td style="padding:10px 12px"><strong style="color:var(--text);font-size:13px;display:block;margin-bottom:3px">${s.name}</strong><div style="font-family:var(--mono);font-size:11px;color:var(--text);font-weight:500">Average: <strong style="color:var(--g)">${s.avg.toFixed(1)}%</strong></div></td>
-      <td style="font-family:var(--mono);font-size:12px;color:var(--text);letter-spacing:.05em;font-weight:500">${s.sellerId||'—'}</td>
-      <td style="font-family:var(--mono);font-size:12px;color:var(--text);font-weight:600">${s.prev !== null ? s.prev.toFixed(1)+'%' : '—'}</td>
-      <td style="font-weight:700;font-size:17px;color:${progressColor};letter-spacing:.05em;padding:10px 12px">${s.latest.toFixed(1)}%</td>
-      <td style="padding:10px 12px">${vsLastHtml}</td>
-      <td style="padding:10px 12px;text-align:center">${vsMonthHtml}</td>
-      <td style="padding:8px 12px;text-align:center">
-        <canvas id="trend_${s.name.replace(/[^\w]/g,'_')}" width="420" height="80" style="display:block;margin:0 auto;max-width:100%"></canvas>
+    return `<tr style="cursor:pointer;transition:all 0.15s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''" onclick="openCompetitorDetail('${s.name.replace(/'/g, "\\'")}')">
+      <td style="text-align:center;font-weight:700;color:var(--g);font-size:14px;padding:8px 10px">#${s.rank}</td>
+      <td style="padding:8px 10px"><strong style="color:var(--text);font-size:12px;display:block;margin-bottom:2px">${s.name}</strong><div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">avg ${s.avg.toFixed(1)}%</div></td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${s.sellerId||'—'}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${s.prev !== null ? s.prev.toFixed(1)+'%' : '—'}</td>
+      <td style="font-weight:700;font-size:16px;color:${progressColor};letter-spacing:.05em;padding:8px 10px">${s.latest.toFixed(1)}%</td>
+      <td style="padding:8px 10px">${vsLastHtml}</td>
+      <td style="padding:8px 10px;text-align:center">${vsMonthHtml}</td>
+      <td style="padding:6px 10px;text-align:center">
+        <canvas id="trend_${s.name.replace(/[^\w]/g,'_')}" width="160" height="44" style="display:block;margin:0 auto;max-width:100%"></canvas>
       </td>
     </tr>
     <tr style="background:var(--s2);border-bottom:1px solid var(--border)">
-      <td colspan="8" style="padding:8px 16px 12px;font-size:11px;color:var(--muted2);font-family:var(--mono)">${analysisText}</td>
+      <td colspan="8" style="padding:6px 14px 8px;font-size:10.5px;color:var(--muted2);font-family:var(--mono)">${analysisText}</td>
     </tr>`;
   }).join('');
   
@@ -5964,6 +5892,143 @@ function highlightCompetitor(sellerName) {
   highlightedSeller = highlightedSeller === sellerName ? null : sellerName;
   const snaps = filteredSnaps();
   renderCompChart(snaps);
+}
+
+function openCompetitorDetail(name){
+  // Build all-time history for this seller from full COMPETITOR_SESSIONS (not range-filtered)
+  const sessions = [...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date));
+  const pts = [];
+  sessions.forEach(sess=>{
+    const c=(sess.competitors||[]).find(c=>c.name.trim()===name);
+    if (c) pts.push({ date:sess.date, pct:+(c.pct||0) });
+  });
+  if (!pts.length) return;
+
+  const sellerId = (sessions.flatMap(s=>s.competitors||[]).find(c=>c.name.trim()===name)||{}).sellerId||'';
+  const latest = pts[pts.length-1].pct;
+  const prev   = pts.length>1 ? pts[pts.length-2].pct : null;
+  const diff   = prev!=null ? +(latest-prev).toFixed(1) : null;
+  const pcts   = pts.map(p=>p.pct);
+  const peak   = Math.max(...pcts), low = Math.min(...pcts);
+  const peakDate = pts[pcts.indexOf(peak)]?.date;
+  const lowDate  = pts[pcts.indexOf(low)]?.date;
+  const net    = pts.length>=2 ? +(pcts[pcts.length-1]-pcts[0]).toFixed(1) : null;
+  const avg    = +(pcts.reduce((a,b)=>a+b,0)/pcts.length).toFixed(1);
+  const last3  = pcts.slice(-3);
+  const trend3 = last3.length>=2 ? +(last3[last3.length-1]-last3[0]).toFixed(1) : null;
+
+  // Streak
+  let streak=0;
+  for(let i=pcts.length-1;i>=1;i--){
+    const d=pcts[i]-pcts[i-1];
+    if(i===pcts.length-1) streak=d>0.1?1:d<-0.1?-1:0;
+    else if((streak>0&&d>0.1)||(streak<0&&d<-0.1)) streak+=streak>0?1:-1;
+    else break;
+  }
+
+  const diffCol  = diff==null?NEUT:diff>0?'#22c55e':diff<0?'#ff4d6d':NEUT;
+  const diffStr  = diff==null?'—':(diff>0?'▲ +':'▼ ')+Math.abs(diff)+'pp vs last';
+  const threatCol= latest>=50?'#22c55e':latest>=30?'#ca8a04':'#a7b4c4';
+  const threatLabel=latest>=50?'High overlap':latest>=30?'Moderate overlap':'Low overlap';
+
+  // Compact verdict
+  let verdict='';
+  if(pts.length<2) verdict='First reading — baseline set.';
+  else if(streak>=3) verdict=`↑ Rising ${streak} sessions in a row.`;
+  else if(streak<=-3) verdict=`↓ Falling ${Math.abs(streak)} sessions in a row.`;
+  else if(diff!=null&&diff>5) verdict=`Large jump this entry (+${diff}pp) — watch next session.`;
+  else if(diff!=null&&diff<-5) verdict=`Sharp drop this entry (${diff}pp) — confirm next session.`;
+  else if(trend3!=null&&trend3>2) verdict=`Gradual climb over last 3 (+${trend3}pp).`;
+  else if(trend3!=null&&trend3<-2) verdict=`Gradual decline over last 3 (${trend3}pp).`;
+  else if(diff!=null&&Math.abs(diff)<=0.5) verdict='Flat this session — no meaningful movement.';
+  else verdict='Mixed movement — no clear trend yet.';
+
+  document.getElementById('compDetailTitle').textContent = name;
+  document.getElementById('compDetailSub').textContent   = sellerId ? `Seller ID: ${sellerId}` : '';
+
+  const card=(label,val,sub,col)=>`
+    <div style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${col};border-radius:12px;padding:14px 16px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:${col};margin-bottom:6px">${label}</div>
+      <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:var(--text);line-height:1">${val}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:6px">${sub}</div>
+    </div>`;
+
+  const statGrid=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${card('Current overlap', latest.toFixed(1)+'%', diffStr, threatCol)}
+    ${card('Record high', peak.toFixed(1)+'%', fmt(peakDate), '#ff4d6d')}
+    ${card('Record low', low.toFixed(1)+'%', fmt(lowDate), '#22c55e')}
+    ${card('All-time avg', avg.toFixed(1)+'%', `${pts.length} session${pts.length!==1?'s':''}`, NEUT)}
+  </div>`;
+
+  const metaRow=`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+    ${net!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Net all-time: <b style="color:${net>0?'#22c55e':net<0?'#ff4d6d':NEUT}">${net>0?'+':''}${net}pp</b></span>`:''}
+    ${trend3!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Last 3 sessions: <b style="color:${trend3>0?'#22c55e':trend3<0?'#ff4d6d':NEUT}">${trend3>0?'+':''}${trend3}pp</b></span>`:''}
+    ${streak!==0?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Streak: <b style="color:${streak>0?'#22c55e':'#ff4d6d'}">${streak>0?'↑':'↓'} ${Math.abs(streak)}×</b></span>`:''}
+    <span style="font-family:var(--mono);font-size:11px;color:${diffCol}">${verdict}</span>
+  </div>`;
+
+  const chartSection=`<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px">Overlap % — all sessions</div>
+    <div style="height:180px"><canvas id="compDetailChart"></canvas></div>
+  </div>`;
+
+  // History table
+  const tableRows=pts.slice().reverse().map((p,ri)=>{
+    const realIdx=pts.length-1-ri;
+    const prevPt=realIdx>0?pts[realIdx-1]:null;
+    const d=prevPt!=null?+(p.pct-prevPt.pct).toFixed(1):null;
+    const dCol=d==null?NEUT:d>0?'#22c55e':d<0?'#ff4d6d':NEUT;
+    const dStr=d==null?'—':(d>0?'+':'')+d+'pp';
+    const pCol=p.pct>=50?'#22c55e':p.pct>=30?'#ca8a04':'var(--muted2)';
+    const isPeak=p.pct===peak, isLow=p.pct===low;
+    return `<tr>
+      <td style="color:var(--g)">${fmt(p.date)}</td>
+      <td style="font-weight:700;color:${pCol}">${p.pct.toFixed(1)}%${isPeak?' <span style="font-family:var(--mono);font-size:9px;color:#ff4d6d;background:rgba(255,77,109,.12);padding:1px 5px;border-radius:3px">PEAK</span>':isLow?' <span style="font-family:var(--mono);font-size:9px;color:#22c55e;background:rgba(34,197,94,.12);padding:1px 5px;border-radius:3px">LOW</span>':''}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:${dCol}">${dStr}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('compDetailBody').innerHTML=statGrid+metaRow+chartSection+
+    `<div style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Session history</div>
+    <div style="max-height:240px;overflow-y:auto">
+    <table class="history-table">
+      <thead><tr><th>Date</th><th>Overlap %</th><th>vs Previous</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table></div>`;
+
+  document.getElementById('compDetailModal').classList.add('open');
+
+  // Draw chart after DOM settles
+  setTimeout(()=>{
+    destroyChart('compDetailChart');
+    const cv=document.getElementById('compDetailChart');
+    if(!cv||typeof Chart==='undefined') return;
+    const vals=pts.map(p=>p.pct);
+    const labels=pts.map(p=>fmtShort(p.date));
+    const lo=Math.max(0,Math.min(...vals)-Math.max(3,(Math.max(...vals)-Math.min(...vals))*0.3));
+    const hi=Math.min(100,Math.max(...vals)+Math.max(3,(Math.max(...vals)-Math.min(...vals))*0.3));
+    chartInstances['compDetailChart']=new Chart(cv.getContext('2d'),{
+      type:'line',
+      data:{ labels, datasets:[{
+        data:vals, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.1)',
+        borderWidth:2, tension:.3, fill:true,
+        pointRadius:3, pointHoverRadius:5,
+        pointBackgroundColor: vals.map(v=>v===peak?'#ff4d6d':v===low?'#22c55e':'#ffd166'),
+        pointBorderColor:'#07090c', pointBorderWidth:1.5
+      }]},
+      options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+        plugins:{ legend:{display:false}, datalabels:{display:false},
+          tooltip:{ backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0',
+            borderColor:'#ffd166', borderWidth:1, padding:8, displayColors:false,
+            callbacks:{ title:items=>fmt(pts[items[0].dataIndex].date),
+              label:ctx=>`${ctx.parsed.y.toFixed(1)}% overlap${ctx.parsed.y===peak?' ← record high':ctx.parsed.y===low?' ← record low':''}` } } },
+        scales:{
+          y:{ min:lo, max:hi, grid:{color:'#1c2330'}, ticks:{color:'#a7b4c4',callback:v=>v+'%'} },
+          x:{ grid:{display:false}, ticks:{color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:10} }
+        }
+      }
+    });
+  },60);
 }
 
 function toggleCompetitor(sellerName) {
@@ -6260,13 +6325,13 @@ function renderCompInsights(snaps) {
   const netDroppers = sellers.filter(s=>s.netChange!==null&&s.netChange<0).sort((a,b)=>a.netChange-b.netChange);
 
   const statRow = (label, val, color='var(--text)', sub='') =>
-    `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid var(--border)">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);padding-right:8px">${label}${sub?`<br><span style="font-size:10px;color:var(--muted2)">${sub}</span>`:''}</span>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:2px 0;border-bottom:1px solid var(--border)">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);padding-right:8px">${label}${sub?` <span style="font-size:9px">${sub}</span>`:''}</span>
       <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${color};text-align:right;flex-shrink:0">${val}</span>
     </div>`;
 
   const section = (title, html) =>
-    `<div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin:9px 0 3px">${title}</div>${html}`;
+    `<div style="font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:7px 0 2px">${title}</div>${html}`;
 
   // Left column
   const leftHtml = `
@@ -6304,21 +6369,21 @@ function renderCompInsights(snaps) {
       ${sellers.filter(s=>s.streak>=2).map(s=>statRow(s.name, (s.streak>0?'↑ up ':'↓ down ')+Math.abs(s.streak)+'× in a row', s.streak>0?'#22c55e':'#ea580c')).join('')}
     `) : ''}
     ${section('What this means', `
-      <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.55">
-        ${fastestGaining ? `<span style="color:#22c55e">${fastestGaining.name}</span> is the competitor gaining ground fastest — your catalogues are overlapping more. ` : ''}
-        ${trendingDown.length ? `<span style="color:#ea580c">${trendingDown[0].name}</span>${trendingDown.length>1?' and others':''} losing overlap — may be pulling back from your product space. ` : ''}
-        ${activeAvg!==null ? `Active competitor average: <span style="color:${activeAvg>50?'#22c55e':activeAvg>30?'#ca8a04':'var(--muted2)'}">${activeAvg}%</span>. ${activeAvg>50?'Heavy competition across your catalogue.':activeAvg>30?'Moderate competition — some overlap pressure.':'Low average overlap — relatively open market position.'}` : ''}
+      <div style="font-family:var(--mono);font-size:10.5px;color:var(--muted2);line-height:1.5">
+        ${activeAvg!==null ? `Avg: <span style="color:${activeAvg>50?'#22c55e':activeAvg>30?'#ca8a04':'var(--muted2)'}">${activeAvg}%</span> across active competitors. ${activeAvg>50?'Heavy overlap — crowded catalogue.':activeAvg>30?'Moderate competition.':'Low overlap — relatively open market.'}` : ''}
+        ${fastestGaining ? ` <span style="color:#22c55e">${fastestGaining.name}</span> gaining fastest.` : ''}
+        ${trendingDown.length ? ` <span style="color:#ea580c">${trendingDown[0].name}</span> pulling back.` : ''}
       </div>
     `)}
   `;
 
   box.innerHTML = `
-    <div style="padding:11px 16px 7px;border-bottom:1px solid rgba(0,245,160,.1)">
+    <div style="padding:8px 14px 6px;border-bottom:1px solid rgba(0,245,160,.1)">
       <div class="insight-hd" style="margin-bottom:0"><span class="insight-badge">✦ Competitor Analysis</span></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
-      <div style="padding:9px 14px;border-right:1px solid rgba(0,245,160,.1)">${leftHtml}</div>
-      <div style="padding:9px 14px">${rightHtml}</div>
+      <div style="padding:7px 12px;border-right:1px solid rgba(0,245,160,.1)">${leftHtml}</div>
+      <div style="padding:7px 12px">${rightHtml}</div>
     </div>`;
 }
 
@@ -6816,6 +6881,7 @@ let impHasImport = false;   // true once a file/paste has been ingested this mod
 let impHasValuation = false; // true if the imported file had a "Total Valuation" column
 let impHasDisposition = false; // true if the imported file had a "Disposition" column
 let impExcludedRows = 0; // rows dropped because their Disposition wasn't "Available"
+let impExistingData = null; // {providers, totalSkus, hasVal} — set when editing a past snapshot with saved provider data
 let impItemTab = 'unresolved'; // 'unresolved' | 'ignored' (ignored = sent to N/A)
 let impItemSearch = '';
 let impSelectedSkus = new Set(); // checked rows in the current items tab, bulk-actioned via the toolbar
@@ -7338,7 +7404,7 @@ function impSendRemaining(){
 function impResetModalState(){
   impRows=[]; impFileName=''; impCountMode='unique'; impSkuOverride=new Map();
   impIgnoredCodes=new Set(); impComputed=null; impHasImport=false; impHasValuation=false;
-  impHasDisposition=false; impExcludedRows=0;
+  impHasDisposition=false; impExcludedRows=0; impExistingData=null;
   impItemTab='unresolved'; impItemSearch=''; impSelectedSkus.clear();
   document.getElementById('impLoadedWrap').style.display='none';
   document.getElementById('impEditNote').style.display='none';
@@ -7361,6 +7427,10 @@ function impShowExistingSummary(date){
   const existing=PROVIDER_SNAPSHOTS.filter(p=>p.date===date);
   if (!existing.length) return;
   const hasVal = existing.some(p=>(p.value||0)>0);
+  const totalSkus = existing.reduce((s,p)=>s+(p.skus||0),0);
+  const totalVal = existing.reduce((s,p)=>s+(p.value||0),0);
+  // Store so updateImpSummaryCard can show the filled card even without a live import
+  impExistingData = { providers: existing, totalSkus, hasVal, totalVal };
   document.getElementById('impEditNote').style.display='';
   document.getElementById('impLoadedWrap').style.display='';
   document.getElementById('impLoadedName').textContent='saved snapshot (not re-imported)';
@@ -7394,13 +7464,40 @@ function updateImpSummaryCard(){
   const empty=document.getElementById('impSummaryEmpty');
   const filled=document.getElementById('impSummaryFilled');
   if (!empty || !filled) return;
+
+  // Live import takes priority; fall back to saved snapshot data when editing
   if (!impHasImport || !impComputed){
-    empty.style.display='';
-    filled.style.display='none';
+    if (impExistingData){
+      // Edit path — show the saved counts as the summary card
+      empty.style.display='none';
+      filled.style.display='';
+      document.getElementById('impSumName').textContent='saved providers';
+      document.getElementById('impSumMatched').textContent=impExistingData.totalSkus.toLocaleString();
+      document.getElementById('impSumUnres').textContent='0';
+      document.getElementById('impSumUnresWrap').classList.add('zero');
+      const valWrap=document.getElementById('impSumValWrap');
+      if (impExistingData.hasVal){
+        document.getElementById('impSumVal').textContent='£'+impExistingData.totalVal.toLocaleString(undefined,{maximumFractionDigits:0});
+        valWrap.style.display='';
+      } else {
+        valWrap.style.display='none';
+      }
+      const gate=document.getElementById('impSumGate');
+      gate.textContent=`${impExistingData.providers.length} provider${impExistingData.providers.length!==1?'s':''} saved ✓`;
+      gate.classList.add('done');
+      const btn=document.getElementById('impSumOpenBtn');
+      if (btn) btn.textContent='View / replace';
+    } else {
+      empty.style.display='';
+      filled.style.display='none';
+    }
     return;
   }
+
   empty.style.display='none';
   filled.style.display='';
+  const openBtn=document.getElementById('impSumOpenBtn');
+  if (openBtn) openBtn.textContent='Open importer';
   document.getElementById('impSumName').textContent=impFileName||'imported file';
   document.getElementById('impSumMatched').textContent=impComputed.matched.toLocaleString();
   document.getElementById('impSumUnres').textContent=impComputed.unresolved.toLocaleString();
@@ -7674,13 +7771,12 @@ function fmtShort(d) { if(!d)return''; const[y,m,day]=d.split('-'); return `${da
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
 
 // Prevent closing modal when clicking inside it - only close on background click or explicit buttons
+// Overlays with data-no-dismiss="true" are exempt — they can only be closed by explicit buttons
 document.querySelectorAll('.overlay').forEach(overlay => {
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      // User clicked the background, not the modal - close it
+    if (e.target === overlay && overlay.dataset.noDismiss !== 'true') {
       overlay.classList.remove('open');
     }
-    // If they clicked inside the modal, do nothing (let them interact normally)
   });
 });
 
@@ -7796,10 +7892,143 @@ function buildOrderedProviders(){
   return orderedProviderNames(series).map(name => map[name.toLowerCase()] || placeholderProvider(name));
 }
 
+function renderProviderKpis({series, totalSkus, totalValuation, largest, grower, decliner, newCount, concPct, sortedByCurrent, top3Sum}){
+  const row = document.getElementById('provKpiRow');
+  if (!row) return;
+  const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const concCol = concPct==null?'var(--muted2)':concPct>=70?'#ff8c42':concPct>=50?'#ffd166':'#22c55e';
+  const concVerdict = concPct==null?'No data yet':concPct>=70?'High risk — concentrated':concPct>=50?'Moderate concentration':'Well diversified';
+  const namesTop3 = sortedByCurrent.slice(0,3).map(s=>s.provider).filter(Boolean);
+
+  // Overall health signal: are more providers growing than declining this period?
+  const withDiff = series.filter(s=>s.diff!=null);
+  const growing = withDiff.filter(s=>s.diff>0).length;
+  const declining = withDiff.filter(s=>s.diff<0).length;
+  const flat = withDiff.filter(s=>s.diff===0).length;
+  const healthDir = growing>declining?'improving':declining>growing?'declining':'mixed';
+  const healthCol = healthDir==='improving'?'#22c55e':healthDir==='declining'?'#ff4d6d':'#a7b4c4';
+  const healthVerdict = healthDir==='improving'
+    ? `${growing} growing · ${declining} declining · ${flat} flat — portfolio is strengthening`
+    : healthDir==='declining'
+    ? `${declining} declining · ${growing} growing · ${flat} flat — more suppliers shrinking than growing`
+    : `${growing} growing · ${declining} declining · ${flat} flat — mixed movement`;
+
+  // Grower/decliner sparkline data
+  const growerCounts = grower ? grower.points.map(p=>p.skus) : [];
+  const declinerCounts = decliner ? decliner.points.map(p=>p.skus) : [];
+
+  row.innerHTML = `
+    <!-- Row 1: 4 tiles -->
+    <div style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${healthCol};border-radius:12px;padding:18px 20px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px">Portfolio health</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">
+        <span style="font-family:var(--mono);font-size:34px;font-weight:700;color:var(--text);line-height:1">${totalSkus.toLocaleString()}</span>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--muted2)">SKUs · ${series.filter(s=>s.current>0).length} providers</span>
+      </div>
+      ${totalValuation>0?`<div style="font-family:var(--mono);font-size:13px;color:#3d9eff;margin-bottom:10px;font-weight:600">${moneyFmt(totalValuation)} total value</div>`:'<div style="margin-bottom:10px"></div>'}
+      <div style="font-family:var(--mono);font-size:10px;color:${healthCol};line-height:1.5">${healthVerdict}</div>
+    </div>
+
+    <div onclick="${largest?`openProviderDetail('${largest.provider.replace(/'/g,"\\'")}')`:''}" style="background:var(--s1);border:1px solid var(--border);border-top:3px solid #ffd166;border-radius:12px;padding:18px 20px;${largest?'cursor:pointer;transition:background .15s':''}">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#ffd166;margin-bottom:10px">Largest provider</div>
+      ${largest ? `
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">${largest.provider}</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+          <span style="font-family:var(--mono);font-size:28px;font-weight:700;color:var(--text)">${largest.current.toLocaleString()}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">SKUs</span>
+          ${largest.diff!=null?`<span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${largest.diff>0?'#22c55e':largest.diff<0?'#ff4d6d':'var(--muted2)'};margin-left:auto">${largest.diff>0?'▲ +':'▼ '}${Math.abs(largest.diff)}</span>`:''}
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${largest.pct!=null?(largest.pct>0?'+':'')+largest.pct.toFixed(1)+'% vs last · ':''} ${Math.round((largest.current/totalSkus)*100)}% of total SKUs</div>
+      ` : '<div style="color:var(--muted2);font-family:var(--mono);font-size:11px">No data yet</div>'}
+    </div>
+
+    <div onclick="${grower&&grower.diff>0?`openProviderDetail('${grower.provider.replace(/'/g,"\\'")}')`:''}" style="background:var(--s1);border:1px solid var(--border);border-top:3px solid #22c55e;border-radius:12px;padding:18px 20px;${grower&&grower.diff>0?'cursor:pointer;transition:background .15s':''}">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#22c55e;margin-bottom:10px">Fastest growing</div>
+      ${grower&&grower.diff>0 ? `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${grower.provider}</div>
+            <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:#22c55e;line-height:1">+${grower.diff}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:4px">vs last · ${grower.pct!=null?'+'+grower.pct.toFixed(1)+'%':''} · now ${grower.current}</div>
+          </div>
+          <div style="height:52px;width:80px;flex:none"><canvas id="provKpiGrowerSpark"></canvas></div>
+        </div>
+      ` : `<div style="color:var(--muted2);font-family:var(--mono);font-size:11px;margin-top:8px">No growth this period</div>`}
+    </div>
+
+    <div onclick="${decliner&&decliner.diff<0?`openProviderDetail('${decliner.provider.replace(/'/g,"\\'")}')`:''}" style="background:var(--s1);border:1px solid var(--border);border-top:3px solid #ff4d6d;border-radius:12px;padding:18px 20px;${decliner&&decliner.diff<0?'cursor:pointer;transition:background .15s':''}">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#ff4d6d;margin-bottom:10px">Biggest decline</div>
+      ${decliner&&decliner.diff<0 ? `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${decliner.provider}</div>
+            <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:#ff4d6d;line-height:1">${decliner.diff}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:4px">vs last · ${decliner.pct!=null?decliner.pct.toFixed(1)+'%':''} · now ${decliner.current}</div>
+          </div>
+          <div style="height:52px;width:80px;flex:none"><canvas id="provKpiDeclinerSpark"></canvas></div>
+        </div>
+      ` : `<div style="color:var(--muted2);font-family:var(--mono);font-size:11px;margin-top:8px">No declines this period</div>`}
+    </div>
+  `;
+
+  // Row 2 — separate grid so grid-column spans work correctly
+  const row2 = document.createElement('div');
+  row2.style.cssText = `display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:16px`;
+  row2.innerHTML = `
+    <div style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${concCol};border-radius:12px;padding:18px 20px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:${concCol};margin-bottom:10px">Supplier concentration — top 3 coverage</div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="font-family:var(--mono);font-size:38px;font-weight:700;color:${concCol};line-height:1;flex:none">${concPct!=null?concPct+'%':'—'}</div>
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text);margin-bottom:4px">${concVerdict}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${namesTop3.length?namesTop3.join(', ')+' → '+top3Sum.toLocaleString()+' SKUs':''}</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:var(--s1);border:1px solid var(--border);border-top:3px solid var(--p);border-radius:12px;padding:18px 20px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--p);margin-bottom:10px">Providers tracked</div>
+      <div style="font-family:var(--mono);font-size:34px;font-weight:700;color:var(--text);line-height:1;margin-bottom:10px">${series.filter(s=>s.current>0).length}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div style="font-family:var(--mono);font-size:11px;color:#22c55e;font-weight:600">${growing} growing</div>
+        <div style="font-family:var(--mono);font-size:11px;color:#ff4d6d;font-weight:600">${declining} declining</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${flat} flat</div>
+      </div>
+    </div>
+
+    ${totalValuation>0?`<div style="background:var(--s1);border:1px solid var(--border);border-top:3px solid #3d9eff;border-radius:12px;padding:18px 20px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#3d9eff;margin-bottom:10px">Total stock valuation</div>
+      <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:#3d9eff;line-height:1;margin-bottom:8px">${moneyFmt(totalValuation)}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Across ${series.filter(s=>s.currentValue>0).length} providers</div>
+    </div>`:`<div style="background:var(--s2);border:1px dashed var(--border);border-radius:12px;padding:18px 20px;display:flex;align-items:center;justify-content:center">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center">Valuation available after<br>importing a SellerToolKit file</div>
+    </div>`}
+  `;
+  row.parentNode.insertBefore(row2, row.nextSibling);
+
+  // Draw inline sparklines for grower/decliner tiles
+  setTimeout(()=>{
+    const drawMini=(id, data, col)=>{
+      const cv=document.getElementById(id); if(!cv||!data.length) return;
+      destroyChart(id);
+      const spread = Math.max(...data)-Math.min(...data);
+      const pad = Math.max(1, Math.round(spread*0.4));
+      chartInstances[id]=new Chart(cv.getContext('2d'),{
+        type:'line',
+        data:{ labels:data.map((_,k)=>k), datasets:[{ data, borderColor:col, backgroundColor:col+'18', borderWidth:2, pointRadius:2, pointHoverRadius:3, pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1, tension:.4, fill:true }] },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, datalabels:{display:false}, tooltip:{enabled:false} },
+          scales:{ x:{display:false}, y:{ display:false, min:Math.max(0,Math.min(...data)-pad), max:Math.max(...data)+pad } } }
+      });
+    };
+    if(grower&&grower.diff>0) drawMini('provKpiGrowerSpark', growerCounts, '#22c55e');
+    if(decliner&&decliner.diff<0) drawMini('provKpiDeclinerSpark', declinerCounts, '#ff4d6d');
+  },0);
+}
+
 function renderProviderTab(){
   providerSearch=(document.getElementById('provSearch')?.value||'').toLowerCase();
-  const series=buildProviderSeries().filter(s=>!isArchived(s.provider)); // active providers with snapshots (for KPIs)
-  const ordered=buildOrderedProviders();          // full active roster in display order (for table/charts)
+  const series=buildProviderSeries().filter(s=>!isArchived(s.provider));
+  const ordered=buildOrderedProviders();
   const totalProviders=ordered.length;
 
   const badge=document.getElementById('providerNavBadge'); if(badge) badge.textContent=totalProviders;
@@ -7811,81 +8040,72 @@ function renderProviderTab(){
   const grower=withDiff.slice().sort((a,b)=>b.diff-a.diff)[0]||null;
   const decliner=withDiff.slice().sort((a,b)=>a.diff-b.diff)[0]||null;
   const newCount=series.filter(s=>s.isNew).length;
+  const sortedByCurrent=series.slice().sort((a,b)=>b.current-a.current);
+  const top3Sum=sortedByCurrent.slice(0,3).reduce((a,s)=>a+s.current,0);
+  const concPct=totalSkus>0?Math.round((top3Sum/totalSkus)*100):null;
 
-  provSetT('provKpiTotal', totalProviders||'—');
-  provSetT('provKpiSkus', totalSkus?totalSkus.toLocaleString():'—');
-  provSetT('provKpiSkusSub', totalValuation>0 ? `£${totalValuation.toLocaleString(undefined,{maximumFractionDigits:0})} total valuation` : 'Across all providers');
-  provSetT('provKpiLargest', largest?largest.provider:'—');
-  provSetT('provKpiLargestSub', largest?largest.current.toLocaleString()+' SKUs':'—');
-  provSetT('provKpiGrower', (grower&&grower.diff>0)?grower.provider:'—');
-  provSetT('provKpiGrowerSub', (grower&&grower.diff>0)?`+${grower.diff} SKUs vs prev`:'No growth yet');
-  provSetT('provKpiDecline', (decliner&&decliner.diff<0)?decliner.provider:'—');
-  provSetT('provKpiDeclineSub', (decliner&&decliner.diff<0)?`${decliner.diff} SKUs vs prev`:'No declines');
-  provSetT('provKpiNew', newCount||'0');
-  provSetPill('provKpiGrowerPill', (grower&&grower.diff>0)?'up':'flat', (grower&&grower.diff>0)?`+${grower.diff}`:'');
-  provSetPill('provKpiDeclinePill', (decliner&&decliner.diff<0)?'down':'flat', (decliner&&decliner.diff<0)?`${decliner.diff}`:'');
+  renderProviderKpis({series, totalSkus, totalValuation, largest, grower, decliner, newCount, concPct, sortedByCurrent, top3Sum});
 
-  // Top 3 coverage — supplier concentration / stock dependence
-  const sortedByCurrent = series.slice().sort((a,b)=>b.current-a.current);
-  const top3Sum = sortedByCurrent.slice(0,3).reduce((a,s)=>a+s.current,0);
-  const concPct = totalSkus>0 ? Math.round((top3Sum/totalSkus)*100) : null;
-  if (concPct!=null) {
-    const concCol = concPct>=70?'#ff8c42':concPct>=50?'#ca8a04':'#22c55e';
-    provSetHTML('provKpiConc', `<span style="color:${concCol}">${concPct}%</span>`);
-    provSetT('provKpiConcSub', concPct>=70?'High dependence — concentrated risk'
-      : concPct>=50?'Moderate concentration'
-      : 'Well diversified across suppliers');
-    const namesTop3 = sortedByCurrent.slice(0,3).map(s=>s.provider).filter(Boolean);
-    provSetHTML('provKpiConcPill', namesTop3.length?`<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${namesTop3.join(', ')}</span>`:'');
-  } else {
-    provSetT('provKpiConc','—');
-    provSetT('provKpiConcSub','Share of SKUs from top 3');
-  }
-
-  const insight=document.getElementById('provInsightInner');
-  if(insight){
-    if(!totalProviders){
-      insight.innerHTML='<div class="insight-hd"><span class="insight-badge">✦ Provider Intelligence</span></div><div style="color:var(--muted2);font-family:var(--mono);font-size:11px">Enter provider SKU counts in <strong style="color:var(--g)">+ Add Snapshot</strong> → Providers section. Each snapshot builds a history so you can track which suppliers are growing, shrinking, or flat.</div>';
-    } else {
-      const bits=[];
-      if(largest) bits.push(`<strong style="color:var(--text)">${largest.provider}</strong> is your largest supplier at <strong style="color:var(--g)">${largest.current.toLocaleString()}</strong> SKUs`);
-      if(grower&&grower.diff>0) bits.push(`<strong style="color:var(--text)">${grower.provider}</strong> grew fastest (<span style="color:var(--g)">+${grower.diff}</span>)`);
-      if(decliner&&decliner.diff<0) bits.push(`<strong style="color:var(--text)">${decliner.provider}</strong> shrank most (<span style="color:var(--r)">${decliner.diff}</span>)`);
-      insight.innerHTML=`<div class="insight-hd"><span class="insight-badge">✦ Provider Intelligence</span></div><div style="color:var(--muted2);font-family:var(--mono);font-size:11px;line-height:1.7">${bits.join(' · ')}.</div>`;
-    }
-  }
-
-  let rows=ordered.slice();   // already in display order
+  let rows=ordered.slice();
   if(providerSearch) rows=rows.filter(s=>s.provider.toLowerCase().includes(providerSearch));
-  provSetT('provMeta', `${rows.length} of ${totalProviders} providers`);
+  provSetT('provMeta', `${rows.filter(s=>s.points.length).length} of ${totalProviders} providers with data`);
 
-  const body=document.getElementById('provTableBody');
-  if(body){
-    if(!rows.length){
-      body.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">${totalProviders?'No providers match your search.':'No providers yet — add them in Settings or in the snapshot form.'}</td></tr>`;
+  // Sync toggle button state
+  const hasAnyVal = rows.some(s=>s.hasValuation && s.currentValue>0);
+  const tog = document.getElementById('provMetricToggle');
+  if (tog) tog.style.display = hasAnyVal ? '' : 'none';
+  ['skus','val','both'].forEach(m=>{
+    const btn=document.getElementById('provMetricBtn'+m.charAt(0).toUpperCase()+m.slice(1));
+    if (!btn) return;
+    const active = (m==='val'&&provCardMetric==='value')||(m==='skus'&&provCardMetric==='skus')||(m==='both'&&provCardMetric==='both');
+    btn.style.background = active ? (m==='val'?'#3d9eff':'var(--g)') : 'none';
+    btn.style.color = active ? (m==='val'?'#07090c':'var(--bg)') : 'var(--muted2)';
+    btn.style.fontWeight = active ? '700' : '400';
+  });
+
+  const withData = rows.filter(s=>s.points.length>0).slice().sort((a,b)=>{
+    if (provCardMetric==='value') return (b.currentValue||0)-(a.currentValue||0);
+    return b.current-a.current;
+  });
+  const noData = rows.filter(s=>s.points.length===0);
+
+  const cardGrid = document.getElementById('provCardGrid');
+  const noDataSection = document.getElementById('provNoDataSection');
+  const noDataList = document.getElementById('provNoDataList');
+
+  if (cardGrid){
+    if (!withData.length){
+      cardGrid.innerHTML=`<div style="grid-column:1/-1;padding:40px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted2)">${totalProviders?'No providers match your search.':'No providers yet — add them in Settings or in the snapshot form.'}</div>`;
     } else {
-      body.innerHTML=rows.map((s,i)=>{
-        const diffStr=s.diff==null?'—':(s.diff>0?'+':'')+s.diff;
-        const diffColor=s.diff==null?'var(--muted2)':s.diff>0?'var(--g)':s.diff<0?'var(--r)':'var(--muted2)';
-        const pctStr=s.pct==null?'—':(s.pct>0?'+':'')+s.pct.toFixed(1)+'%';
-        const noData=!s.points.length;
-        const safe=s.provider.replace(/[^\w]/g,'_');
-        const esc=s.provider.replace(/'/g,"\\'");
+      const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+      const showSkus = provCardMetric==='skus'||provCardMetric==='both';
+      const showVal  = (provCardMetric==='value'||provCardMetric==='both') && hasAnyVal;
 
-        // Movement history (last 5 entries) + verdict — mirrors the competitor table
+      cardGrid.innerHTML = withData.map((s,i)=>{
+        const col = provMiniColor(ordered.indexOf(s));
+        const n = s.points.length;
+        const safe = s.provider.replace(/[^\w]/g,'_');
+        const esc  = s.provider.replace(/'/g,"\\'");
+
+        // vs last snapshot
+        const diffSkus = s.diff;
+        const pctSkus  = s.pct;
+        const diffVal  = s.valueDiff;
+        const diffCol  = diffSkus==null?'var(--muted2)':diffSkus>0?'var(--g)':diffSkus<0?'var(--r)':'var(--muted2)';
+        const valDiffCol = diffVal==null?'var(--muted2)':diffVal>0?'#3d9eff':diffVal<0?'var(--r)':'var(--muted2)';
+        const badgeText = diffSkus==null?'→ 0':(diffSkus>0?'▲ +':'▼ ')+Math.abs(diffSkus);
+        const badgeBg  = diffSkus==null?'var(--s3)':diffSkus>0?'rgba(0,245,160,.15)':diffSkus<0?'rgba(255,77,109,.15)':'var(--s3)';
+
+        // vs 6 snapshots ago (or first if fewer)
+        const p6ago = n>=7 ? s.points[n-7] : s.points[0];
+        const vs6skus = p6ago && n>1 ? s.current - p6ago.skus : null;
+        const vs6val  = p6ago && n>1 && showVal ? s.currentValue - (p6ago.value||0) : null;
+        const vs6Label = n>=7 ? 'vs 6 ago' : n>1 ? `vs ${n-1} ago` : null;
+        const vs6SCol = vs6skus==null?'var(--muted2)':vs6skus>0?'var(--g)':vs6skus<0?'var(--r)':'var(--muted2)';
+        const vs6VCol = vs6val==null?'var(--muted2)':vs6val>0?'#3d9eff':vs6val<0?'var(--r)':'var(--muted2)';
+
+        // streak and verdict
         const counts=s.points.map(p=>p.skus);
-        const dates=s.points.map(p=>p.date);
-        const n=counts.length;
-        const last5=counts.slice(-5), last5d=dates.slice(-5);
-        const moveHistory = last5.length>=2
-          ? last5.slice(1).map((v,k)=>{
-              const d=v-last5[k];
-              const col=d>0?'#00f5a0':d<0?'#ff8c42':'#8b99ab';
-              const dd=last5d[k+1]?.split('-'); const lbl=dd?`${dd[2]}/${dd[1]}`:'';
-              return `<span style="font-family:var(--mono);font-size:10px;color:${col}">${lbl} <strong>${d>0?'+':''}${d}</strong></span>`;
-            }).join('<span style="color:var(--border2);margin:0 3px">→</span>')
-          : '';
-        // streak
         let streak=0;
         for(let k=counts.length-1;k>=1;k--){
           const d=counts[k]-counts[k-1];
@@ -7893,85 +8113,102 @@ function renderProviderTab(){
           else if((streak>0&&d>0)||(streak<0&&d<0)) streak+=streak>0?1:-1;
           else break;
         }
-        const trend3 = counts.slice(-3).length>=2 ? counts[counts.length-1]-counts.slice(-3)[0] : null;
-        const net = n>=2 ? counts[n-1]-counts[0] : null;
-        let verdict;
-        if(noData) verdict='No snapshots logged yet — add this provider in a snapshot to start tracking stock coverage.';
-        else if(n<2) verdict=`First reading — ${s.current.toLocaleString()} SKUs logged. Baseline set; trend appears from the next snapshot.`;
-        else if(streak>=3) verdict=`Growing ${streak} snapshots in a row — steady expansion of this supplier's stock coverage.`;
-        else if(streak<=-3) verdict=`Shrinking ${Math.abs(streak)} snapshots in a row — sustained decline. Worth checking if this supplier is winding down.`;
-        else if(s.diff!=null&&s.diff>0) verdict=`Up ${s.diff} SKUs this snapshot${trend3!=null?` (${trend3>0?'+':''}${trend3} over last 3)`:''}. Coverage growing.`;
-        else if(s.diff!=null&&s.diff<0) verdict=`Down ${Math.abs(s.diff)} SKUs this snapshot${trend3!=null?` (${trend3>0?'+':''}${trend3} over last 3)`:''}. Coverage slipping.`;
-        else verdict='Flat this snapshot — no change in stock coverage.';
+        let verdict='', verdictCol='var(--muted2)';
+        if(n<2){ verdict='Baseline set'; }
+        else if(streak>=3){ verdict=`▲ Growing ${streak}× in a row`; verdictCol='var(--g)'; }
+        else if(streak<=-3){ verdict=`▼ Declining ${Math.abs(streak)}× in a row`; verdictCol='var(--r)'; }
+        else if(diffSkus!=null&&diffSkus>0){ verdict=`▲ Up ${diffSkus} this entry`; verdictCol='var(--g)'; }
+        else if(diffSkus!=null&&diffSkus<0){ verdict=`▼ Down ${Math.abs(diffSkus)} this entry`; verdictCol='var(--r)'; }
+        else { verdict='No change this entry'; }
 
-        const stats = noData?'':`<div style="display:flex;gap:16px;flex-wrap:wrap">
-          ${net!=null?`<span style="font-family:var(--mono);font-size:10px">Net all-time: <span style="color:${net>0?'var(--g)':net<0?'var(--r)':'var(--muted2)'};font-weight:600">${net>0?'+':''}${net} SKUs</span></span>`:''}
-          ${streak!==0?`<span style="font-family:var(--mono);font-size:10px">Streak: <span style="color:${streak>0?'var(--g)':'var(--r)'};font-weight:600">${streak>0?'↑':'↓'} ${Math.abs(streak)}×</span></span>`:''}
-          <span style="font-family:var(--mono);font-size:10px">Snapshots: <span style="color:var(--muted2);font-weight:600">${n}</span></span>
-          <span style="font-family:var(--mono);font-size:10px">Range: <span style="color:var(--muted2);font-weight:600">${s.low.toLocaleString()}–${s.peak.toLocaleString()}</span></span>
+        const skuLine = showSkus ? `
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:${showVal?'4px':'6px'}">
+            <span style="font-family:var(--mono);font-size:${showVal?'22px':'28px'};font-weight:700;color:var(--text);line-height:1">${s.current.toLocaleString()}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">SKUs</span>
+            ${diffSkus!=null?`<span style="font-family:var(--mono);font-size:11px;color:${diffCol};margin-left:auto">${diffSkus>0?'+':''}${diffSkus}</span>`:''}
+          </div>` : '';
+
+        const valLine = showVal && s.currentValue>0 ? `
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+            <span style="font-family:var(--mono);font-size:${showSkus?'16px':'28px'};font-weight:700;color:#3d9eff;line-height:1">${moneyFmt(s.currentValue)}</span>
+            ${diffVal!=null&&showVal?`<span style="font-family:var(--mono);font-size:11px;color:${valDiffCol};margin-left:auto">${diffVal>0?'+':diffVal<0?'':' '}${moneyFmt(Math.abs(diffVal))}</span>`:''}
+          </div>` : (showVal?`<div style="margin-bottom:6px;font-family:var(--mono);font-size:11px;color:var(--muted)">No valuation data</div>`:'');
+
+        const vs6Row = vs6Label ? `
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);line-height:1.8;padding-top:6px;border-top:1px solid var(--border);margin-top:4px">
+            ${showSkus&&diffSkus!=null?`<span style="color:${diffSkus>0?'var(--g)':diffSkus<0?'var(--r)':'var(--muted2)'}">${diffSkus>0?'↑':'↓'} ${diffSkus>0?'+':''}${diffSkus}</span> <span style="color:var(--muted)">vs last snapshot</span>`:''}
+            ${showSkus&&vs6skus!=null?` · <span style="color:${vs6skus>0?'var(--g)':vs6skus<0?'var(--r)':'var(--muted2)'}">${vs6skus>0?'↑':'↓'} ${vs6skus>0?'+':''}${vs6skus}</span> <span style="color:var(--muted)">${vs6Label}</span>`:' '}
+            ${showVal&&vs6val!=null?` · <span style="color:${vs6val>0?'#3d9eff':vs6val<0?'var(--r)':'var(--muted2)'}">${vs6val>0?'↑':'↓'} ${vs6val>0?'+':''}${moneyFmt(vs6val)}</span> <span style="color:var(--muted)">${vs6Label} £</span>`:''}
+          </div>` : '';
+
+        return `<div onclick="openProviderDetail('${esc}')" style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${col};border-radius:12px;padding:16px 18px;cursor:pointer;transition:background .15s;display:flex;flex-direction:column" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='var(--s1)'">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+            <div>
+              <div style="font-weight:700;font-size:13px;color:var(--text)">${s.provider}${s.isNew?` <span style="font-family:var(--mono);font-size:9px;background:rgba(255,209,102,.15);color:var(--y);padding:2px 6px;border-radius:3px">NEW</span>`:''}</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:2px">${n} snapshot${n!==1?'s':''}</div>
+            </div>
+            <div style="font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 9px;border-radius:6px;background:${badgeBg};color:${diffCol};flex:none">${badgeText}</div>
+          </div>
+          ${skuLine}${valLine}
+          <div style="height:52px;margin-bottom:6px"><canvas id="provspark_${safe}" style="display:block;width:100%;height:100%"></canvas></div>
+          <div style="font-family:var(--mono);font-size:10px;color:${verdictCol};margin-bottom:2px">${verdict}</div>
+          ${vs6Row}
         </div>`;
-
-        const sparkCell = noData
-          ? `<span style="color:var(--muted2);font-size:15px">${trendGlyph(s.diff)}</span>`
-          : `<canvas id="provspark_${safe}" width="160" height="40" style="display:block;margin:0 auto;max-width:100%"></canvas>`;
-
-        return `<tr style="cursor:${noData?'default':'pointer'};transition:background .15s;height:52px" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''"${noData?'':` onclick="openProviderDetail('${esc}')"`}>
-          <td style="color:var(--muted2);text-align:center;font-family:var(--mono);font-size:11px">${i+1}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div>
-                <div style="font-weight:600;font-size:13px;color:var(--text)">${s.provider}${s.isNew?' <span style="font-family:var(--mono);font-size:9px;background:rgba(255,209,102,.15);color:var(--y);padding:2px 6px;border-radius:3px;margin-left:4px">NEW</span>':''}</div>
-                ${noData ? '<div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">no data yet</div>' : ('<div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">avg '+(s.avg!=null?s.avg.toFixed(0):s.current)+' SKUs · '+n+' snapshot'+(n!==1?'s':'')+'</div>')}
-              </div>
-            </div>
-          </td>
-          <td style="text-align:right;font-family:var(--mono);font-size:15px;font-weight:700;color:${noData?'var(--muted2)':'var(--text)'}">${s.current.toLocaleString()}</td>
-          <td style="text-align:right;font-family:var(--mono);font-size:13px;font-weight:700;color:${diffColor}">${diffStr}</td>
-          <td style="text-align:right;font-family:var(--mono);font-size:12px;color:${diffColor}">${pctStr}</td>
-          <td style="text-align:center;width:160px">${sparkCell}</td>
-        </tr>
-        ${noData?'':`<tr style="background:var(--s2);border-bottom:2px solid var(--border)">
-          <td colspan="7" style="padding:8px 16px 10px">
-            <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-              <span style="font-family:var(--mono);font-size:11px;color:var(--muted2);line-height:1.55;flex:1;min-width:200px">${verdict}</span>
-              <div style="display:flex;gap:18px;flex-shrink:0;flex-wrap:wrap">
-                ${net!=null?`<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">All-time <span style="color:${net>0?'var(--g)':net<0?'var(--r)':'var(--muted2)'};font-weight:700">${net>0?'+':''}${net}</span></span>`:''}
-                ${streak!==0?`<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Streak <span style="color:${streak>0?'var(--g)':'var(--r)'};font-weight:700">${streak>0?'↑':'↓'}${Math.abs(streak)}×</span></span>`:''}
-                <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${n} snapshots</span>
-              </div>
-            </div>
-          </td>
-        </tr>`}`;
       }).join('');
 
-      // Render row sparklines (SKU count history) — like the competitor table
+      // Draw sparklines — zoomed in tightly to actual data range
       setTimeout(()=>{
-        rows.forEach(s=>{
+        withData.forEach(s=>{
           if(!s.points.length) return;
-          const cv=document.getElementById('provspark_'+s.provider.replace(/[^\w]/g,'_'));
+          const col = provMiniColor(ordered.indexOf(s));
+          const safe = s.provider.replace(/[^\w]/g,'_');
+          const cv = document.getElementById('provspark_'+safe);
           if(!cv) return;
-          const id='provspark_'+s.provider.replace(/[^\w]/g,'_');
+          const id='provspark_'+safe;
           destroyChart(id);
-          const data=s.points.map(p=>p.skus);
-          const dlabels=s.points.map(p=>fmtShort(p.date));
-          const col=(s.diff>0)?'#00f5a0':(s.diff<0)?'#ff4d6d':'#a7b4c4';
+          const useVal = provCardMetric==='value' && s.hasValuation;
+          const data = useVal ? s.points.map(p=>p.value||0) : s.points.map(p=>p.skus);
+          const dlabels = s.points.map(p=>fmtShort(p.date));
+          const spread = Math.max(...data)-Math.min(...data);
+          // Tight zoom: 20% padding on spread (not 40%), minimum 1 unit
+          const pad = Math.max(useVal?50:1, Math.round(spread*0.2));
+          const ymin = Math.max(0, Math.min(...data)-pad);
+          const ymax = Math.max(...data)+pad;
+          const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
           chartInstances[id]=new Chart(cv.getContext('2d'),{
             type:'line',
-            data:{ labels:data.map((_,k)=>k), datasets:[{ data, borderColor:col, backgroundColor:col+'22', borderWidth:2, pointRadius:2, pointHoverRadius:4, pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1, tension:.4, fill:true }] },
-            options:{ responsive:false, interaction:{mode:'index',intersect:false},
+            data:{ labels:dlabels, datasets:[{ data, borderColor:col, backgroundColor:col+'18', borderWidth:1.8, pointRadius:2, pointHoverRadius:4, pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1, tension:.4, fill:true }] },
+            options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
               plugins:{ legend:{display:false}, datalabels:{display:false},
-                tooltip:{ enabled:true, backgroundColor:'rgba(7,9,12,0.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0', borderColor:col, borderWidth:1, padding:8, displayColors:false,
-                  callbacks:{ title:items=>dlabels[items[0].dataIndex]||'', label:ctx=>`${ctx.parsed.y.toLocaleString()} SKUs` } } },
-              scales:{ x:{display:false}, y:{display:false} } }
+                tooltip:{ backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0', borderColor:col, borderWidth:1, padding:8, displayColors:false,
+                  callbacks:{ title:items=>dlabels[items[0].dataIndex]||'', label:ctx=>useVal?moneyFmt(ctx.parsed.y):`${ctx.parsed.y.toLocaleString()} SKUs` } } },
+              scales:{ x:{display:false}, y:{ display:false, min:ymin, max:ymax } } }
           });
         });
       },0);
     }
   }
 
+  // "Not yet tracked" compact pill list
+  if (noDataSection && noDataList){
+    if (noData.length && !providerSearch){
+      noDataSection.style.display='';
+      noDataList.innerHTML = noData.map(s=>{
+        const esc=s.provider.replace(/'/g,"\\'");
+        return `<span onclick="openProviderDetail('${esc}')" style="font-family:var(--mono);font-size:11px;color:var(--muted2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--border2)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted2)'">${s.provider}</span>`;
+      }).join('');
+    } else {
+      noDataSection.style.display='none';
+    }
+  }
+
   renderProviderTrendChart(ordered);
   renderProviderShareChart(ordered);
-  renderProviderMiniGrid(series);
+}
+
+function setProvCardMetric(m){
+  provCardMetric = m;
+  renderProviderTab();
 }
 
 // ── Provider tab: per-provider mini trend cards, Stock Health zone-card style ──
@@ -8054,19 +8291,33 @@ function renderProviderTrendChart(series){
     c.fillText('Log providers to see trends', c.canvas.width/2, c.canvas.height/2);
     return;
   }
-  const sorted=series.filter(s=>s.points && s.points.length);  // keep display order, only those with data
-  if(!sorted.length){ if(tag) tag.textContent='No data'; c.clearRect(0,0,c.canvas.width,c.canvas.height); c.fillStyle='#8b99ab'; c.font="11px 'DM Mono'"; c.textAlign='center'; c.fillText('Log providers to see trends', c.canvas.width/2, c.canvas.height/2); const fd=document.getElementById('provChartFilters'); if(fd) fd.innerHTML=''; return; }
-  if(trackedProviders.size===0) sorted.slice(0,8).forEach(s=>trackedProviders.add(s.provider));
+  const sorted=series.filter(s=>s.points && s.points.length);
+  if(!sorted.length){ if(tag) tag.textContent='No data'; return; }
+
+  // Default: all providers on. Load persisted state from localStorage on first run.
+  if(trackedProviders.size===0){
+    try {
+      const saved=localStorage.getItem('bdl_tracked_providers');
+      if(saved){
+        const arr=JSON.parse(saved);
+        arr.forEach(n=>trackedProviders.add(n));
+        // If saved set has no overlap with current providers, start fresh with all on
+        if(!sorted.some(s=>trackedProviders.has(s.provider))) sorted.forEach(s=>trackedProviders.add(s.provider));
+      } else {
+        sorted.forEach(s=>trackedProviders.add(s.provider)); // all on by default
+      }
+    } catch(e){ sorted.forEach(s=>trackedProviders.add(s.provider)); }
+  }
 
   const fdiv=document.getElementById('provChartFilters');
   if(fdiv){
     fdiv.innerHTML=sorted.map((s,idx)=>{
       const color=PROV_COLORS[idx%PROV_COLORS.length];
       const checked=trackedProviders.has(s.provider)?'checked':'';
-      return `<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:4px 8px;background:var(--s2);border:1px solid var(--border);border-radius:3px">
-        <input type="checkbox" ${checked} onchange="toggleProvider('${s.provider.replace(/'/g,"\\'")}')" style="cursor:pointer">
-        <span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px"></span>
-        <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.provider}</span>
+      return `<label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;padding:5px 10px;background:${checked?color+'18':'var(--s2)'};border:1px solid ${checked?color:'var(--border)'};border-radius:6px;transition:all .15s">
+        <input type="checkbox" ${checked} onchange="toggleProvider('${s.provider.replace(/'/g,"\\'")}')" style="cursor:pointer;accent-color:${color}">
+        <span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;flex:none"></span>
+        <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${checked?'var(--text)':'var(--muted2)'}">${s.provider}</span>
       </label>`;
     }).join('');
   }
@@ -8085,6 +8336,8 @@ function renderProviderTrendChart(series){
 }
 function toggleProvider(name){
   if(trackedProviders.has(name)) trackedProviders.delete(name); else trackedProviders.add(name);
+  // Persist to localStorage so choices survive page refresh
+  try { localStorage.setItem('bdl_tracked_providers', JSON.stringify([...trackedProviders])); } catch(e){}
   renderProviderTrendChart(buildOrderedProviders());
 }
 
