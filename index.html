@@ -125,6 +125,23 @@ window._supabaseSave = async function(snapshots, sellers, competitorSessions, pr
   }
 };
 
+// Delete a competitor session (and its readings) by date
+window._supabaseDeleteSession = async function(date) {
+  try {
+    if (!supabase) return false;
+    // Look up the session id first so we can remove its readings, then the session row
+    const { data: sess } = await supabase.from('bdl_competitor_sessions').select('id').eq('date', date).single();
+    if (sess && sess.id) {
+      await supabase.from('bdl_competitor_readings').delete().eq('session_id', sess.id);
+    }
+    await supabase.from('bdl_competitor_sessions').delete().eq('date', date);
+    return true;
+  } catch(e) {
+    console.error('Supabase session delete error:', e);
+    return false;
+  }
+};
+
 // Delete a single inventory snapshot (by its unique date)
 window._supabaseDeleteSnapshot = async function(date) {
   try {
@@ -231,7 +248,6 @@ window._supabaseSaveProviderDefs = async function(activeDefs, archivedNames) {
 // Load data from Supabase
 window._supabaseLoad = async function() {
   try {
-    console.log('Starting Supabase load...');
     
     if (!supabase) {
       console.warn('Supabase not initialized - returning empty data');
@@ -247,72 +263,31 @@ window._supabaseLoad = async function() {
       };
     }
     
-    // Load snapshots
-    const { data: snapshots, error: snapError } = await supabase
-      .from('bdl_snapshots')
-      .select('*')
-      .order('date', { ascending: true });
-    
-    console.log('Snapshots loaded:', snapshots, 'Error:', snapError);
-    if (snapError) throw snapError;
-    
-    // Load sellers
-    const { data: sellers, error: sellError } = await supabase
-      .from('bdl_sellers')
-      .select('*');
-    
-    console.log('Sellers loaded:', sellers, 'Error:', sellError);
-    if (sellError) throw sellError;
-    
-    // Load competitor sessions
-    const { data: sessions, error: sessError } = await supabase
-      .from('bdl_competitor_sessions')
-      .select('*')
-      .order('date', { ascending: true });
-    
-    console.log('Sessions loaded:', sessions, 'Error:', sessError);
-    if (sessError) throw sessError;
-    
-    // Load competitor readings
-    const { data: readings, error: readError } = await supabase
-      .from('bdl_competitor_readings')
-      .select('*');
-    
-    console.log('Readings loaded:', readings, 'Error:', readError);
-    if (readError) throw readError;
-    
-    // Load provider snapshots
-    const { data: providerSnaps, error: provError } = await supabase
-      .from('bdl_provider_snapshots')
-      .select('*')
-      .order('date', { ascending: true });
-    
-    console.log('Provider snapshots loaded:', providerSnaps, 'Error:', provError);
-    if (provError) throw provError;
-    
-    // Load ordered provider master list
-    const { data: provDefs, error: provDefError } = await supabase
-      .from('bdl_providers')
-      .select('*')
-      .order('provider_order', { ascending: true });
-    
-    console.log('Provider defs loaded:', provDefs, 'Error:', provDefError);
-    if (provDefError) throw provDefError;
+    // Load all tables in PARALLEL — these are independent queries, so running them
+    // together instead of one-after-another cuts startup time dramatically.
+    const [
+      snapRes, sellRes, sessRes, readRes, provSnapRes, provDefRes, provRuleRes
+    ] = await Promise.all([
+      supabase.from('bdl_snapshots').select('*').order('date', { ascending: true }),
+      supabase.from('bdl_sellers').select('*'),
+      supabase.from('bdl_competitor_sessions').select('*').order('date', { ascending: true }),
+      supabase.from('bdl_competitor_readings').select('*'),
+      supabase.from('bdl_provider_snapshots').select('*').order('date', { ascending: true }),
+      supabase.from('bdl_providers').select('*').order('provider_order', { ascending: true }),
+      // provider_rules isolated: if the table is missing it must not fail the whole load
+      supabase.from('bdl_provider_rules').select('*').then(r=>r, ()=>({data:[],error:null}))
+    ]);
 
-    // Load provider classification rules (aliases/stems/title keywords for the SKU importer).
-    // Isolated from the main try/catch: if this table is missing or errors, the importer just
-    // starts with no learned rules — it must never take down snapshots/sellers/etc.
+    const snapshots = snapRes.data;   if (snapRes.error) throw snapRes.error;
+    const sellers   = sellRes.data;   if (sellRes.error) throw sellRes.error;
+    const sessions  = sessRes.data;   if (sessRes.error) throw sessRes.error;
+    const readings  = readRes.data;   if (readRes.error) throw readRes.error;
+    const providerSnaps = provSnapRes.data; if (provSnapRes.error) throw provSnapRes.error;
+    const provDefs  = provDefRes.data; if (provDefRes.error) throw provDefRes.error;
     let provRules = [];
-    try {
-      const { data, error } = await supabase.from('bdl_provider_rules').select('*');
-      if (error) throw error;
-      provRules = data || [];
-      console.log('Provider rules loaded:', provRules);
-    } catch (ruleErr) {
-      console.warn('bdl_provider_rules unavailable (run the migration?) — continuing without learned rules:', ruleErr);
-      provRules = [];
-    }
-    
+    if (provRuleRes && !provRuleRes.error && provRuleRes.data) provRules = provRuleRes.data;
+    else if (provRuleRes && provRuleRes.error) console.warn('bdl_provider_rules unavailable (run the migration?) — continuing without learned rules');
+
     return {
       snapshots: snapshots?.map(s => ({
         date: s.date,
@@ -391,10 +366,7 @@ window._startupLoad = async function() {
   if (syncEl) showSyncStatus('loading');
   
   const data = await window._supabaseLoad();
-  console.log('=== DATA LOAD START ===');
-  console.log('Supabase data loaded:', data);
   if (data) {
-    console.log('Using Supabase data');
     DB = data.snapshots || [];
     SELLERS = data.sellers || [];
     COMPETITOR_SESSIONS = data.competitorSessions || [];
@@ -408,7 +380,6 @@ window._startupLoad = async function() {
     // the box. Never runs again once any provider exists — fully yours to edit after this.
     if (PROVIDER_DEFS.length === 0 && ARCHIVED_PROVIDERS.length === 0) {
       try {
-        console.log('No providers found — seeding 17 defaults');
         PROVIDER_DEFS = DEFAULT_PROVIDERS.map(p => p.name);
         PROVIDER_RULES = DEFAULT_PROVIDERS.map(p => ({
           name: p.name, aliases: p.aliases||[], stems: p.stems||[], titleKeywords: p.titleKeywords||[]
@@ -451,18 +422,12 @@ window._startupLoad = async function() {
     } catch(backfillErr) {
       console.error('Provider rule backfill failed:', backfillErr);
     }
-    console.log('DB length:', DB.length);
-    console.log('SELLERS length:', SELLERS.length);
-    console.log('COMPETITOR_SESSIONS length:', COMPETITOR_SESSIONS.length);
     // Update badges immediately after loading data
     if (document.getElementById('compHistNavBadge')) {
       document.getElementById('compHistNavBadge').textContent = COMPETITOR_SESSIONS.length;
-      console.log('Badge updated to:', COMPETITOR_SESSIONS.length);
     }
   } else {
-    console.log('Supabase load failed');
   }
-  console.log('=== DATA LOAD END ===');
   if (syncEl) hideSyncStatus();
   
   // Set default to Last 30 days
@@ -493,10 +458,31 @@ window._startupLoad = async function() {
   safeRun(renderProviderTab, 'renderProviderTab');
   safeRun(renderSettingsTab, 'renderSettingsTab');
   safeRun(renderBadges, 'renderBadges');
+
+  // Data loaded and first render done — fade out the boot loader
+  hideBootLoader();
 };
 
-// Call startup after DOM is ready
-document.addEventListener('DOMContentLoaded', window._startupLoad);
+function hideBootLoader(){
+  const el = document.getElementById('bootLoader');
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(()=>{ el.style.display='none'; }, 380);
+}
+
+// Call startup after DOM is ready. Guard so the boot loader always hides,
+// even if the data load throws — otherwise the spinner would spin forever.
+document.addEventListener('DOMContentLoaded', () => {
+  // Failsafe: hide the loader no matter what after 12s
+  const failsafe = setTimeout(hideBootLoader, 12000);
+  Promise.resolve(window._startupLoad())
+    .catch(err => {
+      console.error('Startup load failed:', err);
+      const msg = document.getElementById('bootLoaderMsg');
+      if (msg) msg.textContent = 'Had trouble loading — showing what we have';
+    })
+    .finally(() => { clearTimeout(failsafe); hideBootLoader(); });
+});
 </script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Clash+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -997,6 +983,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 </style>
 </head>
 <body>
+<div id="bootLoader" style="position:fixed;inset:0;z-index:100000;background:var(--bg,#07090c);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;transition:opacity .35s ease">
+  <div style="font-family:var(--mono,monospace);font-size:20px;font-weight:700;letter-spacing:.02em;color:#dce6f0">BDL <span style="color:#00f5a0">OA</span></div>
+  <div style="width:38px;height:38px;border:3px solid rgba(0,245,160,.15);border-top-color:#00f5a0;border-radius:50%;animation:bootSpin .8s linear infinite"></div>
+  <div id="bootLoaderMsg" style="font-family:var(--mono,monospace);font-size:11px;color:#8b99ab;letter-spacing:.05em">Loading your dashboard…</div>
+</div>
+<style>@keyframes bootSpin{to{transform:rotate(360deg)}}</style>
 <div class="shell">
 <aside>
   <div class="brand">
@@ -1299,7 +1291,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
     <div class="comp-table-wrap">
       <table class="comp-table">
         <thead><tr>
-          <th>Rank</th><th>Seller</th><th>Seller ID</th><th>Prev %</th><th>Latest %</th><th>vs Last</th><th>SOM</th><th style="text-align:center">Trend</th>
+          <th>Rank</th><th>Seller</th><th>Seller ID</th><th>Prev %</th><th>Latest %</th><th>vs Last</th><th>vs 30d</th><th style="text-align:center">Trend</th>
         </tr></thead>
         <tbody id="compTableBody"></tbody>
       </table>
@@ -1706,6 +1698,22 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 </div>
 </div>
 
+<!-- Stock Health flow detail popup — large line graph, opens from the hero card -->
+<div class="overlay" id="shFlowDetailModal">
+<div class="modal" style="max-width:900px">
+  <div class="modal-hd">
+    <div>
+      <div class="modal-title">Stock Health — 0–90d Flow</div>
+      <div id="shFlowDetailSub" style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:2px"></div>
+    </div>
+    <button class="modal-x" onclick="closeOverlay('shFlowDetailModal')">×</button>
+  </div>
+  <div class="modal-body">
+    <div id="shFlowDetailBody"></div>
+  </div>
+</div>
+</div>
+
 <!-- Competitor detail popup — opens when clicking a competitor row -->
 <div class="overlay" id="compDetailModal">
 <div class="modal" style="max-width:860px">
@@ -1745,7 +1753,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 </div>
 </div>
 
-<div class="overlay" id="manageModal">
+<div class="overlay" id="manageModal" data-no-dismiss="true">
 <div class="modal" style="max-width:560px">
   <div class="modal-hd">
     <div class="modal-title">⚙ Manage Sellers</div>
@@ -2337,9 +2345,7 @@ function calcAgedRisk(snap) {
 }
 
 function renderKpis(snaps) {
-  console.log('renderKpis called with snaps:', snaps);
   if (!snaps.length) { 
-    console.log('No snaps, setting to —');
     ['kAsins','kSkus','kCost','kUnits','kStockValue','kRepWinPct','kRepMatchPct','kAgedRisk'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.textContent = '—';
@@ -2347,7 +2353,6 @@ function renderKpis(snaps) {
     return; 
   }
   const latest = snaps[snaps.length-1];
-  console.log('Latest snapshot:', latest);
   const prev = snaps.length > 1 ? snaps[snaps.length-2] : null;
   
   const avgUnits = snaps.reduce((sum,s)=>sum+(s.totalUnits||0),0) / snaps.length;
@@ -2671,14 +2676,18 @@ function shHeroHtml(snaps){
   </div>` : '';
 
   return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-    <div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px 22px">
-      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:8px">Clearing fast enough?</div>
+    <div onclick="shOpenFlowDetail()" style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px 22px;cursor:pointer;transition:border-color .15s,background .15s" onmouseover="this.style.borderColor='var(--g)';this.style.background='var(--s2)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--s1)'">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2)">Clearing fast enough?</div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--g);opacity:.8">Click for graph ↗</div>
+      </div>
       <div style="display:flex;align-items:baseline;gap:14px">
         <div style="font-size:46px;font-weight:700;line-height:1;color:${zCol}">${flowNow}%</div>
         <div><div style="font-size:17px;font-weight:600;color:${zCol}">${clearWord}</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);max-width:210px;line-height:1.4">${clearSub}</div></div>
       </div>
-      <div style="position:relative;height:14px;background:var(--s3);border-radius:7px;margin-top:16px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:8px">↑ higher is better — more stock selling within 90 days</div>
+      <div style="position:relative;height:14px;background:var(--s3);border-radius:7px;margin-top:10px">
         <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(flowNow,100)}%;background:${zCol};border-radius:7px;transition:width .4s"></div>
         <div style="position:absolute;left:${SH_FLOOR}%;top:-5px;bottom:-5px;width:2px;background:${AMBER}"></div>
         <div style="position:absolute;left:${SH_GOAL}%;top:-5px;bottom:-5px;width:2px;background:${GOOD}"></div>
@@ -2703,8 +2712,145 @@ function shHeroHtml(snaps){
     </div></div>`;
 }
 
+// ── Stock Health flow detail popup — full line graph over all history ──
+let _shFlowDetailRange = 'period'; // 'period' | 'all'
+function shOpenFlowDetail(){
+  _shFlowDetailRange = 'period';
+  shRenderFlowDetail();
+  document.getElementById('shFlowDetailModal').classList.add('open');
+}
+function shSetFlowDetailRange(r){ _shFlowDetailRange=r; shRenderFlowDetail(); }
+
+function shRenderFlowDetail(){
+  const snaps = _shFlowDetailRange==='all' ? shAllSnaps() : shFilteredSnaps();
+  if(!snaps.length) return;
+  const pts = snaps.map(s=>({ date:s.date, flow:shFlowPct(s) }));
+  const flows = pts.map(p=>p.flow);
+  const latest = flows[flows.length-1];
+  const first  = flows[0];
+  const prev   = flows.length>1 ? flows[flows.length-2] : null;
+  const diff   = prev!=null ? +(latest-prev).toFixed(1) : null;
+  const peak   = Math.max(...flows), low = Math.min(...flows);
+  const peakDate = pts[flows.indexOf(peak)]?.date, lowDate = pts[flows.indexOf(low)]?.date;
+  const net    = flows.length>=2 ? +(latest-first).toFixed(1) : null;
+  const avg    = +(flows.reduce((a,b)=>a+b,0)/flows.length).toFixed(1);
+
+  // Trend direction (higher flow = healthier)
+  const tr = shTrend(snaps); const perWeek = tr?+tr.perWeek.toFixed(2):null;
+  let dirWord,dirCol,dirGlyph;
+  if(perWeek==null){dirWord='Not enough data';dirCol=NEUT;dirGlyph='·';}
+  else if(perWeek>0.3){dirWord='Getting healthier';dirCol=GOOD;dirGlyph='▲';}
+  else if(perWeek<-0.3){dirWord='Getting worse';dirCol=BAD;dirGlyph='▼';}
+  else{dirWord='Holding steady';dirCol=NEUT;dirGlyph='→';}
+
+  document.getElementById('shFlowDetailSub').textContent =
+    `${fmt(pts[0].date)} → ${fmt(pts[pts.length-1].date)} · ${pts.length} snapshots · higher % = healthier`;
+
+  const zCol = shZoneColor(latest);
+  const diffCol = diff==null?NEUT:diff>0?GOOD:diff<0?BAD:NEUT;
+  const diffStr = diff==null?'—':(diff>0?'▲ +':'▼ ')+Math.abs(diff)+'pp vs last';
+  const card=(label,val,sub,col)=>`
+    <div style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${col};border-radius:12px;padding:14px 16px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:${col};margin-bottom:6px">${label}</div>
+      <div style="font-family:var(--mono);font-size:24px;font-weight:700;color:var(--text);line-height:1">${val}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:6px">${sub}</div>
+    </div>`;
+
+  const statGrid=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${card('Current flow', latest+'%', diffStr, zCol)}
+    ${card('Record high', peak+'%', fmt(peakDate), GOOD)}
+    ${card('Record low', low+'%', fmt(lowDate), BAD)}
+    ${card('Average', avg+'%', `over ${pts.length} snapshots`, NEUT)}
+  </div>`;
+
+  const metaRow=`<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:14px;padding:12px 16px;background:${dirCol==GOOD?'rgba(34,197,94,.08)':dirCol==BAD?'rgba(255,77,109,.08)':'var(--s2)'};border:1px solid var(--border);border-radius:10px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:20px;color:${dirCol}">${dirGlyph}</span>
+      <span style="font-size:16px;font-weight:700;color:${dirCol}">${dirWord}</span>
+    </div>
+    ${perWeek!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Trend: <b style="color:${dirCol}">${perWeek>0?'+':''}${perWeek}pp/wk</b></span>`:''}
+    ${net!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Net over window: <b style="color:${net>0?GOOD:net<0?BAD:NEUT}">${net>0?'+':''}${net}pp</b></span>`:''}
+  </div>`;
+
+  const toggle=`<div style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <button onclick="shSetFlowDetailRange('period')" style="font-family:var(--mono);font-size:10px;padding:6px 14px;background:${_shFlowDetailRange==='period'?'var(--g)':'none'};color:${_shFlowDetailRange==='period'?'var(--bg)':'var(--muted2)'};border:none;cursor:pointer;font-weight:${_shFlowDetailRange==='period'?700:400}">This period</button>
+    <button onclick="shSetFlowDetailRange('all')" style="font-family:var(--mono);font-size:10px;padding:6px 14px;background:${_shFlowDetailRange==='all'?'var(--g)':'none'};color:${_shFlowDetailRange==='all'?'var(--bg)':'var(--muted2)'};border:none;cursor:pointer;font-weight:${_shFlowDetailRange==='all'?700:400}">All time</button>
+  </div>`;
+
+  const chartSection=`<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2)">0–90d flow % over time</div>
+      ${toggle}
+    </div>
+    <div style="height:260px"><canvas id="shFlowDetailChart"></canvas></div>
+    <div style="display:flex;gap:16px;margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--muted2)">
+      <span><span style="display:inline-block;width:16px;height:2px;background:${GOOD};vertical-align:middle;margin-right:4px"></span>Goal ${SH_GOAL}%</span>
+      <span><span style="display:inline-block;width:16px;height:2px;background:${AMBER};vertical-align:middle;margin-right:4px"></span>Floor ${SH_FLOOR}%</span>
+    </div>
+  </div>`;
+
+  const tableRows=pts.slice().reverse().map((p,ri)=>{
+    const realIdx=pts.length-1-ri;
+    const prevPt=realIdx>0?pts[realIdx-1]:null;
+    const d=prevPt!=null?+(p.flow-prevPt.flow).toFixed(1):null;
+    const dCol=d==null?NEUT:d>0?GOOD:d<0?BAD:NEUT;
+    const dStr=d==null?'—':(d>0?'+':'')+d+'pp';
+    const fCol=shZoneColor(p.flow);
+    const isPeak=p.flow===peak, isLow=p.flow===low;
+    return `<tr>
+      <td style="color:var(--g)">${fmt(p.date)}</td>
+      <td style="font-weight:700;color:${fCol}">${p.flow}%${isPeak?' <span style="font-family:var(--mono);font-size:9px;color:'+GOOD+';background:rgba(34,197,94,.12);padding:1px 5px;border-radius:3px">HIGH</span>':isLow?' <span style="font-family:var(--mono);font-size:9px;color:'+BAD+';background:rgba(255,77,109,.12);padding:1px 5px;border-radius:3px">LOW</span>':''}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:${dCol}">${dStr}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('shFlowDetailBody').innerHTML = statGrid+metaRow+chartSection+
+    `<div style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Snapshot history</div>
+    <div style="max-height:220px;overflow-y:auto"><table class="history-table">
+      <thead><tr><th>Date</th><th>Flow %</th><th>vs Previous</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table></div>`;
+
+  setTimeout(()=>{
+    destroyChart('shFlowDetailChart');
+    const cv=document.getElementById('shFlowDetailChart');
+    if(!cv||typeof Chart==='undefined') return;
+    const vals=pts.map(p=>p.flow);
+    const labels=pts.map(p=>fmtShort(p.date));
+    const dataMin=Math.min(...vals,SH_FLOOR), dataMax=Math.max(...vals,SH_GOAL);
+    const lo=Math.max(0,dataMin-5), hi=Math.min(100,dataMax+5);
+    chartInstances['shFlowDetailChart']=new Chart(cv.getContext('2d'),{
+      type:'line',
+      data:{ labels, datasets:[
+        { data:vals, borderColor:'#00f5a0', backgroundColor:'rgba(0,245,160,.1)',
+          borderWidth:2.5, tension:.3, fill:true, pointRadius:4, pointHoverRadius:6,
+          pointBackgroundColor:vals.map(v=>v===peak?GOOD:v===low?BAD:'#00f5a0'),
+          pointBorderColor:'#07090c', pointBorderWidth:1.5, order:1 },
+        { data:vals.map(()=>SH_GOAL), borderColor:GOOD, borderWidth:1, borderDash:[5,4], pointRadius:0, fill:false, order:2 },
+        { data:vals.map(()=>SH_FLOOR), borderColor:AMBER, borderWidth:1, borderDash:[5,4], pointRadius:0, fill:false, order:3 }
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+        plugins:{ legend:{display:false}, datalabels:{display:false},
+          tooltip:{ backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0',
+            borderColor:'#00f5a0', borderWidth:1, padding:8, displayColors:false,
+            filter:item=>item.datasetIndex===0,
+            callbacks:{ title:items=>fmt(pts[items[0].dataIndex].date),
+              label:ctx=>{
+                const v=ctx.parsed.y;
+                const status=v>=SH_GOAL?'✓ above goal':v>=SH_FLOOR?'above floor':'below floor';
+                return `${v}% flow — ${status}${v===peak?' · record high':v===low?' · record low':''}`;
+              } } } },
+        scales:{
+          y:{ min:lo, max:hi, grid:{color:'#1c2330'}, ticks:{color:'#a7b4c4',callback:v=>v+'%'} },
+          x:{ grid:{display:false}, ticks:{color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:12} }
+        }
+      }
+    });
+  },60);
+}
+
 // 3-zone summary — clickable cards, each opens a trend popup for that zone
-let _shZoneSnaps=null, _shZoneCurrent=null, _shZoneRange='all';
+let _shZoneSnaps=null, _shZoneCurrent=null, _shZoneRange='n6';
 const _shZoneGetters={
   healthy:s=>{const a=s.ageing||{};return (a.a0||0)+(a.a31||0)+(a.a61||0);},
   caution:s=>{const a=s.ageing||{};return a.a91||0;},
@@ -2712,6 +2858,19 @@ const _shZoneGetters={
 };
 const _shZoneCols={healthy:GOOD,caution:AMBER,action:'#ea580c'};
 const _shZoneLabels={healthy:'Healthy 0–90d',caution:'Caution 91–180d',action:'Action 181d+'};
+let _shZoneMetric='skus'; // 'skus' | 'pct' | 'value' — what the zone popup chart shows
+// % of total stock in this zone
+const _shZonePctGetters={
+  healthy:s=>{const t=shBucketTotal(s)||1;return +(( _shZoneGetters.healthy(s)/t)*100).toFixed(1);},
+  caution:s=>{const t=shBucketTotal(s)||1;return +(( _shZoneGetters.caution(s)/t)*100).toFixed(1);},
+  action:s=>{const t=shBucketTotal(s)||1;return +(( _shZoneGetters.action(s)/t)*100).toFixed(1);}
+};
+// £ valuation in this zone
+const _shZoneValGetters={
+  healthy:s=>shHasValuation(s)?shZoneValues(s).healthy:0,
+  caution:s=>shHasValuation(s)?shZoneValues(s).caution:0,
+  action:s=>shHasValuation(s)?shZoneValues(s).action:0
+};
 // Higher = better for Healthy; lower = better for Caution/Action
 function _shZoneGoodCol(zone,net){ return zone==='healthy'?(net>0?GOOD:BAD):(net>0?BAD:GOOD); }
 
@@ -2722,19 +2881,49 @@ function shRenderZonePopup(){
   const allSnaps=[..._shZoneSnaps].sort((a,b)=>a.date.localeCompare(b.date));
   // apply range
   let snaps=allSnaps;
-  if(_shZoneRange!=='all'){
+  if(_shZoneRange==='n6'){
+    snaps=allSnaps.slice(-6);            // last 6 snapshots by count, regardless of dates
+  } else if(_shZoneRange!=='all'){
     const days={d30:30,d90:90,d180:180}[_shZoneRange]||9999;
     const maxD=allSnaps[allSnaps.length-1]?.date;
     if(maxD){const cut=new Date(maxD+'T00:00:00');cut.setDate(cut.getDate()-days);const cs=cut.toISOString().split('T')[0];snaps=allSnaps.filter(s=>s.date>=cs);}
   }
   if(!snaps.length) snaps=allSnaps;
-  const col=_shZoneCols[zone], getter=_shZoneGetters[zone];
-  const data=snaps.map(getter);
-  const lo=Math.max(0,Math.min(...data)-5), hi=Math.max(...data)+5;
-  const first=data[0],last=data[data.length-1],net=last-first;
+  const col=_shZoneCols[zone];
+  // Pick getter + formatter by metric. Fall back to SKUs if no valuation data.
+  const hasVal = snaps.some(s=>shHasValuation(s));
+  let metric = _shZoneMetric;
+  if (metric==='value' && !hasVal) metric='skus';
+
+  // In £ mode, exclude snapshots that have NO valuation data at all — those are pre-migration
+  // records where £ was never captured, not genuine £0 readings. Plotting them as £0 drags
+  // the line down to zero and distorts the trend.
+  let chartSnaps = snaps;
+  if (metric==='value') {
+    const withVal = snaps.filter(s=>shHasValuation(s));
+    if (withVal.length) chartSnaps = withVal;
+  }
+
+  const getter = metric==='pct' ? _shZonePctGetters[zone]
+               : metric==='value' ? _shZoneValGetters[zone]
+               : _shZoneGetters[zone];
+  const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const fmtVal = metric==='pct' ? (v=>v+'%')
+               : metric==='value' ? moneyFmt
+               : (v=>v.toLocaleString());
+  const unitLabel = metric==='pct' ? '% of stock' : metric==='value' ? 'valuation' : 'SKUs';
+
+  const data=chartSnaps.map(getter);
+  const pad = metric==='value' ? Math.max(500,(Math.max(...data)-Math.min(...data))*0.15) : metric==='pct' ? 3 : 5;
+  const lo=Math.max(0,Math.min(...data)-pad), hi=Math.max(...data)+pad;
+  const first=data[0],last=data[data.length-1],net=+(last-first).toFixed(metric==='pct'?1:0);
   const peak=Math.max(...data), trough=Math.min(...data);
-  const periodLabel=snaps.length===allSnaps.length?`All data (${snaps.length} snapshots)`
-    :`${fmt(snaps[0].date)} → ${fmt(snaps[snaps.length-1].date)} (${snaps.length} snapshots)`;
+  const missingValNote = metric==='value' && chartSnaps.length<snaps.length
+    ? ` · ${snaps.length-chartSnaps.length} early snapshot${snaps.length-chartSnaps.length!==1?'s':''} without £ data hidden`
+    : '';
+  const periodLabel=(_shZoneRange==='n6'?`Last ${chartSnaps.length} snapshots`
+    :chartSnaps.length===allSnaps.length?`All data (${chartSnaps.length} snapshots)`
+    :`${fmt(chartSnaps[0].date)} → ${fmt(chartSnaps[chartSnaps.length-1].date)} (${chartSnaps.length} snapshots)`)+missingValNote;
 
   // stats — peak/trough colour depends on zone direction
   const peakCol  = zone==='healthy'?GOOD:BAD;
@@ -2742,12 +2931,23 @@ function shRenderZonePopup(){
   const netCol=_shZoneGoodCol(zone,net);
 
   const el=id=>document.getElementById(id);
-  if(el('shZonePopupTitle')) el('shZonePopupTitle').textContent=_shZoneLabels[zone]+' over time';
+  if(el('shZonePopupTitle')) el('shZonePopupTitle').textContent=_shZoneLabels[zone]+' '+unitLabel+' over time';
   if(el('shZonePopupTitle')) el('shZonePopupTitle').style.color=col;
   if(el('shZonePopupPeriod')) el('shZonePopupPeriod').textContent=periodLabel;
 
+  // metric toggle active states (hide £ button when no valuation data)
+  const mBtnVal = el('shZM_value');
+  if (mBtnVal) mBtnVal.style.display = hasVal ? '' : 'none';
+  ['skus','pct','value'].forEach(m=>{
+    const btn=el('shZM_'+m);
+    if(btn){ const on=metric===m;
+      btn.style.background=on?col+'28':'var(--s3)';
+      btn.style.color=on?col:'var(--muted2)';
+      btn.style.borderColor=on?col:'var(--border)'; }
+  });
+
   // range button active states
-  ['all','d180','d90','d30'].forEach(r=>{
+  ['n6','all','d180','d90','d30'].forEach(r=>{
     const btn=el('shZRP_'+r);
     if(btn){ btn.style.background=_shZoneRange===r?col+'28':'var(--s3)';
       btn.style.color=_shZoneRange===r?col:'var(--muted2)';
@@ -2756,11 +2956,11 @@ function shRenderZonePopup(){
 
   if(el('shZonePopupStats')) el('shZonePopupStats').innerHTML=
     `<div style="display:flex;gap:22px;flex-wrap:wrap">
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">First: <b style="color:var(--text)">${first}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Latest: <b style="color:${col}">${last}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Net: <b style="color:${netCol}">${net>0?'+':''}${net}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Peak: <b style="color:${peakCol}">${peak}</b></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Trough: <b style="color:${troughCol}">${trough}</b></span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">First: <b style="color:var(--text)">${fmtVal(first)}</b></span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Latest: <b style="color:${col}">${fmtVal(last)}</b></span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Net: <b style="color:${netCol}">${net>0?'+':''}${metric==='value'?moneyFmt(net):net}${metric==='pct'?'pp':''}</b></span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Peak: <b style="color:${peakCol}">${fmtVal(peak)}</b></span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Trough: <b style="color:${troughCol}">${fmtVal(trough)}</b></span>
     </div>`;
 
   destroyChart('shZonePopup');
@@ -2768,32 +2968,36 @@ function shRenderZonePopup(){
     const cv=el('shZonePopupChart'); if(!cv||typeof Chart==='undefined') return;
     chartInstances['shZonePopup']=new Chart(cv.getContext('2d'),{
       type:'line',
-      data:{labels:snaps.map(s=>fmtShort(s.date)),datasets:[{
+      data:{labels:chartSnaps.map(s=>fmtShort(s.date)),datasets:[{
         data, borderColor:col, backgroundColor:col+'18', borderWidth:2,
         tension:.3, fill:true, pointRadius:3.5, pointHoverRadius:6,
         pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1.5
       }]},
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
         plugins:{legend:{display:false},datalabels:{display:false},
-          tooltip:{callbacks:{title:items=>fmt(snaps[items[0].dataIndex].date),label:ctx=>ctx.parsed.y+' SKUs'}}},
+          tooltip:{callbacks:{title:items=>fmt(chartSnaps[items[0].dataIndex].date),label:ctx=>fmtVal(ctx.parsed.y)+(metric==='skus'?' SKUs':metric==='pct'?' of stock':'')}}},
         scales:{
-          y:{min:lo,max:hi,grid:{color:'#1c2330'},ticks:{color:'#a7b4c4',callback:v=>v}},
+          y:{min:lo,max:hi,grid:{color:'#1c2330'},ticks:{color:'#a7b4c4',callback:v=>metric==='value'?moneyFmt(v):metric==='pct'?v+'%':v}},
           x:{grid:{display:false},ticks:{color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:10}}
         }}
     });
   },30);
 }
 
+function shSetZoneMetricPopup(m){ _shZoneMetric=m; shRenderZonePopup(); }
+
 function shOpenZonePopup(zone){
   if(!_shZoneSnaps||!_shZoneSnaps.length) return;
   _shZoneCurrent=zone;
-  _shZoneRange='all';
+  _shZoneRange='n6';
+  _shZoneMetric='skus';
   let modal=document.getElementById('shZoneModal');
   if(!modal){
     modal=document.createElement('div');
     modal.id='shZoneModal';
     modal.style.cssText='display:none;position:fixed;inset:0;z-index:9999;background:rgba(7,9,12,.82);backdrop-filter:blur(4px);align-items:center;justify-content:center';
     const rBtn=(r,l)=>`<button id="shZRP_${r}" onclick="shSetZoneRange('${r}')" style="font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--s3);color:var(--muted2)">${l}</button>`;
+    const mBtn=(m,l)=>`<button id="shZM_${m}" onclick="shSetZoneMetricPopup('${m}')" style="font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--s3);color:var(--muted2)">${l}</button>`;
     modal.innerHTML=`<div style="background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:24px 26px;width:min(720px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.6)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span id="shZonePopupTitle" style="font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:700"></span>
@@ -2801,7 +3005,10 @@ function shOpenZonePopup(zone){
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
         <span id="shZonePopupPeriod" style="font-family:var(--mono);font-size:10px;color:var(--muted2)"></span>
-        <div style="display:flex;gap:6px">${rBtn('d30','30d')}${rBtn('d90','90d')}${rBtn('d180','6m')}${rBtn('all','All')}</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;gap:5px;padding-right:12px;border-right:1px solid var(--border)">${mBtn('skus','SKUs')}${mBtn('pct','%')}${mBtn('value','£')}</div>
+          <div style="display:flex;gap:6px">${rBtn('n6','Last 6')}${rBtn('d30','30d')}${rBtn('d90','90d')}${rBtn('d180','6m')}${rBtn('all','All')}</div>
+        </div>
       </div>
       <div style="height:260px"><canvas id="shZonePopupChart"></canvas></div>
       <div id="shZonePopupStats" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"></div>
@@ -5538,19 +5745,28 @@ function renderCompTab() {
   sellers = sellers.map(s => ({
     ...s,
     avg: s.history.length > 0 ? (s.history.reduce((a,b)=>a+b,0) / s.history.length) : 0,
-    // Get closest to start of month (1st, 2nd, then 3rd) from sellerMap data
+    // "vs 30d ago" — rolling 30-day comparison. The old calendar-month-start logic
+    // returned 0 for everyone early in a month (only one session existed that month),
+    // so this uses a rolling 30-day-ago reading which is always meaningful.
     monthStartVal: (() => {
-      // Find first session this calendar month for this seller (not just days 1-5)
-      const now = new Date();
-      const prefix = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-`;
-      const monthSessions = [...COMPETITOR_SESSIONS]
-        .filter(ses => ses.date.startsWith(prefix))
-        .sort((a,b) => a.date.localeCompare(b.date));
-      for (const sess of monthSessions) {
-        const reading = (sess.competitors||[]).find(c=>c.name.trim()===s.name);
-        if (reading && reading.pct !== undefined) return reading.pct||0;
-      }
-      return null;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffStr = cutoff.toISOString().split('T')[0];
+      // All sessions for this seller, oldest first
+      const rows = [...COMPETITOR_SESSIONS]
+        .sort((a,b) => a.date.localeCompare(b.date))
+        .map(ses => {
+          const r = (ses.competitors||[]).find(c=>c.name.trim()===s.name);
+          return r && r.pct!==undefined ? { date: ses.date, pct: r.pct||0 } : null;
+        })
+        .filter(Boolean);
+      if (!rows.length) return null;
+      // Prefer the oldest reading that is still within the last 30 days;
+      // if none in-window (sparse history), fall back to the earliest reading we have.
+      const inWindow = rows.filter(r => r.date >= cutoffStr);
+      const ref = inWindow.length ? inWindow[0] : rows[0];
+      // If the reference IS the latest reading, there's nothing to compare → null
+      return rows.length > 1 && ref.date !== rows[rows.length-1].date ? ref.pct : null;
     })(),
   }));
 
@@ -5683,10 +5899,22 @@ function renderCompTab() {
   }
   document.getElementById('compNavBadge').textContent = Object.keys(sellerMap).length;
 
+  // Hide zero-overlap (no-data / N/A) competitors from the table — they only clutter it.
+  // Keep them if the user is actively searching (so a search can still surface them).
+  const hiddenZeroCount = sellers.filter(s => s.latest === 0).length;
+  if (!search) {
+    sellers = sellers.filter(s => s.latest > 0);
+    sellers = sellers.map((s,i) => ({...s, rank: i+1})); // re-rank after filtering
+  }
+
   if (!sellers.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No competitor data yet. Use ⚙ Manage Sellers to add your list, then ⚡ Update Overlaps to log readings.</td></tr>';
     return;
   }
+
+  if (meta) meta.textContent = search
+    ? `${sellers.length} matching`
+    : `${sellers.length} active${hiddenZeroCount ? ` · ${hiddenZeroCount} no-data hidden` : ''}`;
 
   tbody.innerHTML = sellers.map(s => {
     // Trend is positive when you're catching them (overlap increasing)
@@ -5807,7 +6035,7 @@ function renderCompTab() {
       <td style="padding:8px 10px">${vsLastHtml}</td>
       <td style="padding:8px 10px;text-align:center">${vsMonthHtml}</td>
       <td style="padding:6px 10px;text-align:center">
-        <canvas id="trend_${s.name.replace(/[^\w]/g,'_')}" width="160" height="44" style="display:block;margin:0 auto;max-width:100%"></canvas>
+        <canvas id="trend_${s.name.replace(/[^\w]/g,'_')}" width="170" height="52" style="display:block;margin:0 auto;max-width:100%"></canvas>
       </td>
     </tr>
     <tr style="background:var(--s2);border-bottom:1px solid var(--border)">
@@ -5822,42 +6050,57 @@ function renderCompTab() {
       const canvas = document.getElementById(sparkId);
       if (!canvas) return;
       destroyChart(sparkId);
-      
-      // Always use full all-time history for sparkline (not range-filtered)
-      const allData = s.sparkHistory || s.history;
-      const sparkColor = s.color || '#3d9eff';
-      
+
+      // Range-filtered history so the sparkline matches the page date filter (Last 30d etc.)
+      const allData = (s.history || []).filter(v => v !== null && v !== undefined);
       if (allData.length === 0) return;
-      
-      // Calculate min/max for zoomed Y-axis
-      const validData = allData.filter(v => v !== null);
-      const minVal = Math.min(...validData);
-      const maxVal = Math.max(...validData);
-      const padding = (maxVal - minVal) * 0.1 || 2;
-      
-      chartInstances[sparkId] = new Chart(canvas.getContext('2d'), {
+
+      const sparkColor = s.color || '#3d9eff';
+      const first = allData[0], last = allData[allData.length - 1];
+      // Direction tints the trend: up = green-ish stays its color, but we emphasise endpoints
+      const minVal = Math.min(...allData);
+      const maxVal = Math.max(...allData);
+      const peakIdx = allData.indexOf(maxVal), lowIdx = allData.indexOf(minVal);
+      const spread = maxVal - minVal;
+      const padding = spread * 0.35 || 2;   // generous headroom so the curve sits mid-cell, not clipping edges
+
+      // Vertical gradient fill — richer than a flat translucent block
+      const gctx = canvas.getContext('2d');
+      const grad = gctx.createLinearGradient(0, 0, 0, canvas.height);
+      grad.addColorStop(0, sparkColor + '3a');
+      grad.addColorStop(1, sparkColor + '04');
+
+      chartInstances[sparkId] = new Chart(gctx, {
         type:'line',
-        data:{ 
-          labels: s.sparkDates||s.dates||s.history.map((_,i)=>i), 
+        data:{
+          labels: s.dates || allData.map((_,i)=>i),
           datasets:[{
             data: allData,
             borderColor: sparkColor,
-            backgroundColor: sparkColor + '33',
+            backgroundColor: grad,
             borderWidth: 2,
-            pointRadius: 2,
+            // Only show dots on the first + last point (and peak/low), hide the rest for a clean line
+            pointRadius: allData.map((_,i) =>
+              i === 0 || i === allData.length - 1 ? 3 : (i === peakIdx || i === lowIdx ? 2.5 : 0)),
             pointHoverRadius: 4,
-            pointBackgroundColor: sparkColor,
+            pointBackgroundColor: allData.map((_,i) =>
+              i === allData.length - 1 ? sparkColor
+              : i === peakIdx ? '#22c55e'
+              : i === lowIdx ? '#ff4d6d'
+              : sparkColor),
             pointBorderColor: '#07090c',
-            pointBorderWidth: 1,
+            pointBorderWidth: 1.5,
             tension: .4,
             fill: true,
           }]
         },
-        options:{ 
-          responsive:false, 
+        options:{
+          responsive:false,
+          layout:{ padding:{ top:6, bottom:4, left:4, right:4 } },
           interaction: { mode: 'nearest', intersect: false },
           plugins:{
-            legend:{display:false},
+            legend:{ display:false },
+            datalabels:{ display:false },   // ← kill the global datalabels that were overlapping the line
             tooltip:{
               enabled: true,
               backgroundColor: 'rgba(7,9,12,0.98)',
@@ -5867,21 +6110,27 @@ function renderCompTab() {
               borderWidth: 1,
               padding: 8,
               displayColors: false,
+              cornerRadius: 6,
               callbacks: {
-                title: (items) => { const lbl=items[0]?.label; return lbl||''; },
-                label: (context) => `${context.parsed.y.toFixed(1)}% overlap`
+                title: (items) => items[0]?.label || '',
+                label: (context) => {
+                  const v = context.parsed.y;
+                  const i = context.dataIndex;
+                  const tag = v === maxVal ? '  ▲ peak' : v === minVal ? '  ▼ low' : '';
+                  return `${v.toFixed(1)}% overlap${tag}`;
+                }
               }
             }
-          }, 
+          },
           scales:{
-            x:{display:false},
+            x:{ display:false },
             y:{
-              display:false, 
-              min: Math.max(0, minVal - padding), 
+              display:false,
+              min: Math.max(0, minVal - padding),
               max: Math.min(100, maxVal + padding)
             }
-          }, 
-          animation:{duration:0} 
+          },
+          animation:{ duration:0 }
         }
       });
     });
@@ -5894,8 +6143,10 @@ function highlightCompetitor(sellerName) {
   renderCompChart(snaps);
 }
 
+let _compDetailAllPts = []; // all-time pts for currently-open competitor
+let _compDetailPeak = 0, _compDetailLow = 0;
+
 function openCompetitorDetail(name){
-  // Build all-time history for this seller from full COMPETITOR_SESSIONS (not range-filtered)
   const sessions = [...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date));
   const pts = [];
   sessions.forEach(sess=>{
@@ -5904,12 +6155,15 @@ function openCompetitorDetail(name){
   });
   if (!pts.length) return;
 
+  _compDetailAllPts = pts;
   const sellerId = (sessions.flatMap(s=>s.competitors||[]).find(c=>c.name.trim()===name)||{}).sellerId||'';
   const latest = pts[pts.length-1].pct;
   const prev   = pts.length>1 ? pts[pts.length-2].pct : null;
   const diff   = prev!=null ? +(latest-prev).toFixed(1) : null;
   const pcts   = pts.map(p=>p.pct);
-  const peak   = Math.max(...pcts), low = Math.min(...pcts);
+  _compDetailPeak = Math.max(...pcts);
+  _compDetailLow  = Math.min(...pcts);
+  const peak = _compDetailPeak, low = _compDetailLow;
   const peakDate = pts[pcts.indexOf(peak)]?.date;
   const lowDate  = pts[pcts.indexOf(low)]?.date;
   const net    = pts.length>=2 ? +(pcts[pcts.length-1]-pcts[0]).toFixed(1) : null;
@@ -5917,7 +6171,6 @@ function openCompetitorDetail(name){
   const last3  = pcts.slice(-3);
   const trend3 = last3.length>=2 ? +(last3[last3.length-1]-last3[0]).toFixed(1) : null;
 
-  // Streak
   let streak=0;
   for(let i=pcts.length-1;i>=1;i--){
     const d=pcts[i]-pcts[i-1];
@@ -5929,9 +6182,7 @@ function openCompetitorDetail(name){
   const diffCol  = diff==null?NEUT:diff>0?'#22c55e':diff<0?'#ff4d6d':NEUT;
   const diffStr  = diff==null?'—':(diff>0?'▲ +':'▼ ')+Math.abs(diff)+'pp vs last';
   const threatCol= latest>=50?'#22c55e':latest>=30?'#ca8a04':'#a7b4c4';
-  const threatLabel=latest>=50?'High overlap':latest>=30?'Moderate overlap':'Low overlap';
 
-  // Compact verdict
   let verdict='';
   if(pts.length<2) verdict='First reading — baseline set.';
   else if(streak>=3) verdict=`↑ Rising ${streak} sessions in a row.`;
@@ -5962,17 +6213,22 @@ function openCompetitorDetail(name){
 
   const metaRow=`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
     ${net!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Net all-time: <b style="color:${net>0?'#22c55e':net<0?'#ff4d6d':NEUT}">${net>0?'+':''}${net}pp</b></span>`:''}
-    ${trend3!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Last 3 sessions: <b style="color:${trend3>0?'#22c55e':trend3<0?'#ff4d6d':NEUT}">${trend3>0?'+':''}${trend3}pp</b></span>`:''}
+    ${trend3!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Last 3: <b style="color:${trend3>0?'#22c55e':trend3<0?'#ff4d6d':NEUT}">${trend3>0?'+':''}${trend3}pp</b></span>`:''}
     ${streak!==0?`<span style="font-family:var(--mono);font-size:11px;color:var(--muted2)">Streak: <b style="color:${streak>0?'#22c55e':'#ff4d6d'}">${streak>0?'↑':'↓'} ${Math.abs(streak)}×</b></span>`:''}
     <span style="font-family:var(--mono);font-size:11px;color:${diffCol}">${verdict}</span>
   </div>`;
 
+  const presets=[{k:'7d',l:'Last 7d'},{k:'30d',l:'Last 30d'},{k:'90d',l:'Last 3m'},{k:'all',l:'All time'}];
+  const presetBtns=presets.map(r=>`<button onclick="setCompDetailRange('${r.k}')" id="compDetailRangeBtn_${r.k}" style="font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:6px;cursor:pointer;border:1px solid ${r.k==='30d'?'var(--g)':'var(--border)'};background:${r.k==='30d'?'var(--g2)':'none'};color:${r.k==='30d'?'var(--g)':'var(--muted2)'};transition:all .15s">${r.l}</button>`).join('');
+
   const chartSection=`<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
-    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px">Overlap % — all sessions</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2)" id="compDetailChartLabel">Overlap % — last 30 days</div>
+      <div style="display:flex;gap:6px">${presetBtns}</div>
+    </div>
     <div style="height:180px"><canvas id="compDetailChart"></canvas></div>
   </div>`;
 
-  // History table
   const tableRows=pts.slice().reverse().map((p,ri)=>{
     const realIdx=pts.length-1-ri;
     const prevPt=realIdx>0?pts[realIdx-1]:null;
@@ -5989,48 +6245,65 @@ function openCompetitorDetail(name){
   }).join('');
 
   document.getElementById('compDetailBody').innerHTML=statGrid+metaRow+chartSection+
-    `<div style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Session history</div>
-    <div style="max-height:240px;overflow-y:auto">
-    <table class="history-table">
+    `<div style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Session history — all time</div>
+    <div style="max-height:240px;overflow-y:auto"><table class="history-table">
       <thead><tr><th>Date</th><th>Overlap %</th><th>vs Previous</th></tr></thead>
       <tbody>${tableRows}</tbody>
     </table></div>`;
 
   document.getElementById('compDetailModal').classList.add('open');
-
-  // Draw chart after DOM settles
-  setTimeout(()=>{
-    destroyChart('compDetailChart');
-    const cv=document.getElementById('compDetailChart');
-    if(!cv||typeof Chart==='undefined') return;
-    const vals=pts.map(p=>p.pct);
-    const labels=pts.map(p=>fmtShort(p.date));
-    const lo=Math.max(0,Math.min(...vals)-Math.max(3,(Math.max(...vals)-Math.min(...vals))*0.3));
-    const hi=Math.min(100,Math.max(...vals)+Math.max(3,(Math.max(...vals)-Math.min(...vals))*0.3));
-    chartInstances['compDetailChart']=new Chart(cv.getContext('2d'),{
-      type:'line',
-      data:{ labels, datasets:[{
-        data:vals, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.1)',
-        borderWidth:2, tension:.3, fill:true,
-        pointRadius:3, pointHoverRadius:5,
-        pointBackgroundColor: vals.map(v=>v===peak?'#ff4d6d':v===low?'#22c55e':'#ffd166'),
-        pointBorderColor:'#07090c', pointBorderWidth:1.5
-      }]},
-      options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-        plugins:{ legend:{display:false}, datalabels:{display:false},
-          tooltip:{ backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0',
-            borderColor:'#ffd166', borderWidth:1, padding:8, displayColors:false,
-            callbacks:{ title:items=>fmt(pts[items[0].dataIndex].date),
-              label:ctx=>`${ctx.parsed.y.toFixed(1)}% overlap${ctx.parsed.y===peak?' ← record high':ctx.parsed.y===low?' ← record low':''}` } } },
-        scales:{
-          y:{ min:lo, max:hi, grid:{color:'#1c2330'}, ticks:{color:'#a7b4c4',callback:v=>v+'%'} },
-          x:{ grid:{display:false}, ticks:{color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:10} }
-        }
-      }
-    });
-  },60);
+  setTimeout(()=>drawCompDetailChart('30d'), 60);
 }
 
+function setCompDetailRange(range){
+  const labels={'7d':'last 7 days','30d':'last 30 days','90d':'last 3 months','all':'all time'};
+  ['7d','30d','90d','all'].forEach(k=>{
+    const btn=document.getElementById('compDetailRangeBtn_'+k);
+    if(!btn) return;
+    const active=k===range;
+    btn.style.borderColor=active?'var(--g)':'var(--border)';
+    btn.style.background=active?'var(--g2)':'none';
+    btn.style.color=active?'var(--g)':'var(--muted2)';
+  });
+  const lbl=document.getElementById('compDetailChartLabel');
+  if(lbl) lbl.textContent=`Overlap % — ${labels[range]||range}`;
+  drawCompDetailChart(range);
+}
+
+function drawCompDetailChart(range){
+  destroyChart('compDetailChart');
+  const cv=document.getElementById('compDetailChart');
+  if(!cv||typeof Chart==='undefined') return;
+  let filtered=_compDetailAllPts;
+  if(range!=='all'){
+    const days={'7d':7,'30d':30,'90d':90}[range]||30;
+    const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-days);
+    const cutoffStr=cutoff.toISOString().split('T')[0];
+    filtered=_compDetailAllPts.filter(p=>p.date>=cutoffStr);
+  }
+  if(!filtered.length) filtered=_compDetailAllPts;
+  const vals=filtered.map(p=>p.pct);
+  const labels=filtered.map(p=>fmtShort(p.date));
+  const peak=_compDetailPeak, low=_compDetailLow;
+  const lo=Math.max(0,Math.min(...vals)-Math.max(3,(Math.max(...vals)-Math.min(...vals))*0.3));
+  const hi=Math.min(100,Math.max(...vals)+Math.max(3,(Math.max(...vals)-Math.min(...vals))*0.3));
+  chartInstances['compDetailChart']=new Chart(cv.getContext('2d'),{
+    type:'line',
+    data:{ labels, datasets:[{ data:vals, borderColor:'#ffd166', backgroundColor:'rgba(255,209,102,.1)',
+      borderWidth:2, tension:.3, fill:true, pointRadius:3, pointHoverRadius:5,
+      pointBackgroundColor:vals.map(v=>v===peak?'#ff4d6d':v===low?'#22c55e':'#ffd166'),
+      pointBorderColor:'#07090c', pointBorderWidth:1.5 }]},
+    options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{display:false}, datalabels:{display:false},
+        tooltip:{ backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0',
+          borderColor:'#ffd166', borderWidth:1, padding:8, displayColors:false,
+          callbacks:{ title:items=>fmt(filtered[items[0].dataIndex].date),
+            label:ctx=>`${ctx.parsed.y.toFixed(1)}% overlap${ctx.parsed.y===peak?' ← all-time high':ctx.parsed.y===low?' ← all-time low':''}` } } },
+      scales:{ y:{ min:lo,max:hi,grid:{color:'#1c2330'},ticks:{color:'#a7b4c4',callback:v=>v+'%'} },
+        x:{ grid:{display:false},ticks:{color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:10} } }
+    }
+  });
+}
 function toggleCompetitor(sellerName) {
   if (trackedCompetitors.has(sellerName)) {
     trackedCompetitors.delete(sellerName);
@@ -6045,20 +6318,20 @@ function renderCompChart(snaps) {
   const chartCtx = ctx.getContext('2d');
   const tag = document.getElementById('compChartTag');
 
-  console.log('renderCompChart called. COMPETITOR_SESSIONS.length:', COMPETITOR_SESSIONS.length);
-  console.log('COMPETITOR_SESSIONS:', COMPETITOR_SESSIONS);
+  // Respect the page date range (Last 30d default) instead of using all sessions
+  const rangedSessions = compSessionsInRange();
 
-  if (COMPETITOR_SESSIONS.length < 2) {
-    tag.textContent = 'Need 2+ competitor sessions';
-    console.log('Not enough sessions, showing message');
+  if (rangedSessions.length < 2) {
+    tag.textContent = 'Need 2+ sessions in range';
+    chartCtx.clearRect(0,0,chartCtx.canvas.width,chartCtx.canvas.height);
     chartCtx.fillStyle = '#8b99ab'; chartCtx.font = "11px 'DM Mono'"; chartCtx.textAlign='center';
-    chartCtx.fillText('Add 2+ competitor sessions to see trends', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
+    chartCtx.fillText('Add 2+ competitor sessions in this date range to see trends', chartCtx.canvas.width/2, chartCtx.canvas.height/2);
     return;
   }
 
-  // Build competitor dataset from COMPETITOR_SESSIONS
+  // Build competitor dataset from range-filtered sessions
   const sellerMap = {};
-  COMPETITOR_SESSIONS.forEach(session => {
+  rangedSessions.forEach(session => {
     (session.competitors||[]).forEach(c => {
       const key = c.name.trim();
       if (!sellerMap[key]) sellerMap[key] = { sellerId: c.sellerId||'', data: [] };
@@ -6086,7 +6359,7 @@ function renderCompChart(snaps) {
 
   // DEDUPLICATE: Merge sessions with same date into one
   const mergedSessionMap = {};
-  COMPETITOR_SESSIONS.forEach(session => {
+  rangedSessions.forEach(session => {
     if (!mergedSessionMap[session.date]) {
       mergedSessionMap[session.date] = { date: session.date, competitors: [] };
     }
@@ -6387,6 +6660,23 @@ function renderCompInsights(snaps) {
     </div>`;
 }
 
+async function deleteCompetitorSession(date) {
+  const sess = COMPETITOR_SESSIONS.find(s => s.date === date);
+  const n = sess ? (sess.competitors||[]).length : 0;
+  if (!confirm(`Delete the competitor session from ${fmt(date)}? This removes ${n} reading${n!==1?'s':''} for that date. This can't be undone.`)) return;
+  COMPETITOR_SESSIONS = COMPETITOR_SESSIONS.filter(s => s.date !== date);
+  if (window._supabaseDeleteSession) {
+    showSyncStatus('loading');
+    const ok = await window._supabaseDeleteSession(date);
+    showSyncStatus(ok ? 'saved' : 'error');
+  }
+  renderCompHistory();
+  renderCompTab();
+  const badge = document.getElementById('compNavBadge');
+  if (badge) badge.textContent = new Set(COMPETITOR_SESSIONS.map(s=>s.date)).size;
+  showToast(`Deleted session from ${fmt(date)}`);
+}
+
 function renderCompHistory() {
   const search = document.getElementById('compHistSearch')?.value.toLowerCase() || '';
   const hFrom = document.getElementById('compHistFrom')?.value || '';
@@ -6577,7 +6867,7 @@ function renderHistory() {
       <td>${s.totalUnits||'—'}</td>
       <td style="color:${over180>0?'var(--r)':'var(--muted2)'}">${over180||0}</td>
       <td>${winPct}</td>
-      <td class="notes-cell" title="${s.notes||''}">${s.notes||'—'}</td>
+      <td class="notes-cell" title="${escapeHtmlImp(s.notes||'')}">${s.notes?escapeHtmlImp(s.notes):'—'}</td>
       <td><div class="tbl-actions">
         <button class="tbl-btn" onclick="editSnap(${realIdx})">Edit</button>
         <button class="tbl-btn del" onclick="deleteSnap(${realIdx})">Delete</button>
@@ -6709,7 +6999,6 @@ async function saveBulkUpdate() {
     const data = await window._supabaseLoad();
     if (data) {
       COMPETITOR_SESSIONS = data.competitorSessions || [];
-      console.log('Reloaded competitor sessions:', COMPETITOR_SESSIONS);
     }
   } catch (err) {
     console.error('Auto-refresh failed:', err);
@@ -6812,7 +7101,6 @@ async function saveSellerList() {
     const data = await window._supabaseLoad();
     if (data) {
       SELLERS = data.sellers || [];
-      console.log('Reloaded sellers with correct order:', SELLERS);
     }
   } catch (err) {
     console.error('Failed to reload sellers:', err);
@@ -7971,8 +8259,12 @@ function renderProviderKpis({series, totalSkus, totalValuation, largest, grower,
     </div>
   `;
 
-  // Row 2 — separate grid so grid-column spans work correctly
+  // Row 2 — separate grid so grid-column spans work correctly.
+  // Remove any previously-inserted row2 first, or it stacks a new copy every re-render.
+  const oldRow2 = document.getElementById('provKpiRow2');
+  if (oldRow2) oldRow2.remove();
   const row2 = document.createElement('div');
+  row2.id = 'provKpiRow2';
   row2.style.cssText = `display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:16px`;
   row2.innerHTML = `
     <div style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${concCol};border-radius:12px;padding:18px 20px">
@@ -8213,70 +8505,7 @@ function setProvCardMetric(m){
 
 // ── Provider tab: per-provider mini trend cards, Stock Health zone-card style ──
 const PROV_MINI_PALETTE = ['#00f5a0','#3d9eff','#ffd166','#c084fc','#ff8c42','#22c55e','#ef4444','#ca8a04','#2dd4bf','#f472b6'];
-let provMiniShowAll = false;
 function provMiniColor(i){ return PROV_MINI_PALETTE[i % PROV_MINI_PALETTE.length]; }
-function toggleProvMiniGridView(){
-  provMiniShowAll = !provMiniShowAll;
-  renderProviderTab();
-}
-function renderProviderMiniGrid(series){
-  const card=document.getElementById('provMiniGridCard');
-  const wrap=document.getElementById('provMiniGrid');
-  const tag=document.getElementById('provMiniGridTag');
-  const toggleBtn=document.getElementById('provMiniGridToggle');
-  if (!card || !wrap) return;
-
-  // Only providers with at least 2 snapshots have a meaningful trend line to show
-  const withTrend = series.filter(s=>s.points.length>=2).slice().sort((a,b)=>b.current-a.current);
-  if (!withTrend.length){ card.style.display='none'; return; }
-  card.style.display='';
-
-  const CAP=6;
-  const showing = provMiniShowAll ? withTrend : withTrend.slice(0,CAP);
-  if (tag) tag.textContent = `${showing.length} of ${withTrend.length}`;
-  if (toggleBtn){
-    toggleBtn.style.display = withTrend.length>CAP ? '' : 'none';
-    toggleBtn.textContent = provMiniShowAll ? 'Show less' : `Show all ${withTrend.length}`;
-  }
-
-  wrap.innerHTML = showing.map((s,i)=>{
-    const col=provMiniColor(i);
-    const safe=s.provider.replace(/[^\w]/g,'_');
-    const esc=s.provider.replace(/'/g,"\\'");
-    const dCol=s.diff==null?NEUT:s.diff>0?GOOD:s.diff<0?BAD:NEUT;
-    const dStr=s.diff==null?'—':(s.diff>0?'▲ +':s.diff<0?'▼ ':'→ ')+Math.abs(s.diff);
-    return `<div class="prov-mini-card" style="--mc:${col}" onclick="openProviderDetail('${esc}')">
-      <div class="pmc-hd">
-        <span class="pmc-name" title="${escapeHtmlImp(s.provider)}">${escapeHtmlImp(s.provider)}</span>
-        <span class="pmc-delta" style="color:${dCol}">${dStr}</span>
-      </div>
-      <div class="pmc-val">${s.current.toLocaleString()} <span style="font-size:10px;color:var(--muted2);font-weight:400">SKUs</span></div>
-      <div class="pmc-chart"><canvas id="provMini_${safe}"></canvas></div>
-    </div>`;
-  }).join('');
-
-  setTimeout(()=>{
-    showing.forEach((s,i)=>{
-      const cv=document.getElementById('provMini_'+s.provider.replace(/[^\w]/g,'_'));
-      if (!cv || typeof Chart==='undefined') return;
-      const id='provMini_'+s.provider.replace(/[^\w]/g,'_');
-      destroyChart(id);
-      const col=provMiniColor(i);
-      const data=s.points.map(p=>p.skus);
-      const labels=s.points.map(p=>fmtShort(p.date));
-      const lo=Math.max(0,Math.min(...data)-Math.max(1,Math.round(Math.min(...data)*0.1)));
-      const hi=Math.max(...data)+Math.max(1,Math.round(Math.max(...data)*0.1));
-      chartInstances[id]=new Chart(cv.getContext('2d'),{
-        type:'line',
-        data:{ labels, datasets:[{ data, borderColor:col, backgroundColor:col+'18', borderWidth:1.6, tension:.3, fill:true, pointRadius:2, pointHoverRadius:4, pointBackgroundColor:col, pointBorderColor:'#07090c', pointBorderWidth:1.5 }] },
-        options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-          plugins:{ legend:{display:false}, datalabels:{display:false},
-            tooltip:{ callbacks:{ title:items=>fmt(s.points[items[0].dataIndex].date), label:item=>`${item.parsed.y.toLocaleString()} SKUs` } } },
-          scales:{ y:{ min:lo, max:hi, display:false }, x:{ display:false } } }
-      });
-    });
-  },60);
-}
 
 function renderProviderTrendChart(series){
   const ctx=document.getElementById('provTrendCanvas'); if(!ctx) return;
@@ -8457,7 +8686,7 @@ function provDetailHtml(s){
       <td style="font-weight:700">${p.skus.toLocaleString()}</td>
       <td style="color:${dColor}">${dStr}</td>
       ${s.hasValuation?`<td style="color:var(--muted2)">${p.value?moneyFmt(p.value):'—'}</td>`:''}
-      <td style="color:var(--muted2)">${p.notes||'—'}</td>
+      <td style="color:var(--muted2)">${p.notes?escapeHtmlImp(p.notes):'—'}</td>
       <td><button class="tbl-btn del" onclick="deleteProviderReading('${p.date}','${s.provider.replace(/'/g,"\\'")}')">Delete</button></td>
     </tr>`;
   }).join('');
@@ -8487,38 +8716,112 @@ function provDrawDetailChart(s){
   if(!dc) return;
   const isValue = _provDetailMetric==='value';
   const col = isValue ? '#3d9eff' : '#00f5a0';
-  const data = s.points.map(p=>isValue?p.value:p.skus);
-  const opts=chartOpts();
-  opts.plugins.legend={display:false};
-  opts.plugins.datalabels={display:false};
-  opts.scales.y.beginAtZero=true;
-  opts.plugins.tooltip.callbacks={ label:item=> isValue ? '£'+item.parsed.y.toLocaleString() : item.parsed.y.toLocaleString()+' SKUs' };
-  chartInstances['provDetail']=new Chart(dc.getContext('2d'),{
+  const data = s.points.map(p=>isValue?(p.value||0):p.skus);
+  const labels = s.points.map(p=>fmtShort(p.date));
+  const dates  = s.points.map(p=>p.date);
+  const peak = Math.max(...data), low = Math.min(...data);
+  const peakIdx = data.indexOf(peak), lowIdx = data.indexOf(low);
+
+  // Tight zoom so real movement is visible (not crushed by a 0-based axis)
+  const spread = peak - low;
+  const pad = isValue ? Math.max(spread*0.25, peak*0.03, 100) : Math.max(spread*0.25, 2);
+  const ymin = Math.max(0, low - pad);
+  const ymax = peak + pad;
+
+  // Gradient fill under the line
+  const ctx = dc.getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,0,240);
+  grad.addColorStop(0, col+'40');
+  grad.addColorStop(1, col+'03');
+
+  const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
+
+  chartInstances['provDetail']=new Chart(ctx,{
     type:'line',
-    data:{ labels:s.points.map(p=>fmtShort(p.date)), datasets:[{ label:isValue?'Valuation':'SKUs', data, borderColor:col, backgroundColor:col+'1f', fill:true, tension:.3, pointRadius:3, pointHoverRadius:5, borderWidth:2 }] },
-    options:opts
+    data:{ labels, datasets:[{
+      label:isValue?'Valuation':'SKUs',
+      data,
+      borderColor:col,
+      backgroundColor:grad,
+      fill:true,
+      tension:.35,
+      borderWidth:2.5,
+      pointRadius: data.map((_,i)=> i===peakIdx||i===lowIdx ? 5 : 3),
+      pointHoverRadius:7,
+      pointBackgroundColor: data.map((_,i)=> i===peakIdx?(isValue?'#3d9eff':GOOD) : i===lowIdx?BAD : col),
+      pointBorderColor:'#07090c',
+      pointBorderWidth:1.5,
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:false},
+        datalabels:{display:false},
+        tooltip:{
+          backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0',
+          borderColor:col, borderWidth:1, padding:10, displayColors:false, cornerRadius:8,
+          titleFont:{size:12,weight:'700'}, bodyFont:{size:12},
+          callbacks:{
+            title:items=>fmt(dates[items[0].dataIndex]),
+            label:ctx=>{
+              const v=ctx.parsed.y;
+              const base = isValue ? moneyFmt(v) : v.toLocaleString()+' SKUs';
+              const tag = v===peak?'  ▲ peak' : v===low?'  ▼ low' : '';
+              return base+tag;
+            },
+            afterLabel:ctx=>{
+              const i=ctx.dataIndex;
+              if(i===0) return 'First reading';
+              const d=data[i]-data[i-1];
+              if(d===0) return 'No change vs previous';
+              const arrow=d>0?'▲':'▼';
+              return `${arrow} ${d>0?'+':''}${isValue?moneyFmt(d):d} vs previous`;
+            }
+          }
+        }
+      },
+      scales:{
+        y:{ min:ymin, max:ymax, grid:{color:'rgba(255,255,255,.05)'},
+            ticks:{color:'#a7b4c4',font:{size:11},maxTicksLimit:6,
+              callback:v=>isValue?('£'+(v>=1000?(v/1000).toFixed(1)+'k':v)) : v} },
+        x:{ grid:{display:false}, ticks:{color:'#a7b4c4',font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:8} }
+      }
+    }
   });
 }
 
 function provDrawDetailMiniCharts(s){
   if (!s.hasValuation) return;
   const labels=s.points.map(p=>fmtShort(p.date));
+  const dates=s.points.map(p=>p.date);
   const series=[
     {id:'provMiniSkus', data:s.points.map(p=>p.skus), col:GOOD, unit:' SKUs'},
-    {id:'provMiniValue', data:s.points.map(p=>p.value), col:'#3d9eff', unit:'', prefix:'£'}
+    {id:'provMiniValue', data:s.points.map(p=>p.value||0), col:'#3d9eff', unit:'', prefix:'£'}
   ];
   series.forEach(cfg=>{
     const cv=document.getElementById(cfg.id);
     if(!cv||typeof Chart==='undefined') return;
     destroyChart(cfg.id);
-    const lo=Math.max(0,Math.min(...cfg.data)*0.9), hi=Math.max(...cfg.data)*1.1||1;
-    chartInstances[cfg.id]=new Chart(cv.getContext('2d'),{
+    const peak=Math.max(...cfg.data), low=Math.min(...cfg.data);
+    const peakIdx=cfg.data.indexOf(peak), lowIdx=cfg.data.indexOf(low);
+    const spread=peak-low;
+    const pad=Math.max(spread*0.25, cfg.prefix?peak*0.03:2, cfg.prefix?100:1);
+    const lo=Math.max(0,low-pad), hi=peak+pad;
+    const ctx=cv.getContext('2d');
+    const grad=ctx.createLinearGradient(0,0,0,140);
+    grad.addColorStop(0,cfg.col+'38'); grad.addColorStop(1,cfg.col+'02');
+    chartInstances[cfg.id]=new Chart(ctx,{
       type:'line',
-      data:{ labels, datasets:[{ data:cfg.data, borderColor:cfg.col, backgroundColor:cfg.col+'18', borderWidth:1.6, tension:.3, fill:true, pointRadius:2, pointHoverRadius:4, pointBackgroundColor:cfg.col, pointBorderColor:'#07090c', pointBorderWidth:1.5 }] },
+      data:{ labels, datasets:[{ data:cfg.data, borderColor:cfg.col, backgroundColor:grad, borderWidth:2, tension:.35, fill:true,
+        pointRadius:cfg.data.map((_,i)=>i===peakIdx||i===lowIdx?4:2), pointHoverRadius:5,
+        pointBackgroundColor:cfg.data.map((_,i)=>i===peakIdx?cfg.col:i===lowIdx?BAD:cfg.col),
+        pointBorderColor:'#07090c', pointBorderWidth:1.5 }] },
       options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
         plugins:{ legend:{display:false}, datalabels:{display:false},
-          tooltip:{ callbacks:{ title:items=>fmt(s.points[items[0].dataIndex].date), label:item=>`${cfg.prefix||''}${item.parsed.y.toLocaleString()}${cfg.unit||''}` } } },
-        scales:{ y:{ min:lo, max:hi, display:true, grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#a7b4c4',font:{size:10},maxTicksLimit:4} },
+          tooltip:{ backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0', borderColor:cfg.col, borderWidth:1, padding:8, displayColors:false, cornerRadius:6,
+            callbacks:{ title:items=>fmt(dates[items[0].dataIndex]), label:item=>`${cfg.prefix||''}${item.parsed.y.toLocaleString()}${cfg.unit||''}` } } },
+        scales:{ y:{ min:lo, max:hi, display:true, grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#a7b4c4',font:{size:10},maxTicksLimit:4, callback:v=>cfg.prefix?('£'+(v>=1000?(v/1000).toFixed(1)+'k':v)):v} },
           x:{ display:false } } }
     });
   });
