@@ -22,108 +22,182 @@ if (window.supabase) {
   console.warn('Supabase library not loaded - using local fallback');
 }
 
+// Signature of a competitor session's readings — used to skip rewriting sessions that
+// haven't changed. Sorted so reordering alone doesn't count as a change.
+window._readingSigs = new Map();
+function _readingSig(session) {
+  return (session?.competitors || [])
+    .map(c => `${c.sellerId}:${c.name}:${Number(c.pct)}`)
+    .sort()
+    .join('|');
+}
+
 // Save data to Supabase
-window._supabaseSave = async function(snapshots, sellers, competitorSessions, providerSnapshots) {
+//
+// Every table is written in ONE batched request rather than one request per row. The old
+// per-row loops meant a single save fired ~380 sequential round-trips and took over two
+// minutes — and because provider snapshots were written first and inventory snapshots
+// second, anything that cut the run short (closing the modal, a refresh, a dropped
+// connection) left the provider rows saved and the snapshot silently missing.
+window._supabaseSave = async function(snapshots, sellers, competitorSessions, providerSnapshots, onStep) {
+  const step = (key, state, note) => { try { onStep && onStep(key, state, note); } catch(_) {} };
   try {
+    if (!supabase) {
+      step('snapshot', 'fail');
+      return { ok: false, errors: ['Supabase client not loaded — check your connection and reload the page.'] };
+    }
     const errors = [];
+
+    // Postgres rejects a batch that touches the same conflict key twice, so collapse
+    // duplicates first (last one wins, matching the old row-by-row behaviour).
+    const dedupe = (rows, keyOf) => {
+      const m = new Map();
+      for (const r of rows) m.set(keyOf(r), r);
+      return [...m.values()];
+    };
+
+    // Save snapshots FIRST — this is the row the whole entry exists for, so it goes in
+    // before anything else rather than sitting behind a queue of other writes.
+    let snapRowCount = 0, provRowCount = 0;
+    if (snapshots && snapshots.length > 0) {
+      const rows = dedupe(snapshots.filter(s => s.date), s => s.date).map(snap => ({
+        date: snap.date,
+        asins: snap.asins,
+        skus: snap.skus,
+        avg_cost: snap.avgCost,
+        stock_value: snap.stockValue,
+        total_units: snap.totalUnits,
+        ageing_a0: snap.ageing?.a0,
+        ageing_a31: snap.ageing?.a31,
+        ageing_a61: snap.ageing?.a61,
+        ageing_a91: snap.ageing?.a91,
+        ageing_a181: snap.ageing?.a181,
+        ageing_a271: snap.ageing?.a271,
+        ageing_a365: snap.ageing?.a365,
+        ageing_value_a0: snap.ageingValue?.a0||0,
+        ageing_value_a31: snap.ageingValue?.a31||0,
+        ageing_value_a61: snap.ageingValue?.a61||0,
+        ageing_value_a91: snap.ageingValue?.a91||0,
+        ageing_value_a181: snap.ageingValue?.a181||0,
+        ageing_value_a271: snap.ageingValue?.a271||0,
+        ageing_value_a365: snap.ageingValue?.a365||0,
+        repricer_total: snap.repricer?.total,
+        repricer_winning: snap.repricer?.winning,
+        repricer_win_pct: snap.repricer?.winPct,
+        repricer_matching: snap.repricer?.matching,
+        repricer_match_pct: snap.repricer?.matchPct,
+        notes: snap.notes
+      }));
+      snapRowCount = rows.length;
+      if (rows.length) {
+        const { error } = await supabase.from('bdl_snapshots').upsert(rows, { onConflict: 'date' });
+        if (error) { errors.push(`Snapshots: ${error.message}`); step('snapshot', 'fail'); return { ok: false, errors }; }
+      }
+    }
+    step('snapshot', 'done', `${snapRowCount} rows synced`);
 
     // Save provider snapshots (one row per provider per date)
     if (providerSnapshots && providerSnapshots.length > 0) {
-      for (const p of providerSnapshots) {
-        if (!p.date || !p.provider) continue;
-        const { error } = await supabase.from('bdl_provider_snapshots').upsert({
-          date: p.date,
-          provider_name: p.provider,
-          sku_count: p.skus || 0,
-          total_valuation: p.value || 0,
-          notes: p.notes || null
-        }, { onConflict: 'date,provider_name' });
-        if (error) errors.push(`Provider snapshot (${p.provider}): ${error.message}`);
+      const rows = dedupe(
+        providerSnapshots.filter(p => p.date && p.provider),
+        p => `${p.date}|${p.provider}`
+      ).map(p => ({
+        date: p.date,
+        provider_name: p.provider,
+        sku_count: p.skus || 0,
+        total_valuation: p.value || 0,
+        notes: p.notes || null
+      }));
+      provRowCount = rows.length;
+      if (rows.length) {
+        const { error } = await supabase.from('bdl_provider_snapshots').upsert(rows, { onConflict: 'date,provider_name' });
+        if (error) { errors.push(`Provider snapshots: ${error.message}`); step('providers', 'fail'); return { ok: false, errors }; }
       }
     }
+    step('providers', 'done', `${provRowCount} rows synced`);
 
-    // Save snapshots
-    if (snapshots && snapshots.length > 0) {
-      for (const snap of snapshots) {
-        const { error } = await supabase.from('bdl_snapshots').upsert({
-          date: snap.date,
-          asins: snap.asins,
-          skus: snap.skus,
-          avg_cost: snap.avgCost,
-          stock_value: snap.stockValue,
-          total_units: snap.totalUnits,
-          ageing_a0: snap.ageing?.a0,
-          ageing_a31: snap.ageing?.a31,
-          ageing_a61: snap.ageing?.a61,
-          ageing_a91: snap.ageing?.a91,
-          ageing_a181: snap.ageing?.a181,
-          ageing_a271: snap.ageing?.a271,
-          ageing_a365: snap.ageing?.a365,
-          ageing_value_a0: snap.ageingValue?.a0||0,
-          ageing_value_a31: snap.ageingValue?.a31||0,
-          ageing_value_a61: snap.ageingValue?.a61||0,
-          ageing_value_a91: snap.ageingValue?.a91||0,
-          ageing_value_a181: snap.ageingValue?.a181||0,
-          ageing_value_a271: snap.ageingValue?.a271||0,
-          ageing_value_a365: snap.ageingValue?.a365||0,
-          repricer_total: snap.repricer?.total,
-          repricer_winning: snap.repricer?.winning,
-          repricer_win_pct: snap.repricer?.winPct,
-          repricer_matching: snap.repricer?.matching,
-          repricer_match_pct: snap.repricer?.matchPct,
-          notes: snap.notes
-        }, { onConflict: 'date' });
-        if (error) errors.push(`Snapshot (${snap.date}): ${error.message}`);
-      }
-    }
-    
     // Save sellers with order
     if (sellers && sellers.length > 0) {
-      for (let idx = 0; idx < sellers.length; idx++) {
-        const seller = sellers[idx];
-        await supabase.from('bdl_sellers').upsert({
-          seller_id: seller.sellerId,
-          name: seller.name,
-          seller_order: idx
-        }, { onConflict: 'seller_id' });
-      }
-    }
-    
-    // Save competitor sessions with readings
-    if (competitorSessions && competitorSessions.length > 0) {
-      for (const session of competitorSessions) {
-        // Upsert session
-        const { data: sessionData, error: sessError } = await supabase
-          .from('bdl_competitor_sessions')
-          .upsert({ date: session.date }, { onConflict: 'date' })
-          .select()
-          .single();
-        
-        if (sessError) throw sessError;
-        
-        // Delete old readings for this session
-        await supabase.from('bdl_competitor_readings').delete().eq('session_id', sessionData.id);
-        
-        // Insert new readings
-        if (session.competitors && session.competitors.length > 0) {
-          await supabase.from('bdl_competitor_readings').insert(
-            session.competitors.map(c => ({
-              session_id: sessionData.id,
-              seller_id: c.sellerId,
-              seller_name: c.name,
-              overlap_pct: c.pct
-            }))
-          );
+      const rows = dedupe(
+        sellers.map((s, idx) => ({ seller_id: s.sellerId, name: s.name, seller_order: idx }))
+               .filter(r => r.seller_id),
+        r => r.seller_id
+      );
+      if (rows.length) {
+        const { error } = await supabase.from('bdl_sellers').upsert(rows, { onConflict: 'seller_id' });
+        if (error) errors.push(`Sellers: ${error.message}`);
+        else {
+          // Remove sellers deleted from the list. Upserting alone left them in the table, so
+          // a removed seller came straight back on the next reload. Only ever runs with the
+          // full list in hand (SELLERS is always loaded or rebuilt whole), never on a partial.
+          const keep = new Set(rows.map(r => r.seller_id));
+          const { data: existingSellers, error: selErr } = await supabase.from('bdl_sellers').select('seller_id');
+          if (!selErr) {
+            const drop = (existingSellers || []).map(r => r.seller_id).filter(id => id && !keep.has(id));
+            if (drop.length) {
+              const { error: delErr } = await supabase.from('bdl_sellers').delete().in('seller_id', drop);
+              if (delErr) errors.push(`Removing sellers: ${delErr.message}`);
+            }
+          }
         }
       }
     }
-    
+
+    // Save competitor sessions with readings.
+    // Readings have no natural key, so a session's readings can only be rebuilt (delete then
+    // insert) — which means an interrupted save could delete the old readings and never insert
+    // the new ones. Only sessions whose readings actually changed are rebuilt, so untouched
+    // history is never put at risk by an unrelated save.
+    if (competitorSessions && competitorSessions.length > 0) {
+      const sessRows = dedupe(competitorSessions.filter(s => s.date), s => s.date).map(s => ({ date: s.date }));
+      const { data: savedSessions, error: sessError } = await supabase
+        .from('bdl_competitor_sessions')
+        .upsert(sessRows, { onConflict: 'date' })
+        .select();
+
+      if (sessError) {
+        errors.push(`Competitor sessions: ${sessError.message}`);
+      } else {
+        const idByDate = new Map((savedSessions || []).map(r => [r.date, r.id]));
+        for (const session of competitorSessions) {
+          const sessionId = idByDate.get(session.date);
+          if (!sessionId) continue;
+
+          const sig = _readingSig(session);
+          if (window._readingSigs.get(session.date) === sig) continue; // unchanged — leave it alone
+
+          const { error: delError } = await supabase.from('bdl_competitor_readings').delete().eq('session_id', sessionId);
+          if (delError) { errors.push(`Competitor readings (${session.date}): ${delError.message}`); continue; }
+
+          if (session.competitors && session.competitors.length > 0) {
+            const { error: insError } = await supabase.from('bdl_competitor_readings').insert(
+              session.competitors.map(c => ({
+                session_id: sessionId,
+                seller_id: c.sellerId,
+                seller_name: c.name,
+                overlap_pct: c.pct
+              }))
+            );
+            if (insError) { errors.push(`Competitor readings (${session.date}): ${insError.message}`); continue; }
+          }
+          window._readingSigs.set(session.date, sig);
+        }
+      }
+    }
+    step('competitors', errors.length ? 'fail' : 'done', `${(sellers||[]).length} sellers · ${(competitorSessions||[]).length} sessions`);
+
     return errors.length === 0 ? true : { ok: false, errors };
   } catch(e) {
     console.error('Supabase save error:', e);
+    step('snapshot', 'fail');
     return { ok: false, errors: [e.message || String(e)] };
   }
 };
+
+// NOTE ON DELETES: supabase-js does not throw when a delete is rejected — it resolves with
+// an { error } object. Every one of these used to return true regardless, so a blocked or
+// failed delete still reported success, the row vanished from the screen, and it came back
+// on the next refresh. They all check the error now.
 
 // Delete a competitor session (and its readings) by date
 window._supabaseDeleteSession = async function(date) {
@@ -132,9 +206,12 @@ window._supabaseDeleteSession = async function(date) {
     // Look up the session id first so we can remove its readings, then the session row
     const { data: sess } = await supabase.from('bdl_competitor_sessions').select('id').eq('date', date).single();
     if (sess && sess.id) {
-      await supabase.from('bdl_competitor_readings').delete().eq('session_id', sess.id);
+      const { error: rErr } = await supabase.from('bdl_competitor_readings').delete().eq('session_id', sess.id);
+      // Stop if the readings survived — deleting the session alone would orphan them.
+      if (rErr) { console.error('Session readings delete failed:', rErr.message); return false; }
     }
-    await supabase.from('bdl_competitor_sessions').delete().eq('date', date);
+    const { error } = await supabase.from('bdl_competitor_sessions').delete().eq('date', date);
+    if (error) { console.error('Session delete failed:', error.message); return false; }
     return true;
   } catch(e) {
     console.error('Supabase session delete error:', e);
@@ -146,7 +223,8 @@ window._supabaseDeleteSession = async function(date) {
 window._supabaseDeleteSnapshot = async function(date) {
   try {
     if (!supabase) return false;
-    await supabase.from('bdl_snapshots').delete().eq('date', date);
+    const { error } = await supabase.from('bdl_snapshots').delete().eq('date', date);
+    if (error) { console.error('Snapshot delete failed:', error.message); return false; }
     return true;
   } catch(e) {
     console.error('Supabase snapshot delete error:', e);
@@ -158,7 +236,8 @@ window._supabaseDeleteSnapshot = async function(date) {
 window._supabaseDeleteProvider = async function(date, provider) {
   try {
     if (!supabase) return false;
-    await supabase.from('bdl_provider_snapshots').delete().eq('date', date).eq('provider_name', provider);
+    const { error } = await supabase.from('bdl_provider_snapshots').delete().eq('date', date).eq('provider_name', provider);
+    if (error) { console.error('Provider snapshot delete failed:', error.message); return false; }
     return true;
   } catch(e) {
     console.error('Supabase provider delete error:', e);
@@ -170,7 +249,8 @@ window._supabaseDeleteProvider = async function(date, provider) {
 window._supabaseDeleteProviderAll = async function(provider) {
   try {
     if (!supabase) return false;
-    await supabase.from('bdl_provider_snapshots').delete().eq('provider_name', provider);
+    const { error } = await supabase.from('bdl_provider_snapshots').delete().eq('provider_name', provider);
+    if (error) { console.error('Provider delete-all failed:', error.message); return false; }
     return true;
   } catch(e) {
     console.error('Supabase provider delete-all error:', e);
@@ -199,13 +279,14 @@ window._supabaseNukeProviderSnapshots = async function() {
 window._supabaseSaveProviderRule = async function(rule) {
   try {
     if (!supabase || !rule || !rule.name) return false;
-    await supabase.from('bdl_provider_rules').upsert({
+    const { error } = await supabase.from('bdl_provider_rules').upsert({
       provider_name: rule.name,
       aliases: rule.aliases || [],
       stems: rule.stems || [],
       title_keywords: rule.titleKeywords || [],
       updated_at: new Date().toISOString()
     }, { onConflict: 'provider_name' });
+    if (error) { console.error('Provider rule save failed:', error.message); return false; }
     return true;
   } catch(e) {
     console.error('Supabase provider rule save error:', e);
@@ -214,29 +295,38 @@ window._supabaseSaveProviderRule = async function(rule) {
 };
 
 // Save the master provider list (bdl_providers): active (ordered) + archived. Deletes only names in neither.
-window._supabaseSaveProviderDefs = async function(activeDefs, archivedNames) {
+window._supabaseSaveProviderDefs = async function(activeDefs, archivedNames, allowEmpty) {
   try {
     if (!supabase) return false;
     activeDefs = activeDefs || [];
     archivedNames = archivedNames || [];
-    for (let i = 0; i < activeDefs.length; i++) {
-      await supabase.from('bdl_providers').upsert(
-        { name: activeDefs[i], provider_order: i, archived: false, updated_at: new Date().toISOString() },
-        { onConflict: 'name' }
-      );
+
+    // Both lists empty is almost always a load that failed, not a genuine "delete every
+    // provider" — so refuse by default. Callers that really did empty the list (deleting the
+    // last provider) pass allowEmpty:true.
+    if (!activeDefs.length && !archivedNames.length && !allowEmpty) {
+      console.warn('Provider defs save skipped: nothing to save (refusing to clear all providers)');
+      return false;
     }
-    for (let i = 0; i < archivedNames.length; i++) {
-      await supabase.from('bdl_providers').upsert(
-        { name: archivedNames[i], provider_order: 1000 + i, archived: true, updated_at: new Date().toISOString() },
-        { onConflict: 'name' }
-      );
-    }
-    const { data: existing } = await supabase.from('bdl_providers').select('name');
+
+    // Batched, same as the other tables — one request instead of one per provider.
+    const now = new Date().toISOString();
+    const rowMap = new Map();
+    activeDefs.forEach((n, i) => rowMap.set(n, { name: n, provider_order: i, archived: false, updated_at: now }));
+    archivedNames.forEach((n, i) => rowMap.set(n, { name: n, provider_order: 1000 + i, archived: true, updated_at: now }));
+    const rows = [...rowMap.values()];
+
+    const { error: upErr } = await supabase.from('bdl_providers').upsert(rows, { onConflict: 'name' });
+    if (upErr) { console.error('Provider defs save error:', upErr.message); return false; }
+
+    // Remove provider rows that are no longer in either list — in a single delete.
+    const { data: existing, error: selErr } = await supabase.from('bdl_providers').select('name');
+    if (selErr) { console.error('Provider defs cleanup skipped:', selErr.message); return true; }
     const keep = new Set([...activeDefs, ...archivedNames].map(n => n.toLowerCase()));
-    for (const row of (existing || [])) {
-      if (!keep.has((row.name || '').toLowerCase())) {
-        await supabase.from('bdl_providers').delete().eq('name', row.name);
-      }
+    const drop = (existing || []).map(r => r.name).filter(n => !keep.has((n || '').toLowerCase()));
+    if (drop.length) {
+      const { error: delErr } = await supabase.from('bdl_providers').delete().in('name', drop);
+      if (delErr) console.error('Provider defs cleanup failed:', delErr.message);
     }
     return true;
   } catch(e) {
@@ -288,6 +378,22 @@ window._supabaseLoad = async function() {
     if (provRuleRes && !provRuleRes.error && provRuleRes.data) provRules = provRuleRes.data;
     else if (provRuleRes && provRuleRes.error) console.warn('bdl_provider_rules unavailable (run the migration?) — continuing without learned rules');
 
+    const competitorSessions = sessions?.map(s => {
+      const sessionReadings = readings?.filter(r => r.session_id === s.id) || [];
+      return {
+        date: s.date,
+        competitors: sessionReadings.map(r => ({
+          sellerId: r.seller_id,
+          name: r.seller_name,
+          pct: parseFloat(r.overlap_pct)
+        }))
+      };
+    }) || [];
+
+    // Baseline for the "only rewrite what changed" check in _supabaseSave. Refreshed on every
+    // load so any reload path (startup, post-save refresh, bulk update) stays in step.
+    window._readingSigs = new Map(competitorSessions.map(s => [s.date, _readingSig(s)]));
+
     return {
       snapshots: snapshots?.map(s => ({
         date: s.date,
@@ -324,17 +430,7 @@ window._supabaseLoad = async function() {
         notes: s.notes
       })) || [],
       sellers: sellers?.sort((a, b) => (a.seller_order || 0) - (b.seller_order || 0)).map(s => ({ sellerId: s.seller_id, name: s.name })) || [],
-      competitorSessions: sessions?.map(s => {
-        const sessionReadings = readings?.filter(r => r.session_id === s.id) || [];
-        return {
-          date: s.date,
-          competitors: sessionReadings.map(r => ({
-            sellerId: r.seller_id,
-            name: r.seller_name,
-            pct: parseFloat(r.overlap_pct)
-          }))
-        };
-      }) || [],
+      competitorSessions,
       providerSnapshots: providerSnaps?.map(p => ({
         date: p.date,
         provider: p.provider_name,
@@ -403,6 +499,11 @@ window._startupLoad = async function() {
       for (const name of PROVIDER_DEFS) {
         const def = DEFAULT_PROVIDERS.find(p => p.name.toLowerCase() === name.toLowerCase());
         if (!def) continue; // not one of the known defaults, nothing to backfill from
+        // Some defaults (PS) ship with no aliases/stems of their own. Backfilling from those
+        // writes an empty rule, which still looks empty on the next load — so this used to
+        // re-run and re-save on every single page load. Skip them; they need a real rule
+        // typed in Settings, which no backfill can invent.
+        if (!(def.aliases||[]).length && !(def.stems||[]).length && !(def.titleKeywords||[]).length) continue;
         const existing = PROVIDER_RULES.find(r => r.name.toLowerCase() === name.toLowerCase());
         const isEmpty = !existing || (
           (!existing.aliases || existing.aliases.length===0) &&
@@ -434,8 +535,8 @@ window._startupLoad = async function() {
   const now = new Date();
   const d30 = new Date(now);
   d30.setDate(d30.getDate() - 30);
-  rangeFrom = d30.toISOString().split('T')[0];
-  rangeTo = now.toISOString().split('T')[0];
+  rangeFrom = d30.toLocaleDateString('en-CA');
+  rangeTo = now.toLocaleDateString('en-CA');
   
   const rangeFromEl = document.getElementById('rangeFrom');
   const rangeToEl = document.getElementById('rangeTo');
@@ -775,6 +876,55 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .modal-x{background:none;border:none;color:var(--muted2);font-size:22px;cursor:pointer;line-height:1;padding:4px 7px;border-radius:7px;transition:all .15s}
 .modal-x:hover{color:var(--text);background:var(--s2)}
 .modal-body{padding:24px}
+
+/* ── Save progress popup ────────────────────────────────────────────────
+   Sits above the snapshot modal and reports what is actually happening to
+   each table, ending on a read-back confirmation. Replaces the old corner
+   badge, which showed "Saved" whether or not the write reached Supabase. */
+.sv-ov{position:fixed;inset:0;background:rgba(4,6,9,.8);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);z-index:9500;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .22s}
+.sv-ov.open{opacity:1;pointer-events:all}
+.sv-card{background:var(--s1);border:1px solid var(--border2);border-radius:18px;width:100%;max-width:430px;padding:32px 30px 26px;transform:translateY(16px) scale(.97);transition:transform .3s cubic-bezier(.2,.8,.25,1);box-shadow:0 28px 70px rgba(0,0,0,.6)}
+.sv-ov.open .sv-card{transform:none}
+
+.sv-ringwrap{position:relative;width:96px;height:96px;margin:0 auto 20px}
+.sv-ring{width:96px;height:96px;transform:rotate(-90deg)}
+.sv-ring circle{fill:none;stroke-width:6;stroke-linecap:round}
+.sv-ring .bg{stroke:var(--s3)}
+.sv-ring .fg{stroke:var(--g);stroke-dasharray:264;stroke-dashoffset:264;transition:stroke-dashoffset .45s cubic-bezier(.3,.9,.3,1),stroke .25s}
+.sv-card.is-err .sv-ring .fg{stroke:var(--r)}
+.sv-ringwrap.spin::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid transparent;border-top-color:var(--g);opacity:.55;animation:svspin .9s linear infinite}
+@keyframes svspin{to{transform:rotate(360deg)}}
+.sv-glyph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:22px;font-weight:700;color:var(--g);letter-spacing:-.02em}
+.sv-card.is-err .sv-glyph{color:var(--r)}
+.sv-tick{width:38px;height:38px;stroke:var(--g);stroke-width:7;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:svdraw .42s cubic-bezier(.4,1,.4,1) forwards}
+.sv-card.is-err .sv-tick{stroke:var(--r)}
+@keyframes svdraw{to{stroke-dashoffset:0}}
+
+.sv-title{font-family:var(--display);font-size:20px;font-weight:700;text-align:center;color:var(--text);letter-spacing:-.02em;margin-bottom:5px}
+.sv-sub{font-family:var(--mono);font-size:11.5px;text-align:center;color:var(--muted);margin-bottom:22px;line-height:1.5}
+.sv-sub b{color:var(--muted2);font-weight:600}
+
+.sv-steps{display:flex;flex-direction:column;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:7px}
+.sv-step{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:7px;font-family:var(--mono);font-size:11.5px;color:var(--muted);transition:background .2s,color .2s}
+.sv-step.active{background:var(--s3);color:var(--text)}
+.sv-step.done{color:var(--muted2)}
+.sv-step.fail{color:var(--r)}
+.sv-dot{width:16px;height:16px;flex:none;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;transition:all .2s}
+.sv-step.active .sv-dot{border-color:var(--g);animation:svpulse 1s ease-in-out infinite}
+.sv-step.done .sv-dot{border-color:var(--g);background:var(--g2);color:var(--g)}
+.sv-step.fail .sv-dot{border-color:var(--r);background:var(--r2);color:var(--r)}
+@keyframes svpulse{0%,100%{box-shadow:0 0 0 0 rgba(0,245,160,.35)}50%{box-shadow:0 0 0 5px rgba(0,245,160,0)}}
+.sv-step-txt{flex:1;text-align:left}
+.sv-step-note{font-size:10px;color:var(--muted);opacity:.8}
+
+.sv-err{margin-top:16px;background:var(--r2);border:1px solid var(--r);border-radius:10px;padding:13px 15px;font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.6;text-align:left}
+.sv-err b{color:var(--r);display:block;margin-bottom:5px;font-size:11.5px}
+.sv-err .detail{color:var(--muted);font-size:10px;margin-top:8px;max-height:80px;overflow-y:auto}
+.sv-actions{margin-top:18px;display:flex;gap:9px;justify-content:center}
+.sv-btn{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;border:1px solid var(--border2);background:var(--s3);color:var(--text);transition:all .15s}
+.sv-btn:hover{background:var(--s2);border-color:var(--muted)}
+.sv-btn.primary{background:var(--g);border-color:var(--g);color:#04120c}
+.sv-btn.primary:hover{filter:brightness(1.1)}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .fg{display:flex;flex-direction:column;gap:6px}
 .fg.full{grid-column:1/-1}
@@ -1802,22 +1952,169 @@ function showSyncStatus(state) {
   }
   if (state==='loading') { el.style.background='var(--s3)'; el.style.color='var(--muted2)'; el.textContent='⟳ Syncing...'; el.style.opacity='1'; }
   else if (state==='saved') { el.style.background='var(--g2)'; el.style.color='var(--g)'; el.textContent='✓ Saved'; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0',2000); }
-  else if (state==='error') { el.style.background='var(--r2)'; el.style.color='var(--r)'; el.textContent='⚠ Sync failed — saved locally'; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0',4000); }
+  // Nothing is kept locally — if the sync fails the data is gone on refresh, so say so plainly.
+  else if (state==='error') { el.style.background='var(--r2)'; el.style.color='var(--r)'; el.textContent='⚠ NOT SAVED — sync failed'; el.style.opacity='1'; setTimeout(()=>el.style.opacity='0',8000); }
 }
 function hideSyncStatus() { showSyncStatus(''); const el=document.getElementById('syncStatus'); if(el) el.style.opacity='0'; }
 
-async function persist() {
-  if (window._supabaseSave) {
-    showSyncStatus('loading');
-    const result = await window._supabaseSave(DB, SELLERS, COMPETITOR_SESSIONS, PROVIDER_SNAPSHOTS);
+// ── Save progress popup ──────────────────────────────────────────────────────
+// Each step maps to a real write, so the tick only appears once that write has
+// actually come back clean. The last step is a read-back from Supabase, so
+// "Saved" means the row was found in the database, not just that we sent it.
+const SV_STEPS = [
+  { key:'snapshot',    label:'Inventory snapshot' },
+  { key:'providers',   label:'Provider breakdown' },
+  { key:'competitors', label:'Competitors & sellers' },
+  { key:'verify',      label:'Confirming in database' }
+];
+let _svEl = null, _svMinUntil = 0;
+
+function svBuild() {
+  if (_svEl) return _svEl;
+  const el = document.createElement('div');
+  el.className = 'sv-ov';
+  el.id = 'saveProgressOverlay';
+  el.innerHTML = `
+    <div class="sv-card" id="svCard">
+      <div class="sv-ringwrap" id="svRingWrap">
+        <svg class="sv-ring" viewBox="0 0 96 96"><circle class="bg" cx="48" cy="48" r="42"/><circle class="fg" id="svRingFg" cx="48" cy="48" r="42"/></svg>
+        <div class="sv-glyph" id="svGlyph"></div>
+      </div>
+      <div class="sv-title" id="svTitle">Saving snapshot</div>
+      <div class="sv-sub" id="svSub"></div>
+      <div class="sv-steps" id="svSteps"></div>
+      <div id="svExtra"></div>
+    </div>`;
+  document.body.appendChild(el);
+  _svEl = el;
+  return el;
+}
+
+function svOpen(dateStr) {
+  const el = svBuild();
+  document.getElementById('svCard').classList.remove('is-err');
+  document.getElementById('svTitle').textContent = 'Saving snapshot';
+  document.getElementById('svSub').innerHTML = `for <b>${fmt(dateStr)}</b>`;
+  document.getElementById('svGlyph').innerHTML = '0/4';
+  document.getElementById('svRingFg').style.strokeDashoffset = 264;
+  document.getElementById('svRingWrap').classList.add('spin');
+  document.getElementById('svExtra').innerHTML = '';
+  document.getElementById('svSteps').innerHTML = SV_STEPS.map(s =>
+    `<div class="sv-step" id="svStep-${s.key}"><div class="sv-dot"></div><div class="sv-step-txt">${s.label}</div></div>`
+  ).join('');
+  requestAnimationFrame(() => el.classList.add('open'));
+  _svMinUntil = performance.now() + 900; // never flash past too fast to read
+  svStep('snapshot', 'active');
+}
+
+function svStep(key, state, note) {
+  const row = document.getElementById('svStep-' + key);
+  if (!row) return;
+  row.className = 'sv-step ' + (state === 'active' ? 'active' : state === 'fail' ? 'fail' : 'done');
+  const dot = row.querySelector('.sv-dot');
+  dot.textContent = state === 'done' ? '✓' : state === 'fail' ? '✕' : '';
+  if (note) {
+    let n = row.querySelector('.sv-step-note');
+    if (!n) { n = document.createElement('div'); n.className = 'sv-step-note'; row.appendChild(n); }
+    n.textContent = note;
+  }
+  const done = SV_STEPS.filter(s => document.getElementById('svStep-' + s.key)?.classList.contains('done')).length;
+  document.getElementById('svRingFg').style.strokeDashoffset = 264 - (264 * done / SV_STEPS.length);
+  const glyph = document.getElementById('svGlyph');
+  if (glyph && !glyph.querySelector('svg')) glyph.textContent = `${done}/${SV_STEPS.length}`;
+}
+
+// Handed to persist() — fires as each real write comes back, then lights up
+// whichever step is next in the list.
+function svOnStep(key, state, note) {
+  if (state === 'fail') { svStep(key, 'fail'); return; }
+  svStep(key, 'done', note);
+  const next = SV_STEPS[SV_STEPS.findIndex(s => s.key === key) + 1];
+  if (next) svStep(next.key, 'active');
+}
+
+async function svSuccess(dateStr, counts) {
+  const wait = _svMinUntil - performance.now();
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  document.getElementById('svRingWrap').classList.remove('spin');
+  document.getElementById('svGlyph').innerHTML =
+    `<svg class="sv-tick" viewBox="0 0 52 52"><path d="M14 27l8.5 8.5L38 18"/></svg>`;
+  document.getElementById('svTitle').textContent = 'Snapshot saved';
+  document.getElementById('svSub').innerHTML =
+    `<b>${fmt(dateStr)}</b> is stored and confirmed in the database.${counts ? `<br>${counts}` : ''}`;
+  setTimeout(svClose, 1700);
+}
+
+function svFailure(errors, failedKey) {
+  document.getElementById('svRingWrap').classList.remove('spin');
+  document.getElementById('svCard').classList.add('is-err');
+  document.getElementById('svGlyph').innerHTML =
+    `<svg class="sv-tick" viewBox="0 0 52 52"><path d="M17 17l18 18M35 17L17 35"/></svg>`;
+  document.getElementById('svTitle').textContent = 'Not saved';
+  document.getElementById('svSub').innerHTML = 'This snapshot did <b>not</b> reach the database.';
+  if (failedKey) svStep(failedKey, 'fail');
+  SV_STEPS.forEach(s => {
+    const row = document.getElementById('svStep-' + s.key);
+    if (row && !row.classList.contains('done') && !row.classList.contains('fail')) row.className = 'sv-step';
+  });
+  const list = [...new Set(errors || [])];
+  document.getElementById('svExtra').innerHTML = `
+    <div class="sv-err">
+      <b>Your entry has not been lost</b>
+      It is still in the form behind this window. Check your internet connection and press
+      <strong>Save Snapshot</strong> again. Do not close the form — nothing is stored on this
+      computer, so closing it now would lose the entry.
+      ${list.length ? `<div class="detail">${list.map(e => `• ${e}`).join('<br>')}</div>` : ''}
+    </div>
+    <div class="sv-actions"><button class="sv-btn primary" onclick="svClose()">Back to the form</button></div>`;
+}
+
+function svClose() {
+  if (!_svEl) return;
+  _svEl.classList.remove('open');
+}
+window.svClose = svClose;
+
+// Set while a save is in flight so a refresh/close mid-write warns instead of silently
+// losing the entry.
+let SAVE_IN_FLIGHT = false;
+window.addEventListener('beforeunload', e => {
+  if (!SAVE_IN_FLIGHT) return;
+  e.preventDefault();
+  e.returnValue = 'A save is still in progress — leaving now will lose it.';
+  return e.returnValue;
+});
+
+// Errors from the most recent persist(), for callers that present their own failure UI.
+let LAST_SAVE_ERRORS = [];
+
+// onStep  — optional (key, state, note) callback for the save progress popup.
+// quiet   — skip the corner badge and legacy error popup when a caller shows its own.
+async function persist(onStep, quiet) {
+  LAST_SAVE_ERRORS = [];
+  if (!window._supabaseSave) {
+    LAST_SAVE_ERRORS = ['Save function unavailable — the page did not load correctly. Reload and try again.'];
+    if (!quiet) { showSyncStatus('error'); showSaveErrorPopup(LAST_SAVE_ERRORS); }
+    return false;
+  }
+  SAVE_IN_FLIGHT = true;
+  try {
+    if (!quiet) showSyncStatus('loading');
+    const result = await window._supabaseSave(DB, SELLERS, COMPETITOR_SESSIONS, PROVIDER_SNAPSHOTS, onStep);
     const ok = result === true;
-    showSyncStatus(ok ? 'saved' : 'error');
-    if (!ok && result && result.errors && result.errors.length) {
-      showSaveErrorPopup(result.errors);
+    if (!ok) LAST_SAVE_ERRORS = (result && result.errors && result.errors.length) ? result.errors : ['The save did not complete.'];
+    if (!quiet) {
+      showSyncStatus(ok ? 'saved' : 'error');
+      if (!ok) showSaveErrorPopup(LAST_SAVE_ERRORS);
     }
     return ok;
+  } catch (e) {
+    LAST_SAVE_ERRORS = [e?.message || String(e)];
+    if (!quiet) { showSyncStatus('error'); showSaveErrorPopup(LAST_SAVE_ERRORS); }
+    return false;
+  } finally {
+    SAVE_IN_FLIGHT = false;
   }
-  return false;
 }
 
 function showSaveErrorPopup(errors) {
@@ -1896,31 +2193,31 @@ function setDatePreset(p, e) {
   if (p === 'last30') {
     const d = new Date(now);
     d.setDate(d.getDate()-30);
-    rangeFrom = d.toISOString().split('T')[0];
-    rangeTo = now.toISOString().split('T')[0];
+    rangeFrom = d.toLocaleDateString('en-CA');
+    rangeTo = now.toLocaleDateString('en-CA');
   } else if (p === 'mtd') {
     const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    rangeFrom = mtdStart.toISOString().split('T')[0];
-    rangeTo = now.toISOString().split('T')[0];
+    rangeFrom = mtdStart.toLocaleDateString('en-CA');
+    rangeTo = now.toLocaleDateString('en-CA');
   } else if (p === 'last7') {
     const d = new Date(now);
     d.setDate(d.getDate()-7);
-    rangeFrom = d.toISOString().split('T')[0];
-    rangeTo = now.toISOString().split('T')[0];
+    rangeFrom = d.toLocaleDateString('en-CA');
+    rangeTo = now.toLocaleDateString('en-CA');
   } else if (p === 'lastmonth') {
     const d = new Date(now.getFullYear(), now.getMonth()-1, 1);
     const d2 = new Date(now.getFullYear(), now.getMonth(), 0);
-    rangeFrom = d.toISOString().split('T')[0];
-    rangeTo = d2.toISOString().split('T')[0];
+    rangeFrom = d.toLocaleDateString('en-CA');
+    rangeTo = d2.toLocaleDateString('en-CA');
   } else if (p === 'ytd') {
     const ytdStart = new Date(now.getFullYear(), 0, 1);
-    rangeFrom = ytdStart.toISOString().split('T')[0];
-    rangeTo = now.toISOString().split('T')[0];
+    rangeFrom = ytdStart.toLocaleDateString('en-CA');
+    rangeTo = now.toLocaleDateString('en-CA');
   } else if (p === 'last3m') {
     const d = new Date(now);
     d.setMonth(d.getMonth()-3);
-    rangeFrom = d.toISOString().split('T')[0];
-    rangeTo = now.toISOString().split('T')[0];
+    rangeFrom = d.toLocaleDateString('en-CA');
+    rangeTo = now.toLocaleDateString('en-CA');
   }
   document.getElementById('rangeFrom').value = rangeFrom || '';
   document.getElementById('rangeTo').value = rangeTo || '';
@@ -2579,7 +2876,7 @@ function shTrend(snaps){
 function shFlowLastWeek(snaps){
   if(snaps.length<2) return null;
   const latest=snaps[snaps.length-1]; const cut=new Date(latest.date+'T00:00:00'); cut.setDate(cut.getDate()-7);
-  const cutStr=cut.toISOString().split('T')[0]; const c=snaps.filter(s=>s.date<=cutStr);
+  const cutStr=cut.toLocaleDateString('en-CA'); const c=snaps.filter(s=>s.date<=cutStr);
   const ref=c.length?c[c.length-1]:snaps[0]; return ref===latest?null:shFlowPct(ref);
 }
 
@@ -2588,7 +2885,7 @@ function shComputePreset(p){ const s=shAllSnaps(); if(!s.length) return; const m
   if(p==='all'){ shFrom=s[0].date; shTo=maxD; return; }
   if(p==='n6'){ shFrom=s[Math.max(0,s.length-6)].date; shTo=maxD; return; }
   const days={d7:7,d30:30,d90:90,d180:180,d365:365}[p]; if(!days) return;
-  const d=new Date(maxD+'T00:00:00'); d.setDate(d.getDate()-days); shFrom=d.toISOString().split('T')[0]; shTo=maxD; }
+  const d=new Date(maxD+'T00:00:00'); d.setDate(d.getDate()-days); shFrom=d.toLocaleDateString('en-CA'); shTo=maxD; }
 function shPreset(p){ window._shPreset=p; shComputePreset(p); renderStockHealth(); }
 function shApplyCustom(){ const f=document.getElementById('shFrom')?.value,t=document.getElementById('shTo')?.value; if(f&&t){ shFrom=f; shTo=t; window._shPreset='custom'; renderStockHealth(); } }
 
@@ -2886,7 +3183,7 @@ function shRenderZonePopup(){
   } else if(_shZoneRange!=='all'){
     const days={d30:30,d90:90,d180:180}[_shZoneRange]||9999;
     const maxD=allSnaps[allSnaps.length-1]?.date;
-    if(maxD){const cut=new Date(maxD+'T00:00:00');cut.setDate(cut.getDate()-days);const cs=cut.toISOString().split('T')[0];snaps=allSnaps.filter(s=>s.date>=cs);}
+    if(maxD){const cut=new Date(maxD+'T00:00:00');cut.setDate(cut.getDate()-days);const cs=cut.toLocaleDateString('en-CA');snaps=allSnaps.filter(s=>s.date>=cs);}
   }
   if(!snaps.length) snaps=allSnaps;
   const col=_shZoneCols[zone];
@@ -5751,7 +6048,7 @@ function renderCompTab() {
     monthStartVal: (() => {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 30);
-      const cutoffStr = cutoff.toISOString().split('T')[0];
+      const cutoffStr = cutoff.toLocaleDateString('en-CA');
       // All sessions for this seller, oldest first
       const rows = [...COMPETITOR_SESSIONS]
         .sort((a,b) => a.date.localeCompare(b.date))
@@ -6278,7 +6575,7 @@ function drawCompDetailChart(range){
   if(range!=='all'){
     const days={'7d':7,'30d':30,'90d':90}[range]||30;
     const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-days);
-    const cutoffStr=cutoff.toISOString().split('T')[0];
+    const cutoffStr=cutoff.toLocaleDateString('en-CA');
     filtered=_compDetailAllPts.filter(p=>p.date>=cutoffStr);
   }
   if(!filtered.length) filtered=_compDetailAllPts;
@@ -6664,11 +6961,23 @@ async function deleteCompetitorSession(date) {
   const sess = COMPETITOR_SESSIONS.find(s => s.date === date);
   const n = sess ? (sess.competitors||[]).length : 0;
   if (!confirm(`Delete the competitor session from ${fmt(date)}? This removes ${n} reading${n!==1?'s':''} for that date. This can't be undone.`)) return;
+  const removedSession = sess;
   COMPETITOR_SESSIONS = COMPETITOR_SESSIONS.filter(s => s.date !== date);
   if (window._supabaseDeleteSession) {
     showSyncStatus('loading');
     const ok = await window._supabaseDeleteSession(date);
-    showSyncStatus(ok ? 'saved' : 'error');
+    if (!ok) {
+      // Restore it — the session is still in the database.
+      if (removedSession) {
+        COMPETITOR_SESSIONS.push(removedSession);
+        COMPETITOR_SESSIONS.sort((a,b) => a.date.localeCompare(b.date));
+      }
+      renderCompHistory(); renderCompTab();
+      showSyncStatus('error');
+      alert(`⚠ Could not delete the session from ${fmt(date)}.\n\nIt is still in the database — nothing was removed. Check your internet connection and try again.`);
+      return;
+    }
+    showSyncStatus('saved');
   }
   renderCompHistory();
   renderCompTab();
@@ -6812,10 +7121,10 @@ function setCompHistPreset(p, btn) {
   let from='', to='';
   if (p === '7d') {
     const d = new Date(now); d.setDate(d.getDate()-7);
-    from = d.toISOString().split('T')[0]; to = now.toISOString().split('T')[0];
+    from = d.toLocaleDateString('en-CA'); to = now.toLocaleDateString('en-CA');
   } else if (p === 'month') {
-    from = new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0];
-    to = now.toISOString().split('T')[0];
+    from = new Date(now.getFullYear(),now.getMonth(),1).toLocaleDateString('en-CA');
+    to = now.toLocaleDateString('en-CA');
   } else if (p === 'all') {
     from = ''; to = '';
   }
@@ -6891,17 +7200,17 @@ function setHistPreset(p, btn) {
   let from='', to='';
   if (p==='7d') {
     const d = new Date(now); d.setDate(d.getDate()-7);
-    from = d.toISOString().split('T')[0]; to = now.toISOString().split('T')[0];
+    from = d.toLocaleDateString('en-CA'); to = now.toLocaleDateString('en-CA');
   } else if (p==='month') {
-    from = new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0];
-    to = now.toISOString().split('T')[0];
+    from = new Date(now.getFullYear(),now.getMonth(),1).toLocaleDateString('en-CA');
+    to = now.toLocaleDateString('en-CA');
   } else if (p==='lastmonth') {
     const d = new Date(now.getFullYear(),now.getMonth()-1,1);
     const d2 = new Date(now.getFullYear(),now.getMonth(),0);
-    from = d.toISOString().split('T')[0]; to = d2.toISOString().split('T')[0];
+    from = d.toLocaleDateString('en-CA'); to = d2.toLocaleDateString('en-CA');
   } else if (p==='90d') {
     const d = new Date(now); d.setDate(d.getDate()-90);
-    from = d.toISOString().split('T')[0]; to = now.toISOString().split('T')[0];
+    from = d.toLocaleDateString('en-CA'); to = now.toLocaleDateString('en-CA');
   }
   document.getElementById('histFrom').value=from;
   document.getElementById('histTo').value=to;
@@ -6929,7 +7238,7 @@ function calcAvgCost() {
 let manageRowCount = 0;
 
 function openBulkUpdate() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA');
   document.getElementById('bulkDateLabel').textContent = 'Date: ' + fmt(today);
   const wrap = document.getElementById('bulkRows');
   if (!SELLERS.length) {
@@ -6966,7 +7275,7 @@ function openBulkUpdate() {
 }
 
 async function saveBulkUpdate() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA');
   const competitors = [];
   let saved = 0;
   
@@ -6992,8 +7301,15 @@ async function saveBulkUpdate() {
   }
   
   showSyncStatus('loading');
-  await persist();
-  
+  const bulkOk = await persist();
+  if (!bulkOk) {
+    // Don't reload — that would replace the readings just typed with the old stored ones
+    // and the modal would close as if it had worked.
+    showSyncStatus('error');
+    alert('⚠ These readings did NOT save.\n\nThey are still on screen — check your internet connection and press Save again. Do not close this window, or they will be lost.');
+    return;
+  }
+
   // Reload from Supabase to ensure fresh data
   try {
     const data = await window._supabaseLoad();
@@ -7003,7 +7319,7 @@ async function saveBulkUpdate() {
   } catch (err) {
     console.error('Auto-refresh failed:', err);
   }
-  
+
   closeOverlay('bulkUpdateModal');
   
   // Render all competitor pages with fresh data
@@ -7087,6 +7403,7 @@ let draggedRow = null;
 
 async function saveSellerList() {
   const rows = document.querySelectorAll('[id^=mr_]');
+  const prevSellers = SELLERS.slice();
   SELLERS = [];
   rows.forEach(row => {
     const i = row.id.split('_')[1];
@@ -7094,8 +7411,14 @@ async function saveSellerList() {
     const sellerId = document.getElementById('mid_'+i)?.value.trim()||''
     if (name) SELLERS.push({name, sellerId});
   });
-  await persist();
-  
+  const sellersOk = await persist();
+  if (!sellersOk) {
+    SELLERS = prevSellers;   // put the stored list back; the edits are still in the open form
+    showSyncStatus('error');
+    alert('⚠ The seller list did NOT save.\n\nYour changes are still in this window — check your internet connection and press Save List again.');
+    return;
+  }
+
   // Reload from Supabase to ensure order is correct
   try {
     const data = await window._supabaseLoad();
@@ -7105,7 +7428,7 @@ async function saveSellerList() {
   } catch (err) {
     console.error('Failed to reload sellers:', err);
   }
-  
+
   closeOverlay('manageModal');
   renderCompTab();
   renderBadges();
@@ -7854,7 +8177,7 @@ document.getElementById('impBulkBtnClear').onclick=()=>{ impSelectedSkus.clear()
 
 function openSnap(prefill=null) {
   editIdx = null;
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA');
   document.getElementById('snapModalTitle').textContent = 'Add Snapshot';
   
   // Clear all fields
@@ -7935,6 +8258,9 @@ function fillForm(s) {
 }
 
 async function saveSnap() {
+  // A second click while the first save is still running would push a duplicate row and
+  // open a second progress popup.
+  if (SAVE_IN_FLIGHT) return;
   const date = document.getElementById('fDate').value;
   if (!date) { alert('Please set a date'); return; }
   if (impHasImport && impComputed && impComputed.unresolved>0) {
@@ -7963,6 +8289,11 @@ async function saveSnap() {
     repricer: { total: repTotal, winning: repWinNum, winPct: repWinPct, matching: repMatchNum, matchPct: repMatchPct },
     notes: document.getElementById('fNotes').value,
   };
+  // Keep the pre-save state so a failed sync can be rolled back cleanly — otherwise pressing
+  // Save again after a failure would append a second copy of the same date.
+  const prevDB = DB.slice();
+  const prevProviderSnapshots = PROVIDER_SNAPSHOTS.slice();
+
   if (editIdx !== null) DB[editIdx] = s;
   else { DB.push(s); DB.sort((a,b)=>a.date.localeCompare(b.date)); }
 
@@ -7979,8 +8310,18 @@ async function saveSnap() {
   const removedProviders = prevForDate.filter(p => !provRows.find(n => n.provider.toLowerCase() === p.provider.toLowerCase()));
   PROVIDER_SNAPSHOTS = PROVIDER_SNAPSHOTS.filter(p => p.date !== date).concat(provRows);
 
-  showSyncStatus('loading');
-  await persist();
+  svOpen(date);
+  const saveOk = await persist(svOnStep, true);
+  if (!saveOk) {
+    // The write did not reach Supabase. Nothing is stored locally, so roll back the optimistic
+    // change and leave the form open with the entry intact — rather than closing it and letting
+    // the row look saved until the next refresh makes it vanish.
+    DB = prevDB;
+    PROVIDER_SNAPSHOTS = prevProviderSnapshots;
+    renderAll(); renderHistory();
+    svFailure(LAST_SAVE_ERRORS);
+    return;
+  }
   // remove provider rows the user deleted for this date
   for (const r of removedProviders) {
     try { await window._supabaseDeleteProvider(date, r.provider); } catch(e){ console.error(e); }
@@ -7999,12 +8340,10 @@ async function saveSnap() {
     }
   });
   if (newDefs) { try { await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS); } catch(e){ console.error(e); } }
-  showSyncStatus('saved');
 
-  closeOverlay('snapModal');
-  closeOverlay('impModal');
-
-  // Auto-refresh from Supabase
+  // Auto-refresh from Supabase — this is also the read-back that proves the row is really
+  // stored. If the row isn't in the reloaded data, the save reported success but didn't stick.
+  let verified = false;
   try {
     const data = await window._supabaseLoad();
     if (data) {
@@ -8014,17 +8353,36 @@ async function saveSnap() {
       PROVIDER_DEFS = data.providerDefs || [];
       ARCHIVED_PROVIDERS = data.providerArchived || [];
       PROVIDER_RULES = data.providerRules || [];
+      verified = DB.some(x => x.date === date);
+    } else {
+      console.error('Read-back failed — could not confirm the save');
     }
   } catch (err) {
-    console.error('Auto-refresh failed:', err);
+    console.error('Read-back failed:', err);
   }
+
+  if (!verified) {
+    // The write reported success but the row is not in the database. Keep the form open.
+    DB = prevDB;
+    PROVIDER_SNAPSHOTS = prevProviderSnapshots;
+    renderAll(); renderHistory();
+    svStep('verify', 'fail');
+    svFailure(['The snapshot was sent but could not be found in the database afterwards.']);
+    return;
+  }
+
+  closeOverlay('snapModal');
+  closeOverlay('impModal');
   impHasImport = false;
 
   renderAll();
   renderHistory();
   renderProviderTab();
   renderSettingsTab();
-  setTimeout(() => showSyncStatus(''), 2000);
+
+  const provForDate = PROVIDER_SNAPSHOTS.filter(p => p.date === date).length;
+  svStep('verify', 'done', 'row found in database');
+  await svSuccess(date, `${DB.length} snapshots on record${provForDate ? ` · ${provForDate} providers this date` : ''}`);
 }
 
 async function deleteSnap(idx) {
@@ -8036,7 +8394,16 @@ async function deleteSnap(idx) {
   if (removed && removed.date && window._supabaseDeleteSnapshot) {
     showSyncStatus('loading');
     const ok = await window._supabaseDeleteSnapshot(removed.date);   // only deletes that one row
-    showSyncStatus(ok ? 'saved' : 'error');
+    if (!ok) {
+      // Put it back — the row is still in the database, so leaving the screen without it
+      // would just have it reappear on the next refresh.
+      DB.splice(idx, 0, removed);
+      renderAll(); renderHistory();
+      showSyncStatus('error');
+      alert(`⚠ Could not delete the snapshot for ${fmt(removed.date)}.\n\nIt is still in the database — nothing was removed. Check your internet connection and try again.`);
+      return;
+    }
+    showSyncStatus('saved');
     setTimeout(() => showSyncStatus(''), 1500);
   }
 }
@@ -8829,9 +9196,17 @@ function provDrawDetailMiniCharts(s){
 
 async function deleteProviderReading(date, provider){
   if(!confirm(`Delete ${provider}'s snapshot for ${fmt(date)}?`)) return;
+  const prevProviderSnaps = PROVIDER_SNAPSHOTS.slice();
   PROVIDER_SNAPSHOTS=PROVIDER_SNAPSHOTS.filter(p=>!(p.date===date && p.provider===provider));
   showSyncStatus('loading');
-  await window._supabaseDeleteProvider(date, provider);
+  const ok = await window._supabaseDeleteProvider(date, provider);
+  if(!ok){
+    PROVIDER_SNAPSHOTS = prevProviderSnaps;
+    renderProviderTab(); renderHistory();
+    showSyncStatus('error');
+    alert(`⚠ Could not delete ${provider}'s snapshot for ${fmt(date)}.\n\nIt is still in the database — nothing was removed. Check your internet connection and try again.`);
+    return;
+  }
   showSyncStatus('saved');
   renderProviderTab(); renderHistory();
   if(PROVIDER_SNAPSHOTS.find(p=>p.provider===provider)) openProviderDetail(provider);
@@ -8840,13 +9215,22 @@ async function deleteProviderReading(date, provider){
 }
 async function deleteProviderAll(provider){
   if(!confirm(`Permanently DELETE all snapshots for "${provider}"?\n\nThis erases the data and cannot be undone. (To just stop tracking it while keeping the data, use Archive instead.)`)) return;
+  const prevProviderSnaps=PROVIDER_SNAPSHOTS.slice(), prevDefs=PROVIDER_DEFS.slice(), prevArchived=ARCHIVED_PROVIDERS.slice();
   PROVIDER_SNAPSHOTS=PROVIDER_SNAPSHOTS.filter(p=>p.provider!==provider);
   const wasInList=PROVIDER_DEFS.some(n=>n.toLowerCase()===provider.toLowerCase())||ARCHIVED_PROVIDERS.some(n=>n.toLowerCase()===provider.toLowerCase());
   PROVIDER_DEFS=PROVIDER_DEFS.filter(n=>n.toLowerCase()!==provider.toLowerCase());
   ARCHIVED_PROVIDERS=ARCHIVED_PROVIDERS.filter(n=>n.toLowerCase()!==provider.toLowerCase());
   showSyncStatus('loading');
-  await window._supabaseDeleteProviderAll(provider);
-  if(wasInList) await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  const ok = await window._supabaseDeleteProviderAll(provider);
+  if(!ok){
+    PROVIDER_SNAPSHOTS=prevProviderSnaps; PROVIDER_DEFS=prevDefs; ARCHIVED_PROVIDERS=prevArchived;
+    renderProviderTab(); renderHistory(); renderSettingsTab(); renderBadges();
+    showSyncStatus('error');
+    alert(`⚠ Could not delete "${provider}".\n\nIts data is still in the database — nothing was removed. Check your internet connection and try again.`);
+    return;
+  }
+  // allowEmpty: removing the last provider legitimately leaves both lists empty.
+  if(wasInList) await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS, true);
   showSyncStatus('saved');
   closeOverlay('providerDetailModal');
   renderProviderTab(); renderHistory(); renderSettingsTab(); renderBadges();
@@ -8969,7 +9353,11 @@ function getOrCreateRule(name){
 }
 async function saveOneRule(rule){
   showSyncStatus('loading');
-  try { await window._supabaseSaveProviderRule(rule); showSyncStatus('saved'); }
+  try {
+    const ok = await window._supabaseSaveProviderRule(rule);
+    showSyncStatus(ok ? 'saved' : 'error');
+    if (!ok) alert('⚠ That matching rule did not save.\n\nCheck your internet connection and try again.');
+  }
   catch(e){ console.error('rule save failed', e); showSyncStatus('error'); }
   setTimeout(()=>showSyncStatus(''),1200);
 }
@@ -9137,9 +9525,17 @@ async function saveProviderDefs(){
     const name=(row.querySelector('input')?.value||'').trim();
     if(name && !seen.has(name.toLowerCase())){ seen.add(name.toLowerCase()); defs.push(name); }
   });
+  const prevDefsOrder = PROVIDER_DEFS.slice();
   PROVIDER_DEFS=defs;
   showSyncStatus('loading');
-  await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  const defsOk = await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  if(!defsOk){
+    PROVIDER_DEFS = prevDefsOrder;
+    showSyncStatus('error');
+    renderSettingsTab();
+    alert('⚠ The provider list did not save.\n\nCheck your internet connection and try again.');
+    return;
+  }
   try{ const data=await window._supabaseLoad(); if(data){ PROVIDER_DEFS=data.providerDefs||PROVIDER_DEFS; ARCHIVED_PROVIDERS=data.providerArchived||ARCHIVED_PROVIDERS; } }catch(e){ console.error('reload defs failed',e); }
   showSyncStatus('saved');
   renderSettingsTab(); renderProviderTab(); renderBadges();
@@ -9150,10 +9546,17 @@ async function saveProviderDefs(){
 // ── Archive / restore (hide from active views but keep all data) ──
 async function archiveProvider(name){
   if(!confirm(`Archive "${name}"?\n\nIt will be hidden from the Provider page, charts and snapshot form, but all its snapshots are kept. You can restore it any time from Settings.`)) return;
+  const preDefs=PROVIDER_DEFS.slice(), preArch=ARCHIVED_PROVIDERS.slice();
   PROVIDER_DEFS=PROVIDER_DEFS.filter(n=>n.toLowerCase()!==name.toLowerCase());
   if(!ARCHIVED_PROVIDERS.some(n=>n.toLowerCase()===name.toLowerCase())) ARCHIVED_PROVIDERS.push(name);
   showSyncStatus('loading');
-  await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  const archOk = await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  if(!archOk){
+    PROVIDER_DEFS=preDefs; ARCHIVED_PROVIDERS=preArch;
+    showSyncStatus('error'); renderProviderTab(); renderSettingsTab();
+    alert(`⚠ Could not archive "${name}".\n\nNothing was changed. Check your internet connection and try again.`);
+    return;
+  }
   try{ const d=await window._supabaseLoad(); if(d){ PROVIDER_DEFS=d.providerDefs||PROVIDER_DEFS; ARCHIVED_PROVIDERS=d.providerArchived||ARCHIVED_PROVIDERS; } }catch(e){ console.error(e); }
   showSyncStatus('saved');
   closeOverlay('providerDetailModal');
@@ -9162,10 +9565,17 @@ async function archiveProvider(name){
   setTimeout(()=>showSyncStatus(''),1500);
 }
 async function unarchiveProvider(name){
+  const preDefsU=PROVIDER_DEFS.slice(), preArchU=ARCHIVED_PROVIDERS.slice();
   ARCHIVED_PROVIDERS=ARCHIVED_PROVIDERS.filter(n=>n.toLowerCase()!==name.toLowerCase());
   if(!PROVIDER_DEFS.some(n=>n.toLowerCase()===name.toLowerCase())) PROVIDER_DEFS.push(name);
   showSyncStatus('loading');
-  await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  const unarchOk = await window._supabaseSaveProviderDefs(PROVIDER_DEFS, ARCHIVED_PROVIDERS);
+  if(!unarchOk){
+    PROVIDER_DEFS=preDefsU; ARCHIVED_PROVIDERS=preArchU;
+    showSyncStatus('error'); renderProviderTab(); renderSettingsTab();
+    alert(`⚠ Could not restore "${name}".\n\nNothing was changed. Check your internet connection and try again.`);
+    return;
+  }
   try{ const d=await window._supabaseLoad(); if(d){ PROVIDER_DEFS=d.providerDefs||PROVIDER_DEFS; ARCHIVED_PROVIDERS=d.providerArchived||ARCHIVED_PROVIDERS; } }catch(e){ console.error(e); }
   showSyncStatus('saved');
   closeOverlay('providerDetailModal');
@@ -9191,8 +9601,8 @@ Chart.defaults.font.family = "'DM Mono', monospace";
 const now = new Date();
 const d30 = new Date(now);
 d30.setDate(d30.getDate()-30);
-rangeFrom = d30.toISOString().split('T')[0];
-rangeTo = now.toISOString().split('T')[0];
+rangeFrom = d30.toLocaleDateString('en-CA');
+rangeTo = now.toLocaleDateString('en-CA');
 document.getElementById('rangeFrom').value = rangeFrom;
 document.getElementById('rangeTo').value = rangeTo;
 
