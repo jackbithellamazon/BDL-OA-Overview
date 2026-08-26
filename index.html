@@ -1308,6 +1308,32 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
   border:1px dashed rgba(0,245,160,.4);background:rgba(0,245,160,.05);border-radius:9px;
   font-size:11.5px;color:var(--muted2)}
 .cmp-pending b{color:var(--g)}
+/* ── Overview read-out ────────────────────────────────────────────────── */
+.kpi-co{font-family:var(--mono);font-size:11px;font-weight:700;margin-top:3px;color:var(--muted2)}
+.kpi-view{display:flex;align-items:center;gap:10px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border)}
+.kpi-view-l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2)}
+.kpi-view-seg{display:inline-flex;border:1px solid var(--border2);border-radius:8px;overflow:hidden;background:var(--s2)}
+.kpi-view-seg button{font-family:var(--mono);font-size:11px;font-weight:700;padding:7px 15px;border:none;cursor:pointer;
+  background:transparent;color:var(--muted2);transition:background .15s,color .15s;border-right:1px solid var(--border2)}
+.kpi-view-seg button:last-child{border-right:none}
+.kpi-view-seg button:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.kpi-view-seg button.on{background:var(--g);color:#04120c}
+.ai-verdict{border-left:3px solid var(--b);padding:2px 0 2px 14px;margin-bottom:16px}
+.ai-verdict-t{font-size:16px;font-weight:700;letter-spacing:-.01em;line-height:1.3}
+.ai-verdict-s{font-size:12.5px;color:var(--muted2);line-height:1.6;margin-top:4px}
+.ai-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.ai-col{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;min-width:0}
+.ai-col-h{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.11em;margin-bottom:8px}
+.ai-item{font-size:12px;line-height:1.55;color:var(--muted2);margin-bottom:6px;display:flex;gap:7px;align-items:baseline}
+.ai-item:last-child{margin-bottom:0}
+.ai-item b{color:var(--text);font-weight:700}
+.ai-item.ai-none{color:var(--muted);font-style:italic}
+.ai-nums{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border)}
+.ai-nums-h{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted)}
+.ai-num{display:flex;flex-direction:column;gap:2px}
+.ai-num-l{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.ai-num-v{font-family:var(--mono);font-size:13px;font-weight:800;letter-spacing:-.01em}
+@media(max-width:820px){ .ai-cols{grid-template-columns:1fr} }
 .ov-wrap{border:1px solid var(--border);border-radius:12px;background:var(--s1);overflow:hidden}
 .ov-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;
   background:linear-gradient(180deg,rgba(61,158,255,.055),transparent);border-bottom:1px solid var(--border)}
@@ -1590,7 +1616,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         <div class="kpi-mini-insight" id="kStockValueInsight"></div>
       </div>
       <div class="kpi-tile" onclick="openKpiModal('units')">
-        <div class="kpi-label">Total Units</div>
+        <div class="kpi-label">Available Units</div>
         <div class="kpi-value" id="kUnits">—</div>
         <div class="kpi-change"><span id="kUnitsPill"></span></div>
         <div class="kpi-mini-insight" id="kUnitsInsight"></div>
@@ -1631,10 +1657,10 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
     </div>
     <div style="background:var(--s1);border-radius:12px;padding:18px;margin-bottom:24px;z-index:1;position:relative">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--muted2);letter-spacing:0.5px">AI Analysis</div>
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--muted2);letter-spacing:0.5px">What this says</div>
         <div style="font-size:11px;color:var(--muted);margin-left:auto" id="insightDate"></div>
       </div>
-      <div style="font-size:12px;line-height:1.7;color:#fff;white-space:pre-wrap" id="insightText">Add your first snapshot to unlock AI-powered trend analysis and business insights.</div>
+      <div style="font-size:12px;line-height:1.7;color:#fff" id="insightText">Add your first snapshot to unlock AI-powered trend analysis and business insights.</div>
     </div>
 
     <div class="grid-65">
@@ -2005,7 +2031,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         <div class="snap-section-grid">
           <div class="fg"><label>Total ASINs</label><input type="number" id="fAsins" placeholder="e.g. 320"></div>
           <div class="fg"><label>Total SKUs</label><input type="number" id="fSkus" placeholder="e.g. 450"></div>
-          <div class="fg"><label>Total Stock Units</label><input type="number" id="fUnits" placeholder="e.g. 669" oninput="calcAvgCost()"></div>
+          <div class="fg"><label>Available Stock Units</label><input type="number" id="fUnits" placeholder="e.g. 669" oninput="calcAvgCost()"><span class="age-val">sellable only — not inbound</span></div>
           <div class="fg"><label>Total Stock Value (£)</label><input type="number" step="0.01" id="fStockValue" placeholder="e.g. 9700.00" oninput="calcAvgCost()"></div>
           <div class="fg"><label>Inbound Units</label><input type="number" id="fInboundUnits" placeholder="e.g. 769"></div>
           <div class="fg"><label>Inbound Value (£)</label><input type="number" step="0.01" id="fInboundValue" placeholder="e.g. 26531.28"></div>
@@ -2874,7 +2900,7 @@ function renderDailySummary(snaps) {
   }
 
   const kpis = [
-    {label:'Stock Value',   val:`£${((snap.stockValue||0)/1000).toFixed(1)}k`,  diff:kpiDiff(snap.stockValue||0,prev?.stockValue||0,v=>'£'+(Math.abs(v)/1000).toFixed(1)+'k',true)},
+    {label:'Stock Value',   val:fmtGBP(snap.stockValue||0),  diff:kpiDiff(snap.stockValue||0,prev?.stockValue||0,v=>fmtGBPAbs(v),true)},
     {label:'Total Units',   val:(snap.totalUnits||0).toLocaleString(),          diff:kpiDiff(snap.totalUnits||0,prev?.totalUnits||0,v=>(v>0?'+':'')+Math.round(Math.abs(v)),true)},
     {label:'Total SKUs',    val:(snap.skus||0).toLocaleString(),                diff:kpiDiff(snap.skus||0,prev?.skus||0,v=>Math.round(Math.abs(v))+' SKUs',true)},
     {label:'Avg Unit Cost', val:`£${(snap.avgCost||0).toFixed(2)}`,            diff:kpiDiff(snap.avgCost||0,prev?.avgCost||0,v=>'£'+Math.abs(v).toFixed(4),null)},
@@ -3069,7 +3095,7 @@ function renderDailySummary(snaps) {
               <td style="padding:7px 10px;color:var(--text)">${(s.skus||0).toLocaleString()}</td>
               <td style="padding:7px 10px;color:var(--text)">${(s.asins||0).toLocaleString()}</td>
               <td style="padding:7px 10px;color:var(--text)">${(s.totalUnits||0).toLocaleString()}</td>
-              <td style="padding:7px 10px;color:var(--text)">£${((s.stockValue||0)/1000).toFixed(1)}k</td>
+              <td style="padding:7px 10px;color:var(--text)">${fmtGBP(s.stockValue||0)}</td>
               <td style="padding:7px 10px;color:var(--text)">£${(s.avgCost||0).toFixed(2)}</td>
               <td style="padding:7px 10px;color:${sWin>=10?'#22c55e':sWin<5?'#dc2626':'#ca8a04'}">${sWin.toFixed(1)}%</td>
               <td style="padding:7px 10px;color:${sMatch>=10?'#22c55e':sMatch<5?'#dc2626':'#ca8a04'}">${sMatch.toFixed(1)}%</td>
@@ -3215,7 +3241,10 @@ function renderKpis(snaps) {
   // Apply colours — up = better for all KPIs
   setTileColor('kSkus', latest.skus, prev?.skus);
   setTileColor('kAsins', latest.asins, prev?.asins);
-  setTileColor('kCost', latest.avgCost, prev?.avgCost);
+  // Deliberately uncoloured. The popup itself says avg cost "doesn't have a simple higher
+  // is better or lower is better rule" — painting a fall red contradicted that every render.
+  const costTile = document.getElementById('kCost')?.closest('.kpi-tile');
+  if (costTile) costTile.classList.remove('better','worse','same');
   setTileColor('kStockValue', latest.stockValue, prev?.stockValue);
   setTileColor('kUnits', latest.totalUnits, prev?.totalUnits);
   const inbTileEl = document.getElementById('kInbound')?.closest('.kpi-tile');
@@ -4337,6 +4366,18 @@ function openAgedStockModal(snaps, modal, title, body){
 
 // ===== END STOCK HEALTH PAGE =====
 
+// Money is always written in full with thousands separators. Never abbreviated to k —
+// "£25.4k" hides anything between £25,350 and £25,449, and these are real figures.
+function fmtGBP(v){ return '£' + Math.round(Number(v)||0).toLocaleString(); }
+function fmtGBPAbs(v){ return '£' + Math.abs(Math.round(Number(v)||0)).toLocaleString(); }
+
+let KPI_VIEW = 'both';   // inbound popup: 'units' | 'value' | 'both'
+try{ const v=localStorage.getItem('kpiView'); if(v==='units'||v==='value'||v==='both') KPI_VIEW=v; }catch(e){}
+function setKpiView(v){
+  KPI_VIEW=v; try{ localStorage.setItem('kpiView',v); }catch(e){}
+  openKpiModal('inboundunits');
+}
+
 function openKpiModal(key, metric) {
   const snaps = filteredSnaps();
   if (!snaps || snaps.length === 0) return;
@@ -4349,19 +4390,31 @@ function openKpiModal(key, metric) {
     skus:       { label:'Total SKUs',      getter:s=>s.skus||0,       fmt:v=>Math.round(v).toLocaleString(),  unit:'SKUs',  upGood:true  },
     asins:      { label:'Total ASINs',     getter:s=>s.asins||0,      fmt:v=>Math.round(v).toLocaleString(),  unit:'ASINs', upGood:true  },
     cost:       { label:'Avg Unit Cost',   getter:s=>s.avgCost||0,    fmt:v=>'£'+v.toFixed(2), fmtDiff:v=>'£'+Math.abs(v).toFixed(4),  unit:'',      upGood:null  }, // context-dependent — only meaningful alongside units and stock value
-    stockvalue: { label:'Stock Value',     getter:s=>s.stockValue||0, fmt:v=>'£'+(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0)), unit:'', upGood:true },
-    units:      { label:'Total Units',     getter:s=>s.totalUnits||0, fmt:v=>Math.round(v).toLocaleString(),  unit:'units', upGood:true  },
+    stockvalue: { label:'Stock Value',     getter:s=>s.stockValue||0, fmt:v=>fmtGBP(v), unit:'', upGood:true },
+    units:      { label:'Available Units', getter:s=>s.totalUnits||0, fmt:v=>Math.round(v).toLocaleString(),  unit:'units', upGood:true  },
     // Return null, not 0, for snapshots predating the feature — line 4372 filters those out,
     // so averages and all-time lows are computed only over dates actually recorded.
     // fmt must tolerate null: the modal formats prev/diff values that can be absent when only
     // part of the history carries inbound, and v.toFixed() on a null throws.
-    inboundunits:{ label:'Inbound Units',  getter:s=>s.inboundUnits??null, fmt:v=>v==null?'—':Math.round(v).toLocaleString(), fmtDiff:v=>v==null?'—':Math.round(Math.abs(v)).toLocaleString(), unit:'units', upGood:true },
-    inboundcost:{ label:'Inbound Value',   getter:s=>s.inboundValue??null, fmt:v=>v==null?'—':'£'+(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0)), fmtDiff:v=>v==null?'—':'£'+Math.abs(v).toFixed(0), unit:'', upGood:true },
+    inboundunits:{ label:'Inbound', getter:s=>s.inboundUnits??null, fmt:v=>v==null?'—':Math.round(v).toLocaleString(), fmtDiff:v=>v==null?'—':Math.round(Math.abs(v)).toLocaleString(), unit:'units', upGood:true,
+      companion:{ label:'value', axis:'£', colour:'#3d9eff', getter:s=>s.inboundValue??null,
+        fmt:v=>v==null?'—':fmtGBP(v), fmtDiff:v=>v==null?'—':fmtGBPAbs(v) } },
+    inboundcost:{ label:'Inbound', getter:s=>s.inboundValue??null, fmt:v=>v==null?'—':fmtGBP(v), fmtDiff:v=>v==null?'—':fmtGBPAbs(v), unit:'', upGood:true,
+      companion:{ label:'units', axis:'units', colour:'#ffd166', getter:s=>s.inboundUnits??null,
+        fmt:v=>v==null?'—':Math.round(v).toLocaleString(),
+        fmtDiff:v=>v==null?'—':Math.round(Math.abs(v)).toLocaleString() } },
     winbb:      { label:'Win BB %',        getter:s=>s.repricer?.total>0?parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.winPct||0), fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:true },
     matchbb:    { label:'Match BB %',      getter:s=>s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0), fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:true },
     agedrisk:   { label:'Aged Risk 181+d', getter:s=>{ const ag=s.ageing||{}; const tot=(ag.a0||0)+(ag.a31||0)+(ag.a61||0)+(ag.a91||0)+(ag.a181||0)+(ag.a271||0)+(ag.a365||0); const aged=(ag.a181||0)+(ag.a271||0)+(ag.a365||0); return tot>0?parseFloat(((aged/tot)*100).toFixed(1)):0; }, fmt:v=>v.toFixed(1)+'%', unit:'pp', upGood:false },
   };
   let cfg = configs[key]; if (!cfg) return;
+  const isInbound = (key==='inboundunits' || key==='inboundcost');
+  // One shipment, three ways of looking at it. Which one is remembered between openings.
+  if (isInbound) {
+    if (KPI_VIEW === 'units')      cfg = { ...configs.inboundunits, companion:null };
+    else if (KPI_VIEW === 'value') cfg = { ...configs.inboundcost,  companion:null };
+    else                           cfg = configs.inboundunits;   // both
+  }
   const showMetricToggle = (key==='winbb' || key==='matchbb');
   metric = showMetricToggle ? (metric || 'pct') : 'pct';
   if (showMetricToggle && metric==='count') {
@@ -4376,6 +4429,15 @@ function openKpiModal(key, metric) {
          <button class="kpi-range-btn ${metric!=='count'?'active':''}" onclick="openKpiModal('${key}','pct')">Percentage</button>
          <button class="kpi-range-btn ${metric==='count'?'active':''}" onclick="openKpiModal('${key}','count')">Number of SKUs</button>
        </div>`
+    : isInbound
+    ? `<div class="kpi-view">
+         <span class="kpi-view-l">Show</span>
+         <div class="kpi-view-seg">
+           <button class="${KPI_VIEW==='units'?'on':''}" onclick="setKpiView('units')">Units</button>
+           <button class="${KPI_VIEW==='value'?'on':''}" onclick="setKpiView('value')">\u00A3 value</button>
+           <button class="${KPI_VIEW==='both'?'on':''}"  onclick="setKpiView('both')">Both</button>
+         </div>
+       </div>`
     : '';
 
   // Aged stock gets its own full popup
@@ -4385,10 +4447,11 @@ function openKpiModal(key, metric) {
   const vals = snaps.map(cfg.getter);
   const latest = vals[vals.length-1];
   const prev = vals.length>1 ? vals[vals.length-2] : null;
-  const diff = prev!==null ? latest-prev : null;
-  const allVals = vals.filter(v=>!isNaN(v));
-  const highest = Math.max(...allVals), lowest = Math.min(...allVals);
-  const avg = allVals.reduce((a,b)=>a+b,0)/allVals.length;
+  const diff = (prev!==null && prev!==undefined && latest!==null) ? latest-prev : null;
+  const allVals = vals.filter(v=>v!=null && !isNaN(v));
+  const highest = allVals.length ? Math.max(...allVals) : null;
+  const lowest  = allVals.length ? Math.min(...allVals) : null;
+  const avg = allVals.length ? allVals.reduce((a,b)=>a+b,0)/allVals.length : null;
   const last6 = snaps.slice(-6);
   const last6vals = last6.map(cfg.getter);
   const last3 = allVals.slice(-3);
@@ -4457,17 +4520,17 @@ function openKpiModal(key, metric) {
       else whatsHappening='Avg cost relatively stable this period. Product mix hasn\'t shifted significantly.';
     }
     whatToWatch='The real signal is avg cost vs stock value vs units together. If avg cost rises but stock value and units also rise, you\'re deliberately moving upmarket. If avg cost rises but units fall, your cheap stock is moving but premium stock is sitting.';
-    combinations=`Current avg cost £${costL.toFixed(2)} × ${unitsL.toLocaleString()} units = £${(costL*unitsL/1000).toFixed(1)}k total deployed. ${costL>15?'Higher ticket portfolio — expect slower sell-through but stronger margins.':costL<8?'Lower ticket portfolio — faster velocity expected, focus on volume.':'Mid-range portfolio — balanced mix of velocity and margin.'}`;
+    combinations=`Current avg cost £${costL.toFixed(2)} × ${unitsL.toLocaleString()} units = ${fmtGBP(costL*unitsL)} total deployed. ${costL>15?'Higher ticket portfolio — expect slower sell-through but stronger margins.':costL<8?'Lower ticket portfolio — faster velocity expected, focus on volume.':'Mid-range portfolio — balanced mix of velocity and margin.'}`;
   }
 
   else if(key==='stockvalue'){
     whatItMeans='Stock value is your single most important KPI. It represents the total capital deployed in inventory and your capacity to generate sales and profit. Higher stock value generally means more opportunity — more products, more listings, more chances to win buy boxes and generate revenue. It\'s your working capital in product form.';
     if(P){
       const svDiff=svL-svP;
-      if(svUp&&unitsUp&&costDown) whatsHappening=`Stock value up £${Math.abs(svDiff/1000).toFixed(1)}k — driven by more units at lower cost. You\'re building inventory volume efficiently. Good position for high-velocity selling.`;
-      else if(svUp&&unitsUp&&costUp) whatsHappening=`Stock value up £${Math.abs(svDiff/1000).toFixed(1)}k — units up and avg cost up. You\'re deploying more capital into higher-value products. Stronger margin potential but watch sell-through pace.`;
+      if(svUp&&unitsUp&&costDown) whatsHappening=`Stock value up ${fmtGBPAbs(svDiff)} — driven by more units at lower cost. You\'re building inventory volume efficiently. Good position for high-velocity selling.`;
+      else if(svUp&&unitsUp&&costUp) whatsHappening=`Stock value up ${fmtGBPAbs(svDiff)} — units up and avg cost up. You\'re deploying more capital into higher-value products. Stronger margin potential but watch sell-through pace.`;
       else if(svUp&&unitsDown) whatsHappening=`Stock value up but units down — average cost has risen significantly. You\'re holding more value in fewer, more expensive units. Make sure your repricer is keeping these competitive.`;
-      else if(!svUp&&unitsDown) whatsHappening=`Stock value declining (${svDiff<0?'-£'+Math.abs(svDiff/1000).toFixed(1)+'k':'+£'+(svDiff/1000).toFixed(1)+'k'}) and units falling — inventory is contracting. Could be healthy sell-through or a signal to restock. Check your buying pipeline.`;
+      else if(!svUp&&unitsDown) whatsHappening=`Stock value declining (${(svDiff<0?'-':'+')+fmtGBPAbs(svDiff)}) and units falling — inventory is contracting. Could be healthy sell-through or a signal to restock. Check your buying pipeline.`;
       else if(!svUp&&unitsUp) whatsHappening='Stock value falling despite more units — you\'re selling through higher-value stock and restocking with cheaper products. Cashflow positive but margin may be compressing.';
       else whatsHappening='Stock value relatively stable this period.';
     }
@@ -4557,6 +4620,9 @@ function openKpiModal(key, metric) {
   const diff6col = diff6===null?'var(--muted2)':diff6good===null?'#ffd166':diff6good?'#00f5a0':'#ff8c42';
   const diff6str = diff6===null ? '—' : (diff6>0?'+':diff6<0?'-':'') + (cfg.fmtDiff||cfg.fmt)(Math.abs(diff6||0));
   const diff6label = allVals.length >= 6 ? 'vs 6 ago' : `vs ${allVals.length-1} ago`;
+  // With a short history this window is the same span as the 3-entry trend, so it repeats
+  // the number next to it. Dimmed rather than removed, so the grid keeps its shape.
+  const dupeSpan = diff6!==null && trend3!==null && Math.abs(diff6-trend3)<0.005;
 
   // Concern sentence — reads full history for sustained patterns
   let concernSentence = '';
@@ -4709,7 +4775,16 @@ function openKpiModal(key, metric) {
   }
 
   // History rows — fixed formatting and alignment
+  // Rows before the metric was ever recorded printed a row of dashes each. Collapse them
+  // into one honest line so the table starts where the data does.
+  let histSkipped = 0;
+  {
+    let i = 0;
+    while (i < last6.length && cfg.getter(last6[i]) == null) { i++; }
+    if (i > 0 && i < last6.length) { histSkipped = i; }
+  }
   const histRows = last6.map((s,i)=>{
+    if (i < histSkipped) return '';
     const v=cfg.getter(s), pv=i>0?cfg.getter(last6[i-1]):null, d=pv!==null?v-pv:null;
     const dCol=d===null?'transparent':Math.abs(d)<0.05?'var(--muted2)':d>0?'#00f5a0':'#ff8c42';
     // Fix: format sign separately from currency symbol, use fmtDiff for changes if available
@@ -4721,16 +4796,54 @@ function openKpiModal(key, metric) {
       dStr=sign+absStr;
     }
     const dd=s.date?.split('-'); const lbl=dd?`${dd[2]}/${dd[1]}/${dd[0].slice(2)}`:s.date||'';
-    return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;padding:7px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
+    // With a companion the row carries both tracks side by side — the point of the redesign
+    // is reading units and money on the same line rather than flipping a toggle.
+    let coCells='';
+    if (cfg.companion) {
+      const c=cfg.companion;
+      const cvv=c.getter(s), cpv=i>0?c.getter(last6[i-1]):null;
+      const cd=(cpv!=null&&cvv!=null)?cvv-cpv:null;
+      const ccol=cd===null?'transparent':Math.abs(cd)<0.5?'var(--muted2)':cd>0?'#00f5a0':'#ff8c42';
+      const cstr=cd!==null&&Math.abs(cd)>=0.5?((cd>0?'+':'-')+c.fmtDiff(Math.abs(cd))):'';
+      coCells = `<span style="text-align:center;font-weight:700;color:${c.colour}">${c.fmt(cvv)}</span>`
+              + `<span style="text-align:right;font-weight:600;color:${ccol}">${i>0?cstr:'—'}</span>`;
+    }
+    return `<div style="display:grid;grid-template-columns:${cfg.companion?'1.1fr .9fr .9fr .9fr .9fr':'1fr 1fr 1fr'};align-items:center;gap:4px;padding:7px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
       <span style="color:var(--muted2)">${lbl}</span>
       <span style="text-align:center;font-weight:700;color:var(--text)">${cfg.fmt(v)}</span>
       <span style="text-align:right;font-weight:600;color:${dCol}">${i>0?dStr:'—'}</span>
+      ${coCells}
     </div>`;
   }).join('');
 
   // Trend tags
   const trendGood = trendDir===null?null:cfg.upGood===null?null:cfg.upGood?trendDir==='up':trendDir==='down';
   const streakTag = streak!==0?`<span style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:4px;background:${Math.abs(streak)>=2?'rgba(255,255,255,.06)':'rgba(255,255,255,.04)'};color:var(--muted2)">${streak>0?'↑':'↓'} ${Math.abs(streak)} in a row</span>`:'';
+  // Everything the companion track needs, mirroring the primary calcs above.
+  const co = cfg.companion || null;
+  let coLatest=null, coDiff=null, coTrend3=null, coAvg=null, coLo=null, coHi=null, coDiff6=null;
+  if (co) {
+    const cv = snaps.map(co.getter);
+    const cReal = cv.filter(v=>v!=null && !isNaN(v));
+    coLatest = cv[cv.length-1];
+    const cPrev = cv.length>1 ? cv[cv.length-2] : null;
+    coDiff = (cPrev!=null && coLatest!=null) ? coLatest-cPrev : null;
+    const c3 = cReal.slice(-3);
+    coTrend3 = c3.length>=2 ? c3[c3.length-1]-c3[0] : null;
+    coAvg = cReal.length ? cReal.reduce((a,b)=>a+b,0)/cReal.length : null;
+    coLo = cReal.length ? Math.min(...cReal) : null;
+    coHi = cReal.length ? Math.max(...cReal) : null;
+    const c6 = cv.length>6 ? cv[cv.length-7] : null;
+    coDiff6 = (c6!=null && coLatest!=null) ? coLatest-c6 : null;
+  }
+  // Second line under a stat card. Muted and smaller — it supports the headline, not competes.
+  const coLine = (val, isDiff) => {
+    if (!co) return '';
+    if (val == null) return '';   // a lone dash under a real number reads as broken
+    const txt = isDiff ? ((val>0?'+':val<0?'-':'')+co.fmtDiff(val)) : co.fmt(val);
+    return `<div class="kpi-co" style="color:${co.colour}">${txt}</div>`;
+  };
+
   const trendTag = trendDir?`<span style="font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:4px;background:${trendGood===null?'rgba(255,209,102,.08)':trendGood?'rgba(0,245,160,.1)':'rgba(255,140,66,.1)'};color:${trendGood===null?'#ffd166':trendGood?'#00f5a0':'#ff8c42'}">${trendDir==='up'?'↗':trendDir==='down'?'↘':'→'} ${trendDir} over 3 entries</span>`:'';
 
   title.textContent = cfg.label;
@@ -4743,29 +4856,29 @@ function openKpiModal(key, metric) {
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
             <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">Latest</div>
-            <div style="font-size:20px;font-weight:700;color:var(--text)">${cfg.fmt(latest)}</div>
+            <div style="font-size:20px;font-weight:700;color:var(--text)">${cfg.fmt(latest)}</div>${coLine(coLatest,false)}
           </div>
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
             <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">vs Last Entry</div>
-            <div style="font-size:20px;font-weight:700;color:${diffDisplayColor}">${diff===null?'—':((diff>0?'+':'-')+(cfg.fmtDiff||cfg.fmt)(Math.abs(diff||0)))}</div>
+            <div style="font-size:20px;font-weight:700;color:${diffDisplayColor}">${diff===null?'—':((diff>0?'+':'-')+(cfg.fmtDiff||cfg.fmt)(Math.abs(diff||0)))}</div>${coLine(coDiff,true)}
           </div>
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
             <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">3-entry trend</div>
-            <div style="font-size:20px;font-weight:700;color:${trend3col}">${trend3str}</div>
+            <div style="font-size:20px;font-weight:700;color:${trend3col}">${trend3str}</div>${coLine(coTrend3,true)}
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px">
-          <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
+          <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06);${dupeSpan?'opacity:.45':''}">
             <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">${diff6label}</div>
-            <div style="font-size:20px;font-weight:700;color:${diff6col}">${diff6str}</div>
+            <div style="font-size:20px;font-weight:700;color:${dupeSpan?'var(--muted2)':diff6col}">${diff6str}</div>${dupeSpan?'':coLine(coDiff6,true)}
           </div>
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
             <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">All-time Avg</div>
-            <div style="font-size:20px;font-weight:700;color:var(--muted2)">${cfg.fmt(avg)}</div>
+            <div style="font-size:20px;font-weight:700;color:var(--muted2)">${cfg.fmt(avg)}</div>${coLine(coAvg,false)}
           </div>
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
             <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">Range</div>
-            <div style="font-size:11px;font-weight:600;color:var(--muted2);margin-top:4px">${cfg.fmt(lowest)} → ${cfg.fmt(highest)}</div>
+            <div style="font-size:11px;font-weight:600;color:var(--muted2);margin-top:4px">${cfg.fmt(lowest)} → ${cfg.fmt(highest)}</div>${co?`<div class="kpi-co" style="color:${co.colour}">${co.fmt(coLo)} → ${co.fmt(coHi)}</div>`:''}
           </div>
         </div>
 
@@ -4776,9 +4889,13 @@ function openKpiModal(key, metric) {
 
         <!-- History table -->
         <div style="font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:8px">Entry history</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-family:var(--mono);font-size:10px;color:var(--muted2);padding:4px 12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em">
-          <span>Date</span><span style="text-align:center">Value</span><span style="text-align:right">Change</span>
+        <div style="display:grid;grid-template-columns:${cfg.companion?'1.1fr .9fr .9fr .9fr .9fr':'1fr 1fr 1fr'};gap:4px;font-family:var(--mono);font-size:10px;color:var(--muted2);padding:4px 12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em">
+          <span>Date</span>
+          <span style="text-align:center">${cfg.companion?'Units':(cfg.unit==='units'?'Units':'Value')}</span>
+          <span style="text-align:right">Change</span>
+          ${cfg.companion?`<span style="text-align:center;color:${cfg.companion.colour}">Value</span><span style="text-align:right;color:${cfg.companion.colour}">Change</span>`:''}
         </div>
+        ${histSkipped?`<div style="font-family:var(--mono);font-size:10.5px;color:var(--muted);padding:7px 12px;margin-bottom:3px;font-style:italic">${histSkipped} earlier entr${histSkipped!==1?'ies':'y'} — not recorded yet</div>`:''}
         ${histRows}
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;margin-bottom:8px">
@@ -4854,17 +4971,26 @@ function renderKpiModalChart(mode){
   const cfg = st.cfg;
   const getter = cfg.getter, fmt = cfg.fmt;
   const src = ((mode==='all' ? st.allSnaps : st.periodSnaps) || []).filter(s=>getter(s)!=null);
+  if (cfg.companion) { /* both tracks come from the same rows, so gaps line up by construction */ }
   const vals = src.map(getter);
   const net = vals.length>=2 ? vals[vals.length-1]-vals[0] : 0;
   const lineColor = net>=0 ? '#00f5a0' : '#ff8c42';
   const manyPoints = src.length > 8;
   chartInstances._kpiModalChart=new Chart(canvas.getContext('2d'),{
     type:'line',
-    data:{labels:src.map(s=>{const d=s.date?.split('-');return d?`${d[2]}/${d[1]}`:s.date;}),datasets:[{label:cfg.label,data:vals,borderColor:lineColor,backgroundColor:lineColor+'22',tension:.35,fill:true,pointRadius:manyPoints?3:5,pointBackgroundColor:lineColor,pointBorderColor:'#16181a',pointBorderWidth:2,borderWidth:2.5}]},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:22,right:14,left:2}},plugins:{legend:{display:false},
-      datalabels:{ display: ctx => !manyPoints && ctx.dataIndex===ctx.dataset.data.length-1, align:'top', offset:6, clip:false, color:lineColor, font:{family:'DM Mono',size:10,weight:'600'}, formatter:v=>fmt(v) },
-      tooltip:{backgroundColor:'#11161f',borderColor:'#2a3545',borderWidth:1,padding:10,titleFont:{family:'DM Mono',size:11},bodyFont:{family:'DM Mono',size:11},callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
-      scales:{x:{ticks:{font:{size:10},color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:manyPoints?8:12},grid:{color:'rgba(255,255,255,.05)'}},y:{grace:'12%',ticks:{font:{size:10},color:'#a7b4c4',callback:v=>fmt(v)},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:false}}}
+    data:{labels:src.map(s=>{const d=s.date?.split('-');return d?`${d[2]}/${d[1]}`:s.date;}),datasets:[
+      {label:cfg.unit||cfg.label,data:vals,borderColor:lineColor,backgroundColor:lineColor+'22',tension:.35,fill:true,pointRadius:manyPoints?3:5,pointBackgroundColor:lineColor,pointBorderColor:'#16181a',pointBorderWidth:2,borderWidth:2.5,yAxisID:'y'},
+      // The companion rides its own axis: units and pounds share a shape but not a scale.
+      ...(cfg.companion?[{label:cfg.companion.axis,data:src.map(cfg.companion.getter),borderColor:cfg.companion.colour,backgroundColor:'transparent',borderDash:[5,4],tension:.35,fill:false,pointRadius:manyPoints?2:4,pointBackgroundColor:cfg.companion.colour,pointBorderColor:'#16181a',pointBorderWidth:2,borderWidth:2,yAxisID:'y1'}]:[])
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:22,right:14,left:2}},plugins:{
+      legend:{display:!!cfg.companion,labels:{color:'#a7b4c4',font:{family:'DM Mono',size:10},boxWidth:10,boxHeight:2,usePointStyle:false}},
+      datalabels:{ display: ctx => !manyPoints && !cfg.companion && ctx.dataIndex===ctx.dataset.data.length-1, align:'top', offset:6, clip:false, color:lineColor, font:{family:'DM Mono',size:10,weight:'600'}, formatter:v=>fmt(v) },
+      tooltip:{backgroundColor:'#11161f',borderColor:'#2a3545',borderWidth:1,padding:10,titleFont:{family:'DM Mono',size:11},bodyFont:{family:'DM Mono',size:11},
+        callbacks:{label:ctx=>' '+(ctx.datasetIndex===1&&cfg.companion?cfg.companion.fmt(ctx.parsed.y):fmt(ctx.parsed.y))}}},
+      scales:{x:{ticks:{font:{size:10},color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:manyPoints?8:12},grid:{color:'rgba(255,255,255,.05)'}},
+        y:{grace:'12%',ticks:{font:{size:10},color:'#a7b4c4',callback:v=>fmt(v)},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:false},
+        ...(cfg.companion?{y1:{position:'right',grace:'12%',ticks:{font:{size:10},color:cfg.companion.colour,callback:v=>cfg.companion.fmt(v)},grid:{display:false},beginAtZero:false}}:{})}}
   });
   document.getElementById('kpiRangePeriod')?.classList.toggle('active', mode!=='all');
   document.getElementById('kpiRangeAll')?.classList.toggle('active', mode==='all');
@@ -4877,7 +5003,7 @@ function updateKpiMiniInsights(snaps) {
     kSkusInsight:      { getter: s=>s.skus||0,        upGood:true,  fmt: v=>Math.round(v) },
     kAsinsInsight:     { getter: s=>s.asins||0,       upGood:true,  fmt: v=>Math.round(v) },
     kCostInsight:      { getter: s=>s.avgCost||0,     upGood:true,  fmt: v=>'£'+v.toFixed(2) },
-    kStockValueInsight:{ getter: s=>s.stockValue||0,  upGood:true,  fmt: v=>'£'+(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0)) },
+    kStockValueInsight:{ getter: s=>s.stockValue||0,  upGood:true,  fmt: v=>fmtGBP(v) },
     kUnitsInsight:     { getter: s=>s.totalUnits||0,  upGood:true,  fmt: v=>Math.round(v) },
     kWinBBInsight:     { getter: s=>s.repricer?.total>0?parseFloat(((s.repricer.winning/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.winPct||0), upGood:true, fmt: v=>v.toFixed(1)+'%' },
     kMatchBBInsight:   { getter: s=>s.repricer?.total>0?parseFloat(((s.repricer.matching/s.repricer.total)*100).toFixed(1)):parseFloat(s.repricer?.matchPct||0), upGood:true, fmt: v=>v.toFixed(1)+'%' },
@@ -4906,10 +5032,27 @@ function updateKpiMiniInsights(snaps) {
 
     // One-line context
     let ctx = '';
-    if (elId === 'kCostInsight' && unitsUp && costDown) ctx = 'More stock, cheaper — good';
-    else if (elId === 'kCostInsight' && unitsUp && costUp) ctx = 'More stock & higher ticket';
-    else if (elId === 'kUnitsInsight' && unitsUp && costDown) ctx = 'Growing cheaply — healthy';
-    else if (elId === 'kUnitsInsight' && unitsUp && costUp) ctx = 'Growing, higher avg cost';
+    if (elId === 'kCostInsight') {
+      // Neutral by design — a rise or fall is only meaningful next to units and stock value.
+      const ctxTxt = unitsUp && costDown ? 'more stock, cheaper mix'
+                   : unitsUp && costUp   ? 'more stock, higher ticket'
+                   : !unitsUp && costUp  ? 'cheap stock selling first'
+                   : !unitsUp && costDown? 'premium stock selling first' : 'holding steady';
+      el.innerHTML = `<span style="color:var(--muted2)">${arrow} ${diffStr} vs last</span><br>`
+        + `<span style="color:var(--muted2)">${ctxTxt}</span>`;
+      return;
+    }
+    else if (elId === 'kUnitsInsight') {
+      // Available and Inbound are two halves of one picture, so each tile names the other.
+      const inb = latest.inboundUnits ?? null;
+      const dirCol = isFlat ? 'var(--muted2)' : isGood ? '#00f5a0' : '#ff8c42';
+      const line1 = `<span style="color:${dirCol}">${arrow} ${diffStr} vs last</span>`;
+      const line2 = inb === null
+        ? '<span style="color:var(--muted2)">sellable stock only</span>'
+        : `<span style="color:var(--muted2)">+ ${Math.round(inb).toLocaleString()} inbound = <b style="color:var(--b)">${Math.round(cur+inb).toLocaleString()}</b> total</span>`;
+      el.innerHTML = `${line1}<br>${line2}`;
+      return;
+    }
     else if (elId === 'kWinBBInsight') {
       const v=cur;
       const dirCol = diff > 0.05 ? '#00f5a0' : diff < -0.05 ? '#ff8c42' : 'var(--muted2)';
@@ -5048,9 +5191,27 @@ function setKpiInbound(latest, prev) {
   }
 
   if (ins) {
-    ins.innerHTML = currVal !== null
-      ? `\u00A3${Math.round(currVal).toLocaleString()} in transit`
-      : 'units only';
+    if (currVal === null) { ins.innerHTML = 'units only'; return; }
+    // The £ moves independently of the units (dearer or cheaper stock in transit), so it
+    // gets its own comparison rather than borrowing the units pill's colour.
+    const pv = prev?.inboundValue ?? null;
+    let valDelta = '';
+    if (pv !== null) {
+      const vd = currVal - pv;
+      const col = vd > 0 ? 'var(--g)' : vd < 0 ? 'var(--r)' : 'var(--muted2)';
+      const arrow = vd === 0 ? '\u2192' : vd > 0 ? '\u25B2' : '\u25BC';
+      const abs = Math.abs(vd);
+      const nice = fmtGBPAbs(abs);
+      valDelta = ` <span style="color:${col};font-weight:700">${arrow} ${vd>0?'+':vd<0?'-':''}${nice}</span>`;
+    }
+    // Inbound on its own says nothing — 544 units is a lot on 1,000 of stock and nothing on
+    // 10,000. Sizing it against what is already sellable is the bit worth reading.
+    const avail = latest?.totalUnits ?? null;
+    const share = (avail && curr !== null) ? Math.round((curr/avail)*100) : null;
+    const shareTxt = share === null ? ''
+      : ` <span style="color:var(--muted2)">\u00B7 ${share}% on top of stock</span>`;
+    ins.innerHTML = `\u00A3${Math.round(currVal).toLocaleString()} in transit${valDelta}<br>`
+      + `<span style="color:var(--muted2)">${curr === null ? '' : Math.round(curr).toLocaleString()+' units'}</span>${shareTxt}`;
   }
 }
 
@@ -5300,82 +5461,82 @@ function renderInsights(snaps) {
     const svConsecDown=_consec(svA,'down'), svConsecUp=_consec(svA,'up'), wConsecDown=_consec(wA,'down');
     const svDown=svDiff<0,svUp=svDiff>0,uDown=uDiff<0,uUp=uDiff>0,cDown=cDiff<-0.005,cUp=cDiff>0.005;
 
-    // ── 1. Latest snapshot movement ─────────────────────────
-    main += `<strong>Latest snapshot movement (vs ${fmt(prev.date)}):</strong><br>`;
-    main += `Stock value ${svUp?`increased by ${_g('+£'+Math.round(svDiff).toLocaleString(),true)}`:svDown?`fell by ${_g('-£'+Math.abs(Math.round(svDiff)).toLocaleString(),false)}`:`held flat`}, `;
-    main += `total units ${uUp?`increased by ${_g('+'+uDiff.toLocaleString(),true)}`:uDown?`declined by ${_g(uDiff.toLocaleString(),false)}`:`held flat`}, `;
-    main += `and avg unit cost ${cUp?`increased by ${_g('+£'+cDiff.toFixed(2),true)} to ${_n('£'+(latest.avgCost||0).toFixed(2),true)}`:cDown?`decreased by ${_g('-£'+Math.abs(cDiff).toFixed(2),false)} to ${_n('£'+(latest.avgCost||0).toFixed(2),false)}`:`held broadly steady at £${(latest.avgCost||0).toFixed(2)}`}.<br>`;
+    // Six paragraphs of prose used to restate the tiles above and end on non-statements like
+    // "mixed picture — some KPIs strengthened while others declined". Rebuilt as: one verdict,
+    // only the things that are actually true, then the raw movement. Nothing is padded to
+    // fill a section, and a quiet week is allowed to read as a quiet week.
+    const inbU = latest.inboundUnits ?? null;
+    const inbV = latest.inboundValue ?? null;
+    const money = v => fmtGBPAbs(v), shortMoney = money;
 
-    if(svDown&&uDown&&cDown) main += `All 3 core inventory KPIs softened — lower inventory depth, lower deployed stock value, and weaker average inventory value overall.`;
-    else if(svUp&&uUp&&cUp) main += `All 3 core inventory KPIs improved — stronger stock value, deeper inventory, and higher average unit cost. Strongest combined signal for this business model.`;
-    else if(svDown&&uDown&&cUp) main += `Stock value and units both declined while avg unit cost increased. Lower-cost units sold through, leaving higher-value stock remaining. Inventory depth and deployed capital reduced.`;
-    else if(svUp&&uDown&&cUp) main += `Stock value increased with fewer units and higher avg cost — inventory concentrated in higher-value products. Depth thinner but average value per unit is stronger.`;
-    else if(svUp&&uUp&&cDown) main += `Stock value and units both grew while avg unit cost declined — more units at lower individual values. Inventory depth increased but mix shifted toward lower-value products.`;
-    else if(svDown&&uUp&&cDown) main += `More units added at lower values with stock value declining. Inventory depth grew but average value per unit and total deployed capital weakened.`;
-    else main += `Mixed signals across the 3 core KPIs this period.`;
-    main += `<br><br>`;
-
-    // ── 2. Short-term trend (last 3) ────────────────────────
-    if(last3.length>=3){
-      main += `<strong>Short-term trend (last 3 snapshots):</strong><br>`;
-      main += `Stock value has ${sv3e>sv3s?_n('continued building',true):_n('continued declining',false)} across the last 3 entries`;
-      main += `, while avg unit cost has ${c3e>c3s?_n('strengthened',true):_n('softened',false)} to ${_n('£'+c3e.toFixed(2),c3e>=c3s)}`;
-      if(c3e<c3peak&&c3peak!==c3s) main += ` (recent high: ${_n('£'+c3peak.toFixed(2),false)})`;
-      main += `. Units have ${u3e>u3s?_n('increased',true):_n('continued trending lower',false)} over the same period`;
-      if(u3e<u3s) main += `, suggesting replenishment has not fully kept pace with sell-through in the short term`;
-      main += `.`;
-      if(cTrend>0&&cDown) main += ` Avg unit cost remains ${_n('above earlier '+fmt(first.date)+' levels',true)} despite the recent dip.`;
-      main += `<br><br>`;
+    // ── Verdict: is what you are buying keeping up with what you are selling? ──
+    let vTone, vLine, vWhy;
+    if (inbU !== null) {
+      const inbBig = inbU > 0 && latest.totalUnits > 0 && (inbU/latest.totalUnits) >= 0.05;
+      if (uUp && inbBig)        { vTone='good'; vLine='Buying and selling are both moving';
+                                  vWhy=`Stock is up ${uDiff.toLocaleString()} units and another ${inbU.toLocaleString()} is on its way${inbV?` (${money(inbV)})`:''}.`; }
+      else if (uUp)             { vTone='warn'; vLine='Stock grew, but the pipeline behind it is thin';
+                                  vWhy=`Up ${uDiff.toLocaleString()} units from what already landed, with only ${inbU.toLocaleString()} inbound.`; }
+      else if (uDown && inbBig) { vTone='ok';   vLine='Selling faster than it lands — but more is coming';
+                                  vWhy=`Down ${Math.abs(uDiff).toLocaleString()} units, with ${inbU.toLocaleString()} inbound${inbV?` worth ${money(inbV)}`:''} to land.`; }
+      else if (uDown)           { vTone='bad';  vLine='Stock is thinning and little is inbound';
+                                  vWhy=`Down ${Math.abs(uDiff).toLocaleString()} units with only ${inbU.toLocaleString()} on the way. This shows up in sales a few weeks out.`; }
+      else                      { vTone='ok';   vLine='Holding steady';
+                                  vWhy=`Units flat, ${inbU.toLocaleString()} inbound.`; }
+    } else {
+      vTone = uUp?'good':uDown?'warn':'ok';
+      vLine = uUp?'Inventory is growing':uDown?'Inventory is thinning':'Inventory is holding steady';
+      vWhy  = `${uUp?'Up':uDown?'Down':'Flat at'} ${Math.abs(uDiff).toLocaleString()} units since ${fmt(prev.date)}. No inbound recorded, so the pipeline behind this is unknown.`;
     }
 
-    // ── 3. Selected timeframe trend ─────────────────────────
-    main += `<strong>Selected timeframe trend (${fmt(first.date)} → ${fmt(latest.date)}):</strong><br>`;
-    main += `&bull; Stock value: ${svTrend>=0?_g('+£'+Math.abs(Math.round(svTrend)).toLocaleString(),true):_g('-£'+Math.abs(Math.round(svTrend)).toLocaleString(),false)}<br>`;
-    main += `&bull; Units: ${uTrend>=0?_g('+'+uTrend.toLocaleString(),true):_g(uTrend.toLocaleString(),false)}<br>`;
-    main += `&bull; Avg unit cost: ${cTrend>=0.01?_g('+£'+cTrend.toFixed(2),true):cTrend<=-0.01?_g('-£'+Math.abs(cTrend).toFixed(2),false):_neu('flat')}<br>`;
-    if(svTrend<0&&uTrend<0&&cTrend>0) main += `Longer-term movement remains mixed. Avg unit cost is still ${_n('materially above earlier levels',true)}, although total stock value and inventory depth have ${_n('continued trending lower',false)} overall.`;
-    else if(svTrend>0&&uTrend>0&&cTrend>0) main += `All three core KPIs have ${_n('strengthened',true)} over the period — a positive longer-term picture.`;
-    else if(svTrend<0&&uTrend<0&&cTrend<0) main += `All three core KPIs have ${_n('weakened',false)} over the period. Replenishment has not kept pace with sell-through and the inventory mix has also shifted toward lower-value products.`;
-    else main += `Mixed picture over the full period — some KPIs strengthened while others declined.`;
-    main += `<br><br>`;
+    // ── Only genuine threshold breaches. No filler. ──
+    const needs = [];
+    if (wCur < 5) needs.push(`<b>Win Buy Box ${wCur.toFixed(1)}%</b> — critically low, your listings are close to invisible`);
+    else if (wCur < 10) needs.push(`<b>Win Buy Box ${wCur.toFixed(1)}%</b> — under your 10% target${wConsecDown>=3?`, down ${wConsecDown} entries running`:''}`);
+    if (parseFloat(over180pct) > 10) needs.push(`<b>${over180.toLocaleString()} SKUs aged 181d+</b> (${over180pct}% of stock) — above your 10% line`);
+    else if (over180 - prev181 > 0) needs.push(`<b>Aged stock grew ${over180-prev181}</b> to ${over180.toLocaleString()} SKUs at 181d+`);
+    if (svConsecDown >= 4) needs.push(`<b>Stock value down ${svConsecDown} entries running</b> — restocking is not keeping pace`);
+    if ((skuDiff > 0 || asinDiff > 0) && uDiff < 0) needs.push(`<b>Catalogue widening while units fall</b> — spreading thinner across more lines`);
 
-    // ── 4. Core KPI relationship ────────────────────────────
-    main += `<strong>Core KPI relationship:</strong><br>`;
-    main += `The strongest inventory state is ${_n('stock value ↑',true)}, ${_n('units ↑',true)}, and ${_n('avg unit cost ↑',true)} — stronger capital deployment, deeper inventory, and higher-value mix. `;
-    if(svDiff<0||uDiff<0||cDiff<-0.005) main += `Current short-term movement remains ${_n('below that ideal state',false)}.`;
-    else if(svDiff>0&&uDiff>0&&cDiff>0.005) main += `Current movement is ${_n('aligned with that ideal state',true)}.`;
-    else main += `Current movement is partially aligned with that ideal state.`;
-    main += `<br><br>`;
+    // ── Only genuine positives. ──
+    const working = [];
+    if (wCur >= 10) working.push(`<b>Win Buy Box ${wCur.toFixed(1)}%</b> — at or above target`);
+    if (mCur >= 10) working.push(`<b>Match Buy Box ${mCur.toFixed(1)}%${mDiff>0.05?`, up ${mDiff.toFixed(1)}pp`:''}</b>`);
+    if (over180 === 0) working.push(`<b>Nothing aged past 181 days</b>`);
+    else if (over180 - prev181 < 0) working.push(`<b>Aged stock cleared ${Math.abs(over180-prev181)}</b> since last entry`);
+    if (svConsecUp >= 3) working.push(`<b>Stock value up ${svConsecUp} entries running</b>`);
+    else if (svUp) working.push(`<b>Stock value up ${shortMoney(svDiff)}</b>`);
+    if (wDiff > 0.05 && wCur < 10) working.push(`<b>Win Buy Box climbing</b> — up ${wDiff.toFixed(1)}pp`);
 
-    // ── 5. Secondary KPIs ───────────────────────────────────
-    main += `<strong>Secondary KPIs:</strong><br>`;
-    const wColour = wCur>=10?'#22c55e':wCur<5?'#dc2626':'#ea580c';
-    const mColour = mCur>=10?'#22c55e':mCur<5?'#dc2626':'#ea580c';
-    main += `Win Buy Box ${_n(wCur.toFixed(1)+'%',wCur>=10)}${wDiff!==0?` (${_n((wDiff>0?'+':'')+wDiff.toFixed(1)+'pp',wDiff>0)})`:''} `;
-    if(wCur<5) main += `— <span style="color:#dc2626">critically low, listings near-invisible</span>`;
-    else if(wCur<10&&wConsecDown>=3) main += `— below 10% target, declining ${_n(wConsecDown+' entries in a row',false)}`;
-    else if(wCur<10) main += `— below 10% target`;
-    else main += `— at or above 10% target`;
-    main += `. Match Buy Box ${_n(mCur.toFixed(1)+'%',mCur>=10)}${mDiff!==0?` (${_n((mDiff>0?'+':'')+mDiff.toFixed(1)+'pp',mDiff>0)})`:''}.`;
-    if(skuDiff!==0||asinDiff!==0){
-      main += ` SKUs ${_n((skuDiff>=0?'+':'')+skuDiff,skuDiff>=0)}, ASINs ${_n((asinDiff>=0?'+':'')+asinDiff,asinDiff>=0)}`;
-      if((skuDiff>0||asinDiff>0)&&uDiff<0) main += ` — catalogue expanding but ${_n('units per SKU thinning',false)}`;
-      main += `.`;
-    }
-    const aged181change=over180-prev181;
-    main += ` Aged inventory (181+d): ${over180>0?_n(over180+' units ('+over180pct+'%)',parseFloat(over180pct)<=10):_n('clear',true)}`;
-    if(aged181change>0) main += ` ${_n('↑ +'+aged181change+' since last snapshot',false)}`;
-    else if(aged181change<0) main += ` ${_n('↓ '+aged181change+' since last snapshot',true)}`;
-    main += parseFloat(over180pct)>10?` — ${_n('above 10% threshold',false)}.`:`.`;
-    main += `<br><br>`;
+    // ── The raw movement, once, at the bottom where it belongs ──
+    const chip = (lab, val, good) => `<span class="ai-num"><span class="ai-num-l">${lab}</span>`
+      + `<span class="ai-num-v" style="color:${good===null?'var(--muted2)':good?'#22c55e':'#ff8c42'}">${val}</span></span>`;
+    const numbers = [
+      chip('Stock value', (svDiff>=0?'+':'-')+money(svDiff), svDiff>=0),
+      chip('Units', (uDiff>=0?'+':'')+uDiff.toLocaleString(), uDiff>=0),
+      chip('Avg cost', (Math.abs(cDiff)<0.005?'flat':(cDiff>0?'+£':'-£')+Math.abs(cDiff).toFixed(2)), null),
+      chip('SKUs', (skuDiff>=0?'+':'')+skuDiff, null),
+      chip('ASINs', (asinDiff>=0?'+':'')+asinDiff, null),
+    ].join('');
 
-    // ── 6. Overall ──────────────────────────────────────────
-    main += `<strong>Overall:</strong><br>`;
-    if(svDiff<0&&uDiff<0&&cDiff<-0.005) main += `Short-term inventory momentum has ${_n('softened',false)}, particularly across stock value and unit depth.`;
-    else if(svDiff>0&&uDiff>0&&cDiff>0.005) main += `Short-term inventory momentum is ${_n('positive',true)} across all three core KPIs.`;
-    else main += `Short-term inventory signals are mixed.`;
-    main += ` The main metric to monitor is whether replenishment activity stabilises ${_n('stock value',true)} and rebuilds ${_n('unit depth',true)} over upcoming snapshots.`;
-    if(svConsecDown>=5) main += ` ${_n('⚠ Stock value has declined for '+svConsecDown+' consecutive entries — sustained pattern that may require stronger restocking activity.',false)}`;
+    const col = vTone==='good'?'#22c55e':vTone==='bad'?'#ff4d6d':vTone==='warn'?'#ff8c42':'var(--b)';
+    main = `<div class="ai-verdict" style="border-left-color:${col}">
+        <div class="ai-verdict-t" style="color:${col}">${vLine}</div>
+        <div class="ai-verdict-s">${vWhy}</div>
+      </div>
+      <div class="ai-cols">
+        <div class="ai-col">
+          <div class="ai-col-h" style="color:${needs.length?'#ff8c42':'var(--muted)'}">Needs you${needs.length?` · ${needs.length}`:''}</div>
+          ${needs.length ? needs.map(n=>`<div class="ai-item"><span style="color:#ff8c42">▸</span> ${n}</div>`).join('')
+                         : '<div class="ai-item ai-none">Nothing over the line right now.</div>'}
+        </div>
+        <div class="ai-col">
+          <div class="ai-col-h" style="color:${working.length?'#22c55e':'var(--muted)'}">Working${working.length?` · ${working.length}`:''}</div>
+          ${working.length ? working.slice(0,4).map(n=>`<div class="ai-item"><span style="color:#22c55e">▸</span> ${n}</div>`).join('')
+                           : '<div class="ai-item ai-none">Nothing standing out this entry.</div>'}
+        </div>
+      </div>
+      <div class="ai-nums"><span class="ai-nums-h">since ${fmt(prev.date)}</span>${numbers}</div>`;
   }
 
   box.innerHTML = main;
@@ -5578,11 +5739,11 @@ function renderOverviewChart(snaps) {
   if (chartMetric.includes('bb') || chartMetric === 'agedrisk') {
     opts.scales.y.ticks.callback = v => v + '%';
   } else if (chartMetric === 'stockvalue') {
-    opts.scales.y.ticks.callback = v => '£' + (v/1000).toFixed(0) + 'k';
+    opts.scales.y.ticks.callback = v => fmtGBP(v);
   } else if (chartMetric === 'avgcostperunit') {
     opts.scales.y.ticks.callback = v => '£' + v.toFixed(2);
   } else if (chartMetric === 'inboundcost') {
-    opts.scales.y.ticks.callback = v => '£' + (v >= 1000 ? (v/1000).toFixed(1) + 'k' : v.toFixed(0));
+    opts.scales.y.ticks.callback = v => fmtGBP(v);
   }
 
   chartInstances.overviewChart = new Chart(ctx, {
@@ -5785,7 +5946,7 @@ function generateMetricAnalysis(metric, comps, allSnaps) {
     const arrow1 = diffPrev > 0 ? '↑' : diffPrev < 0 ? '↓' : '→';
     const color1 = diffPrev > 0 ? 'var(--g)' : diffPrev < 0 ? 'var(--r)' : 'var(--muted2)';
     
-    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} Stock Value £${diffPrev > 0 ? '+' : ''}${(diffPrev/1000).toFixed(1)}k (${pctPrev}%)</strong><br>`;
+    html += `<div style="margin-bottom:16px"><strong style="color:${color1}">${arrow1} Stock Value ${diffPrev > 0 ? '+' : '-'}${fmtGBPAbs(diffPrev)} (${pctPrev}%)</strong><br>`;
     html += `Compared to ${fmt(prev?.date || 'N/A')}, your inventory value has ${diffPrev > 0 ? 'increased' : diffPrev < 0 ? 'decreased' : 'remained flat'} by £${Math.abs(diffPrev).toLocaleString()}.`;
     
     if (curr.totalUnits && prev?.totalUnits) {
@@ -10686,7 +10847,7 @@ function provDrawDetailChart(s){
       scales:{
         y:{ min:ymin, max:ymax, grid:{color:'rgba(255,255,255,.05)'},
             ticks:{color:'#a7b4c4',font:{size:11},maxTicksLimit:6,
-              callback:v=>isValue?('£'+(v>=1000?(v/1000).toFixed(1)+'k':v)) : v} },
+              callback:v=>isValue?fmtGBP(v):v} },
         x:{ grid:{display:false}, ticks:{color:'#a7b4c4',font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:8} }
       }
     }
@@ -10723,7 +10884,7 @@ function provDrawDetailMiniCharts(s){
         plugins:{ legend:{display:false}, datalabels:{display:false},
           tooltip:{ backgroundColor:'rgba(7,9,12,.98)', titleColor:'#dce6f0', bodyColor:'#dce6f0', borderColor:cfg.col, borderWidth:1, padding:8, displayColors:false, cornerRadius:6,
             callbacks:{ title:items=>fmt(dates[items[0].dataIndex]), label:item=>`${cfg.prefix||''}${item.parsed.y.toLocaleString()}${cfg.unit||''}` } } },
-        scales:{ y:{ min:lo, max:hi, display:true, grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#a7b4c4',font:{size:10},maxTicksLimit:4, callback:v=>cfg.prefix?('£'+(v>=1000?(v/1000).toFixed(1)+'k':v)):v} },
+        scales:{ y:{ min:lo, max:hi, display:true, grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#a7b4c4',font:{size:10},maxTicksLimit:4, callback:v=>cfg.prefix?fmtGBP(v):v} },
           x:{ display:false } } }
     });
   });
