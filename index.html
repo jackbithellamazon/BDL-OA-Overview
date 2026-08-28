@@ -1304,11 +1304,17 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .mc-sug-tag{color:var(--muted);font-size:9.5px;font-family:var(--mono);white-space:nowrap}
 .mc-sug-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
   font-family:var(--mono);font-size:10px;color:var(--muted2);margin:12px 0 4px}
+.cmp-stalefetch{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:9px 13px;margin-bottom:10px;
+  border:1px dashed rgba(255,140,66,.45);background:rgba(255,140,66,.06);border-radius:9px;
+  font-size:11.5px;color:var(--muted2);line-height:1.5}
+.cmp-stalefetch b{color:var(--o)}
 .cmp-pending{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:9px 13px;margin-bottom:10px;
   border:1px dashed rgba(0,245,160,.4);background:rgba(0,245,160,.05);border-radius:9px;
   font-size:11.5px;color:var(--muted2)}
 .cmp-pending b{color:var(--g)}
 /* ── Overview read-out ────────────────────────────────────────────────── */
+.kpi-panel{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;position:relative;z-index:1}
+#kpiModal::before{content:'';position:absolute;inset:0;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:0}
 .kpi-co{font-family:var(--mono);font-size:11px;font-weight:700;margin-top:3px;color:var(--muted2)}
 .kpi-view{display:flex;align-items:center;gap:10px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border)}
 .kpi-view-l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2)}
@@ -1843,6 +1849,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       <button class="cmp-chip" id="cfUntracked" style="display:none" onclick="toggleUntracked()" title="Sellers with readings on record that are no longer on your list"></button>
     </div>
     <div class="cmp-pending" id="compPending" style="display:none"></div>
+    <div class="cmp-stalefetch" id="compFetchGap" style="display:none"></div>
     <div class="cmp-table-wrap">
     <div class="cmp-head" id="compHead">
       <span onclick="setCompSort('rank')"  id="cs-rank">Rank</span>
@@ -4351,7 +4358,7 @@ function openAgedStockModal(snaps, modal, title, body){
     else { concernEl.textContent='✓ Healthy'; concernEl.style.cssText='margin-left:12px;font-size:11px;font-family:var(--mono);padding:3px 10px;border-radius:4px;background:rgba(34,197,94,.12);color:#22c55e;display:inline'; }
   }
   title.textContent='Stock Health';
-  modal.style.display='block';
+  modal.style.display='flex';
   body.innerHTML =
     shHeroHtml(snaps) +
     shZoneSummaryHtml(snaps) +
@@ -4371,7 +4378,7 @@ function openAgedStockModal(snaps, modal, title, body){
 function fmtGBP(v){ return '£' + Math.round(Number(v)||0).toLocaleString(); }
 function fmtGBPAbs(v){ return '£' + Math.abs(Math.round(Number(v)||0)).toLocaleString(); }
 
-let KPI_VIEW = 'both';   // inbound popup: 'units' | 'value' | 'both'
+let KPI_VIEW = 'value';  // inbound popup: 'value' | 'units' | 'both' — money first by default
 try{ const v=localStorage.getItem('kpiView'); if(v==='units'||v==='value'||v==='both') KPI_VIEW=v; }catch(e){}
 function setKpiView(v){
   KPI_VIEW=v; try{ localStorage.setItem('kpiView',v); }catch(e){}
@@ -4433,8 +4440,8 @@ function openKpiModal(key, metric) {
     ? `<div class="kpi-view">
          <span class="kpi-view-l">Show</span>
          <div class="kpi-view-seg">
-           <button class="${KPI_VIEW==='units'?'on':''}" onclick="setKpiView('units')">Units</button>
            <button class="${KPI_VIEW==='value'?'on':''}" onclick="setKpiView('value')">\u00A3 value</button>
+           <button class="${KPI_VIEW==='units'?'on':''}" onclick="setKpiView('units')">Units</button>
            <button class="${KPI_VIEW==='both'?'on':''}"  onclick="setKpiView('both')">Both</button>
          </div>
        </div>`
@@ -4717,7 +4724,7 @@ function openKpiModal(key, metric) {
         concernSentence = `✓ Growing consistently — up ${consecUp} entries in a row. Strong inventory build.`;
         concernColor = '#00f5a0';
       } else {
-        concernSentence = `No major concern — fluctuation is normal. Net movement all-time: ${netAllTime >= 0 ? '+' : ''}£${Math.round(netAllTime).toLocaleString()}.`;
+        concernSentence = `No major concern — fluctuation is normal. Net movement all-time: ${netAllTime >= 0 ? '+' : '-'}${fmtGBPAbs(netAllTime)}.`;
         concernColor = 'var(--muted2)';
       }
     }
@@ -4786,7 +4793,8 @@ function openKpiModal(key, metric) {
   const histRows = last6.map((s,i)=>{
     if (i < histSkipped) return '';
     const v=cfg.getter(s), pv=i>0?cfg.getter(last6[i-1]):null, d=pv!==null?v-pv:null;
-    const dCol=d===null?'transparent':Math.abs(d)<0.05?'var(--muted2)':d>0?'#00f5a0':'#ff8c42';
+    // was 'transparent', which drew the — in invisible ink and made the first row look broken
+    const dCol=d===null?'var(--muted)':Math.abs(d)<0.05?'var(--muted2)':d>0?'#00f5a0':'#ff8c42';
     // Fix: format sign separately from currency symbol, use fmtDiff for changes if available
     let dStr='';
     if(d!==null&&Math.abs(d)>=0.0001){
@@ -4803,15 +4811,15 @@ function openKpiModal(key, metric) {
       const c=cfg.companion;
       const cvv=c.getter(s), cpv=i>0?c.getter(last6[i-1]):null;
       const cd=(cpv!=null&&cvv!=null)?cvv-cpv:null;
-      const ccol=cd===null?'transparent':Math.abs(cd)<0.5?'var(--muted2)':cd>0?'#00f5a0':'#ff8c42';
+      const ccol=cd===null?'var(--muted)':Math.abs(cd)<0.5?'var(--muted2)':cd>0?'#00f5a0':'#ff8c42';
       const cstr=cd!==null&&Math.abs(cd)>=0.5?((cd>0?'+':'-')+c.fmtDiff(Math.abs(cd))):'';
       coCells = `<span style="text-align:center;font-weight:700;color:${c.colour}">${c.fmt(cvv)}</span>`
-              + `<span style="text-align:right;font-weight:600;color:${ccol}">${i>0?cstr:'—'}</span>`;
+              + `<span style="text-align:right;font-weight:600;color:${ccol}">${cstr||'—'}</span>`;
     }
     return `<div style="display:grid;grid-template-columns:${cfg.companion?'1.1fr .9fr .9fr .9fr .9fr':'1fr 1fr 1fr'};align-items:center;gap:4px;padding:7px 12px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-family:var(--mono);font-size:11px">
       <span style="color:var(--muted2)">${lbl}</span>
       <span style="text-align:center;font-weight:700;color:var(--text)">${cfg.fmt(v)}</span>
-      <span style="text-align:right;font-weight:600;color:${dCol}">${i>0?dStr:'—'}</span>
+      <span style="text-align:right;font-weight:600;color:${dCol}">${dStr||'—'}</span>
       ${coCells}
     </div>`;
   }).join('');
@@ -4950,7 +4958,7 @@ function openKpiModal(key, metric) {
     concernEl.style.display=concern?'inline':'none';
   }
 
-  modal.style.display = 'block';
+  modal.style.display = 'flex';
 
   // Store state so the period/all-time toggle can re-render the chart on demand
   window._kpiChart = {
@@ -4983,14 +4991,15 @@ function renderKpiModalChart(mode){
       // The companion rides its own axis: units and pounds share a shape but not a scale.
       ...(cfg.companion?[{label:cfg.companion.axis,data:src.map(cfg.companion.getter),borderColor:cfg.companion.colour,backgroundColor:'transparent',borderDash:[5,4],tension:.35,fill:false,pointRadius:manyPoints?2:4,pointBackgroundColor:cfg.companion.colour,pointBorderColor:'#16181a',pointBorderWidth:2,borderWidth:2,yAxisID:'y1'}]:[])
     ]},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:22,right:14,left:2}},plugins:{
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},layout:{padding:{top:22,right:56,left:6,bottom:2}},plugins:{
       legend:{display:!!cfg.companion,labels:{color:'#a7b4c4',font:{family:'DM Mono',size:10},boxWidth:10,boxHeight:2,usePointStyle:false}},
       datalabels:{ display: ctx => !manyPoints && !cfg.companion && ctx.dataIndex===ctx.dataset.data.length-1, align:'top', offset:6, clip:false, color:lineColor, font:{family:'DM Mono',size:10,weight:'600'}, formatter:v=>fmt(v) },
       tooltip:{backgroundColor:'#11161f',borderColor:'#2a3545',borderWidth:1,padding:10,titleFont:{family:'DM Mono',size:11},bodyFont:{family:'DM Mono',size:11},
         callbacks:{label:ctx=>' '+(ctx.datasetIndex===1&&cfg.companion?cfg.companion.fmt(ctx.parsed.y):fmt(ctx.parsed.y))}}},
       scales:{x:{ticks:{font:{size:10},color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:manyPoints?8:12},grid:{color:'rgba(255,255,255,.05)'}},
-        y:{grace:'12%',ticks:{font:{size:10},color:'#a7b4c4',callback:v=>fmt(v)},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:false},
-        ...(cfg.companion?{y1:{position:'right',grace:'12%',ticks:{font:{size:10},color:cfg.companion.colour,callback:v=>cfg.companion.fmt(v)},grid:{display:false},beginAtZero:false}}:{})}}
+        y:{grace:'12%',ticks:{font:{size:10},color:'#a7b4c4',padding:8,maxTicksLimit:5,callback:v=>fmt(v)},
+           grid:{color:'rgba(255,255,255,.05)',drawTicks:false,drawOnChartArea:true},border:{display:false},beginAtZero:false},
+        ...(cfg.companion?{y1:{position:'right',grace:'12%',ticks:{font:{size:10},color:cfg.companion.colour,padding:8,maxTicksLimit:5,callback:v=>cfg.companion.fmt(v)},grid:{display:false},border:{display:false},beginAtZero:false}}:{})}}
   });
   document.getElementById('kpiRangePeriod')?.classList.toggle('active', mode!=='all');
   document.getElementById('kpiRangeAll')?.classList.toggle('active', mode==='all');
@@ -6764,7 +6773,7 @@ function openAvgOverlapModal(){
     return {date:s.date, avg:parseFloat(avg.toFixed(1)), n:active.length};
   }).filter(x=>x.n>0);
   title.textContent='Average rival coverage — trend';
-  modal.style.display='block';
+  modal.style.display='flex';
   if(series.length<1){ body.innerHTML='<div style="padding:30px;font-family:var(--mono);color:var(--muted2)">Not enough competitor sessions yet.</div>'; return; }
   const first=series[0].avg, last=series[series.length-1].avg, d=+(last-first).toFixed(1);
   body.innerHTML=`
@@ -7000,6 +7009,16 @@ function renderCompTab() {
   // These tables are built from the readings, not from the seller list, so a seller taken
   // off the list used to keep appearing here forever. Drop them unless asked for — the
   // readings stay in the database and in Comp History either way.
+  // The newest session is "today". A seller absent from it is showing an older number, and
+  // nothing said so — Oslo sat at 9.6% looking current when that reading was two days old.
+  const newestDate = [...COMPETITOR_SESSIONS].map(x=>x.date).sort().pop() || null;
+  const inNewest = new Set(
+    ((COMPETITOR_SESSIONS.find(x=>x.date===newestDate)||{}).competitors||[]).map(c=>c.name.trim()));
+  const lastSeenByName = {};
+  [...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date)).forEach(ses=>{
+    (ses.competitors||[]).forEach(c=>{ lastSeenByName[c.name.trim()] = ses.date; });
+  });
+
   const trackedIds = new Set(SELLERS.map(x=>x.sellerId).filter(Boolean));
   let untrackedCount = 0;
   if (trackedIds.size) {
@@ -7023,6 +7042,20 @@ function renderCompTab() {
   const allSeenIds = new Set();
   COMPETITOR_SESSIONS.forEach(x=>(x.competitors||[]).forEach(c=>{ if(c.sellerId) allSeenIds.add(c.sellerId); }));
   const pending = SELLERS.filter(x => x.sellerId && !allSeenIds.has(x.sellerId));
+  const staleNames = newestDate
+    ? SELLERS.filter(x => !inNewest.has(x.name.trim()) && lastSeenByName[x.name.trim()]).map(x=>x.name)
+    : [];
+  const staleEl = document.getElementById('compFetchGap');
+  if (staleEl) {
+    if (staleNames.length) {
+      staleEl.style.display='';
+      staleEl.innerHTML = `<span><b>${staleNames.length}</b> competitor${staleNames.length!==1?'s were':' was'} not covered by the ${fmt(newestDate)} fetch — `
+        + `${staleNames.length!==1?'they are':'it is'} showing an older reading: ${staleNames.slice(0,8).map(kfEsc).join(', ')}`
+        + `${staleNames.length>8?`, +${staleNames.length-8} more`:''}</span>`
+        + `<button class="cmp-chip" onclick="openKeepaFetch()">Fetch again</button>`;
+    } else staleEl.style.display='none';
+  }
+
   const pendEl = document.getElementById('compPending');
   if (pendEl) {
     if (pending.length) {
@@ -7481,7 +7514,9 @@ function renderCompTab() {
       <div class="cmp-rank ${s.rank<=3?'top':''}">#${s.rank}</div>
       <div style="min-width:0">
         <div class="cmp-name">${kfEsc(s.name)}</div>
-        <div class="cmp-sub">avg ${s.avg.toFixed(1)}%${diffLast!==null?` · ${diffLast>0?'↑':diffLast<0?'↓':'→'} this reading`:''} · ${kfEsc(s.sellerId||'no id')}</div>
+        <div class="cmp-sub">${newestDate && !inNewest.has(s.name.trim())
+            ? `<span style="color:var(--o)">\u26A0 not in the latest fetch \u00b7 last read ${fmt(lastSeenByName[s.name.trim()]||'')}</span> \u00b7 `
+            : ''}avg ${s.avg.toFixed(1)}%${diffLast!==null?` · ${diffLast>0?'↑':diffLast<0?'↓':'→'} this reading`:''} · ${kfEsc(s.sellerId||'no id')}</div>
       </div>
       <div>
         <div class="cmp-pct" style="color:${progressColor}">${s.latest.toFixed(1)}%</div>
@@ -8234,6 +8269,29 @@ async function applyKeepaFetch(fetched){
   // One press writes straight to the database, so there is no human eye between Keepa and
   // your history any more. This is the replacement for that eye: if a run looks nothing like
   // the last one, stop and ask rather than overwriting good readings with a bad fetch.
+  // A shrinking fetch is the failure that actually happened: on 28/08 the storefront step
+  // produced nothing, so the 11 sellers Keepa cannot rank came back null, were skipped on
+  // save, and 39 quietly became 28. Nothing on screen said so. Count first, values second.
+  {
+    const wasTracked = Object.keys(before).length;
+    const nowSaving  = competitors.length;
+    const dropped    = wasTracked - nowSaving;
+    if (wasTracked >= 5 && dropped >= Math.max(3, wasTracked * 0.1)) {
+      const lostNames = Object.keys(before)
+        .filter(id => !competitors.some(c => c.sellerId === id))
+        .map(id => (SELLERS.find(x => x.sellerId === id) || {}).name || id);
+      const goOn = confirm(
+        `\u26A0 This fetch covered fewer competitors than last time.\n\n` +
+        `Last reading: ${wasTracked}. This one: ${nowSaving}. ${dropped} missing:\n` +
+        lostNames.slice(0, 12).join(', ') + (lostNames.length > 12 ? `, +${lostNames.length - 12} more` : '') +
+        `\n\nKeepa could not rank these against you, and the storefront step that normally ` +
+        `works them out did not return anything. Saving now leaves them with a gap for today.\n\n` +
+        `OK = save the ${nowSaving} anyway.\nCancel = discard and try the fetch again.`
+      );
+      if (!goOn) { COMPETITOR_SESSIONS = prevSessions; return {ok:false, error:`discarded — ${dropped} competitors missing from the fetch`}; }
+    }
+  }
+
   if (Object.keys(before).length >= 5) {
     const comparable = competitors.filter(c => before[c.sellerId] != null);
     const wild = comparable.filter(c => Math.abs(c.pct - before[c.sellerId]) >= 20).length;
@@ -8333,32 +8391,55 @@ async function runKeepaFetch(){
       const fresh = new Set();
       list.forEach((a,i)=>{ if(seen[i]!=null && keepaToMs(seen[i])>=cut) fresh.add(a); });
       kfLog(`Your catalogue: ${list.length} listings, ${fresh.size} verified in the last ${KEEPA_FRESH_DAYS} days.`,'ok');
-      if(!fresh.size){ kfLog('No fresh listings — cannot calculate the remainder.','warn'); }
-      else for(let gi=0; gi<needAsins.length; gi++){
+
+      // The 4-day filter is an accuracy tweak, not a requirement. It used to be treated as one:
+      // if Keepa had not re-verified anything recently, `fresh` was empty and the whole loop
+      // was skipped, so every seller Keepa cannot rank got no reading at all. That is what
+      // turned 39 competitors into 28 on 28/08. Fall back to the full list instead — a figure
+      // roughly 2pp high is worth far more than a blank.
+      let matchSet = fresh, usedStale = false;
+      if(!fresh.size && list.length){
+        matchSet = new Set(list); usedStale = true;
+        kfLog(`Nothing verified in the last ${KEEPA_FRESH_DAYS} days — using all ${list.length} listings instead. Figures may read about 2pp high.`,'warn');
+      }
+
+      if(!matchSet.size){
+        kfLog('Your storefront came back empty, so the remainder cannot be worked out. Try again in a minute.','bad');
+      } else for(let gi=0; gi<needAsins.length; gi++){
         const g = needAsins[gi];
         kfProgress(gi + 2, needAsins.length + 2, `Reading ${g.name}…`);
         if(KEEPA_CANCELLED){ kfLog('Cancelled part-way — stopping.','warn'); break; }
-        try{
-          const r = await keepaCall(`seller=${encodeURIComponent(g.sellerId)}&storefront=1`);
-          tokens += r.tokensConsumed||0;
-          const theirs=((r.sellers||{})[g.sellerId]||{}).asinList||[];
-          if(!theirs.length){
-            // Keep any percentage step 1 already gave us; only the ASIN detail is missing.
-            if(!fetched[g.sellerId] || fetched[g.sellerId].pct==null) fetched[g.sellerId]={pct:null,source:'none',note:'no storefront'};
-            kfLog(`${g.name}: no storefront data`,'warn'); continue; }
-          const sharedList=[]; for(const a of theirs) if(fresh.has(a)) sharedList.push(a);
-          const shared=sharedList.length;
-          const prior = fetched[g.sellerId];
-          if (prior && prior.pct != null && prior.source === 'keepa') {
-            // Keepa's own figure stays authoritative; we are only adding the detail here.
-            prior.size = theirs.length; prior.asins = sharedList;
-            kfLog(`${g.name}: ${shared} shared of ${theirs.length} (Keepa says ${prior.pct}%)`);
-          } else {
-            fetched[g.sellerId]={pct:+(shared/theirs.length*100).toFixed(1), source:'calc',
-                                 size:theirs.length, asins:sharedList};
-            kfLog(`${g.name}: ${shared}/${theirs.length} shared = ${fetched[g.sellerId].pct}%`);
+        // One retry each: a dropped request should not cost a seller their reading for the day.
+        let theirs = null, lastErr = null;
+        for(let attempt=1; attempt<=2 && theirs===null; attempt++){
+          try{
+            const r = await keepaCall(`seller=${encodeURIComponent(g.sellerId)}&storefront=1`);
+            tokens += r.tokensConsumed||0;
+            const got = ((r.sellers||{})[g.sellerId]||{}).asinList||[];
+            if(got.length) theirs = got;
+            else if(attempt===1){ lastErr='no storefront data'; kfLog(`${g.name}: nothing came back, retrying…`,'warn'); }
+            else lastErr='no storefront data';
+          }catch(e){
+            lastErr = e.message;
+            if(attempt===1) kfLog(`${g.name}: ${e.message} — retrying…`,'warn');
           }
-        }catch(e){ fetched[g.sellerId]={pct:null,source:'none',note:e.message}; kfLog(`${g.name}: ${e.message}`,'bad'); }
+        }
+        if(theirs===null){
+          if(!fetched[g.sellerId] || fetched[g.sellerId].pct==null) fetched[g.sellerId]={pct:null,source:'none',note:lastErr||'no storefront'};
+          kfLog(`${g.name}: ${lastErr||'no storefront data'}`,'bad'); continue;
+        }
+        const sharedList=[]; for(const a of theirs) if(matchSet.has(a)) sharedList.push(a);
+        const shared=sharedList.length;
+        const prior = fetched[g.sellerId];
+        if (prior && prior.pct != null && prior.source === 'keepa') {
+          // Keepa's own figure stays authoritative; we are only adding the detail here.
+          prior.size = theirs.length; prior.asins = sharedList;
+          kfLog(`${g.name}: ${shared} shared of ${theirs.length} (Keepa says ${prior.pct}%)`);
+        } else {
+          fetched[g.sellerId]={pct:+(shared/theirs.length*100).toFixed(1), source: usedStale?'calc~':'calc',
+                               size:theirs.length, asins:sharedList};
+          kfLog(`${g.name}: ${shared}/${theirs.length} shared = ${fetched[g.sellerId].pct}%${usedStale?' (unverified listings)':''}`);
+        }
       }
     }
 
@@ -8371,7 +8452,17 @@ async function runKeepaFetch(){
 
     const got = Object.values(fetched).filter(f=>f.pct!=null).length;
     if(!got){ kfLog('\nNothing usable came back — nothing applied.','bad'); return; }
-    kfLog(`\nFetched ${got} of ${SELLERS.length} in ${tokens} tokens. Saving…`,'ok');
+    // Say plainly whether everyone got a number, and name anyone who did not — a short
+    // fetch used to look identical to a full one once the log scrolled past.
+    const withNumber = SELLERS.filter(x => x.sellerId && fetched[x.sellerId] && fetched[x.sellerId].pct != null);
+    const noNumber   = SELLERS.filter(x => x.sellerId && (!fetched[x.sellerId] || fetched[x.sellerId].pct == null));
+    if (noNumber.length) {
+      kfLog(`\n\u26A0 ${noNumber.length} of ${SELLERS.length} got no reading: ${noNumber.map(x=>x.name).join(', ')}`,'bad');
+      kfLog(`They will show their previous reading until the next fetch picks them up.`,'warn');
+    } else {
+      kfLog(`\n\u2713 All ${SELLERS.length} competitors got a reading.`,'ok');
+    }
+    kfLog(`Fetched ${withNumber.length} of ${SELLERS.length} in ${tokens} tokens. Saving…`,'ok');
     window.__keepaAsinRows = Object.entries(fetched)
       .filter(([,v]) => Array.isArray(v.asins))
       .map(([sellerId,v]) => ({ sellerId, size:v.size, asins:v.asins }));
@@ -8442,6 +8533,7 @@ function openBulkUpdate() {
     const srcTag = !kf ? ''
       : kf.source === 'keepa' ? '<span class="kf-src keepa">KEEPA</span>'
       : kf.source === 'calc'  ? '<span class="kf-src calc">CALCULATED</span>'
+      : kf.source === 'calc~' ? '<span class="kf-src calc" title="Worked out against listings Keepa has not re-checked recently — may read about 2pp high">CALCULATED ~</span>'
       : `<span class="kf-src none">${kf.note || 'no data'}</span>`;
     const deltaTag = wasVal === null ? '' :
       `<span style="font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-left:6px">was ${wasVal}%</span>`;
@@ -11304,8 +11396,8 @@ document.getElementById('rangeTo').value = rangeTo;
 
 </script>
 <!-- KPI Modal — at root level so position:fixed works correctly -->
-<div id="kpiModal" onclick="if(event.target===this)closeKpiModal()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,.85);z-index:999999;backdrop-filter:blur(6px)">
-  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#16181a;border:1px solid rgba(0,245,160,.2);border-radius:16px;width:920px;max-width:94vw;max-height:86vh;overflow-y:auto;box-shadow:0 40px 120px rgba(0,0,0,.95)">
+<div id="kpiModal" onclick="if(event.target===this)closeKpiModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:999999;align-items:center;justify-content:center;padding:24px">
+  <div class="kpi-panel" style="background:#16181a;border:1px solid rgba(0,245,160,.2);border-radius:16px;width:920px;max-width:94vw;max-height:86vh;overflow-y:auto;box-shadow:0 40px 120px rgba(0,0,0,.95)">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;background:#16181a;z-index:2;border-radius:16px 16px 0 0">
       <div style="display:flex;align-items:center;gap:12px">
         <span id="kpiModalTitle" style="font-size:15px;font-weight:700;color:var(--g);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em"></span>
