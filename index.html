@@ -752,6 +752,20 @@ document.addEventListener('DOMContentLoaded', () => {
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--display);overflow:hidden;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
 body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");opacity:.4;pointer-events:none;z-index:9999}
 .shell{display:grid;grid-template-rows:56px 1fr;grid-template-columns:220px 1fr;height:100vh}
+/* Collapsible sidebar: icon rail at 64px, remembered between visits. */
+.shell{transition:grid-template-columns .18s ease}
+.shell.side-min{grid-template-columns:64px 1fr}
+.brand-mini{display:none;font-size:20px;color:var(--g);text-align:center;line-height:1}
+.side-min .brand-name,.side-min .brand-sub{display:none}
+.side-min .brand-mini{display:block}
+.side-min .brand{padding:17px 8px}
+.side-min .nav-text{display:none}
+.side-min .nav-badge{display:none}
+.side-min .nav-item{justify-content:center;padding:11px 0;gap:0}
+.side-min .sidebar-footer{padding:10px 8px}
+.side-toggle{width:100%;margin-top:8px;background:none;border:1px solid var(--border);color:var(--muted2);
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:6px;border-radius:6px;cursor:pointer;transition:all .15s}
+.side-toggle:hover{color:var(--text);border-color:var(--border2)}
 aside{grid-row:1/3;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .brand{padding:18px 20px;border-bottom:1px solid var(--border)}
 .brand-name{font-size:15px;font-weight:700;letter-spacing:.02em;line-height:1.1}
@@ -1315,6 +1329,10 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 /* ── Overview read-out ────────────────────────────────────────────────── */
 .kpi-panel{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;position:relative;z-index:1}
 #kpiModal::before{content:'';position:absolute;inset:0;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:0}
+.kpi-cmp{display:flex;flex-direction:column;gap:3px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08);width:100%}
+.kpi-cmp-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;cursor:default}
+.kpi-cmp-l{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kpi-cmp-v{font-family:var(--mono);font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums}
 .kpi-co{font-family:var(--mono);font-size:11px;font-weight:700;margin-top:3px;color:var(--muted2)}
 .kpi-view{display:flex;align-items:center;gap:10px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border)}
 .kpi-view-l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2)}
@@ -1531,42 +1549,44 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
   <div class="brand">
     <div class="brand-name">BDL <span class="brand-accent">OA</span></div>
     <div class="brand-sub">Overview Dashboard</div>
+    <div class="brand-mini" title="BDL OA">◈</div>
   </div>
   <nav>
     <div class="nav-item active" onclick="switchTab('overview',this)">
-      <span class="nav-icon">◈</span> Overview
+      <span class="nav-icon" title="Overview">◈</span> <span class="nav-text">Overview</span>
     </div>
     <div class="nav-item" onclick="switchTab('daily',this)">
-      <span class="nav-icon">◎</span> Business Brief
+      <span class="nav-icon" title="Business Brief">◎</span> <span class="nav-text">Business Brief</span>
     </div>
     <div class="nav-item" id="navStockHealth" onclick="switchTab('stockhealth',this)">
-      <span class="nav-icon">▦</span> Stock Health
+      <span class="nav-icon" title="Stock Health">▦</span> <span class="nav-text">Stock Health</span>
     </div>
     <div class="nav-item" onclick="switchTab('provider',this)">
-      <span class="nav-icon">❖</span> Provider
+      <span class="nav-icon" title="Provider">❖</span> <span class="nav-text">Provider</span>
       <span class="nav-badge" id="providerNavBadge">0</span>
     </div>
     <div class="nav-item" onclick="switchTab('repricer',this)">
-      <span class="nav-icon">⟳</span> Repricer
+      <span class="nav-icon" title="Repricer">⟳</span> <span class="nav-text">Repricer</span>
     </div>
     <div class="nav-item" id="navCompetitors" onclick="switchTab('competitors',this)">
-      <span class="nav-icon">◉</span> Competitors
+      <span class="nav-icon" title="Competitors">◉</span> <span class="nav-text">Competitors</span>
       <span class="nav-badge" id="compNavBadge">0</span>
     </div>
     <div class="nav-item" onclick="switchTab('comp-history',this)">
-      <span class="nav-icon">📊</span> Comp History
+      <span class="nav-icon" title="Comp History">📊</span> <span class="nav-text">Comp History</span>
       <span class="nav-badge" id="compHistNavBadge">0</span>
     </div>
     <div class="nav-item" onclick="switchTab('history',this)">
-      <span class="nav-icon">▤</span> History
+      <span class="nav-icon" title="History">▤</span> <span class="nav-text">History</span>
       <span class="nav-badge" id="histNavBadge">0</span>
     </div>
     <div class="nav-item" onclick="switchTab('settings',this)">
-      <span class="nav-icon">⚙</span> Settings
+      <span class="nav-icon" title="Settings">⚙</span> <span class="nav-text">Settings</span>
     </div>
   </nav>
   <div class="sidebar-footer">
-    <button class="snap-btn" onclick="openSnap()">+ Add Snapshot</button>
+    <button class="snap-btn" onclick="openSnap()" title="Add Snapshot">+<span class="nav-text"> Add Snapshot</span></button>
+    <button class="side-toggle" id="sideToggle" onclick="toggleSide()" title="Collapse the sidebar">⟨ collapse</button>
   </div>
 </aside>
 
@@ -2407,6 +2427,16 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 </div>
 
 <script>
+function toggleSide(){
+  const shell=document.querySelector('.shell');
+  const min=!shell.classList.contains('side-min');
+  shell.classList.toggle('side-min',min);
+  const b=document.getElementById('sideToggle');
+  if(b){ b.innerHTML=min?'\u27E9':'\u27E8 collapse'; b.title=min?'Expand the sidebar':'Collapse the sidebar'; }
+  try{ localStorage.setItem('sideMin',min?'1':'0'); }catch(e){}
+}
+(function(){ try{ if(localStorage.getItem('sideMin')==='1') toggleSide(); }catch(e){} })();
+
 let DB = [];
 let SELLERS = [];
 let DATA_LOADED = false;   // false until a load actually returns; nothing may prune before then
@@ -4378,6 +4408,22 @@ function openAgedStockModal(snaps, modal, title, body){
 function fmtGBP(v){ return '£' + Math.round(Number(v)||0).toLocaleString(); }
 function fmtGBPAbs(v){ return '£' + Math.abs(Math.round(Number(v)||0)).toLocaleString(); }
 
+// Sarah logs Mon/Wed/Fri, so "a week ago" is a calendar fact, not "3 entries back" — entry
+// counting drifts every time a day is missed or doubled up. Nearest reading to N days before
+// the latest one, within ±3 days; optionally only readings where the metric actually exists.
+function snapDaysBack(snaps, daysBack, tol, getter){
+  if(!snaps || snaps.length<2) return null;
+  tol = tol==null ? 3 : tol;
+  const t=new Date(snaps[snaps.length-1].date+'T00:00:00'); t.setDate(t.getDate()-daysBack);
+  let best=null, bestGap=1e9;
+  for(let i=0;i<snaps.length-1;i++){
+    if(getter && getter(snaps[i])==null) continue;
+    const g=Math.abs((new Date(snaps[i].date+'T00:00:00')-t)/86400000);
+    if(g<bestGap){bestGap=g;best=snaps[i];}
+  }
+  return bestGap<=tol ? best : null;
+}
+
 let KPI_VIEW = 'value';  // inbound popup: 'value' | 'units' | 'both' — money first by default
 try{ const v=localStorage.getItem('kpiView'); if(v==='units'||v==='value'||v==='both') KPI_VIEW=v; }catch(e){}
 function setKpiView(v){
@@ -4613,23 +4659,23 @@ function openKpiModal(key, metric) {
   // Simple: up = green, down = red always for vs Last Entry display
   const diffDisplayColor = diff===null?'var(--muted2)':diff>0?'#00f5a0':diff<0?'#ff8c42':'var(--muted2)';
 
-  // 3-entry trend (last 3 values)
-  const last3vals = allVals.slice(-3);
-  const trend3val = last3vals.length >= 2 ? last3vals[last3vals.length-1] - last3vals[0] : null;
+  // "3-entry trend" and "vs 6 ago" were entry counts. Snapshots land Mon/Wed/Fri, so the
+  // comparisons Jack actually thinks in are a week and a fortnight — matched by date.
+  const wkRef = snapDaysBack(snaps, 7, 3, cfg.getter);
+  const ftRefRaw = snapDaysBack(snaps, 14, 3, cfg.getter);
+  // With a short history both can resolve to the same reading; showing it twice is noise.
+  const ftRef = (ftRefRaw && wkRef && ftRefRaw.date === wkRef.date) ? null : ftRefRaw;
+  const trend3val = (wkRef && latest!=null) ? latest - cfg.getter(wkRef) : null;
   const trend3good = trend3val===null ? null : cfg.upGood===null ? null : cfg.upGood ? trend3val>0 : trend3val<0;
   const trend3col = trend3val===null?'var(--muted2)':trend3good===null?'#ffd166':trend3good?'#00f5a0':'#ff8c42';
   const trend3str = trend3val===null ? '—' : (trend3val>0?'+':trend3val<0?'-':'') + (cfg.fmtDiff||cfg.fmt)(Math.abs(trend3val||0));
 
-  // vs 6 snapshots ago
-  const val6ago = allVals.length >= 6 ? allVals[allVals.length-6] : allVals.length >= 2 ? allVals[0] : null;
-  const diff6 = val6ago!==null ? latest - val6ago : null;
+  const diff6 = (ftRef && latest!=null) ? latest - cfg.getter(ftRef) : null;
   const diff6good = diff6===null ? null : cfg.upGood===null ? null : cfg.upGood ? diff6>0 : diff6<0;
   const diff6col = diff6===null?'var(--muted2)':diff6good===null?'#ffd166':diff6good?'#00f5a0':'#ff8c42';
   const diff6str = diff6===null ? '—' : (diff6>0?'+':diff6<0?'-':'') + (cfg.fmtDiff||cfg.fmt)(Math.abs(diff6||0));
-  const diff6label = allVals.length >= 6 ? 'vs 6 ago' : `vs ${allVals.length-1} ago`;
-  // With a short history this window is the same span as the 3-entry trend, so it repeats
-  // the number next to it. Dimmed rather than removed, so the grid keeps its shape.
-  const dupeSpan = diff6!==null && trend3!==null && Math.abs(diff6-trend3)<0.005;
+  const diff6label = 'vs 2 weeks';
+  const dupeSpan = false;   // reference dates are distinct by construction now
 
   // Concern sentence — reads full history for sustained patterns
   let concernSentence = '';
@@ -4836,13 +4882,14 @@ function openKpiModal(key, metric) {
     coLatest = cv[cv.length-1];
     const cPrev = cv.length>1 ? cv[cv.length-2] : null;
     coDiff = (cPrev!=null && coLatest!=null) ? coLatest-cPrev : null;
-    const c3 = cReal.slice(-3);
-    coTrend3 = c3.length>=2 ? c3[c3.length-1]-c3[0] : null;
+    const cWk = snapDaysBack(snaps, 7, 3, co.getter);
+    coTrend3 = (cWk && coLatest!=null) ? coLatest - co.getter(cWk) : null;
     coAvg = cReal.length ? cReal.reduce((a,b)=>a+b,0)/cReal.length : null;
     coLo = cReal.length ? Math.min(...cReal) : null;
     coHi = cReal.length ? Math.max(...cReal) : null;
-    const c6 = cv.length>6 ? cv[cv.length-7] : null;
-    coDiff6 = (c6!=null && coLatest!=null) ? coLatest-c6 : null;
+    const cFtRaw = snapDaysBack(snaps, 14, 3, co.getter);
+    const cFt = (cFtRaw && cWk && cFtRaw.date===cWk.date) ? null : cFtRaw;
+    coDiff6 = (cFt && coLatest!=null) ? coLatest - co.getter(cFt) : null;
   }
   // Second line under a stat card. Muted and smaller — it supports the headline, not competes.
   const coLine = (val, isDiff) => {
@@ -4871,13 +4918,13 @@ function openKpiModal(key, metric) {
             <div style="font-size:20px;font-weight:700;color:${diffDisplayColor}">${diff===null?'—':((diff>0?'+':'-')+(cfg.fmtDiff||cfg.fmt)(Math.abs(diff||0)))}</div>${coLine(coDiff,true)}
           </div>
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">3-entry trend</div>
+            <div ${wkRef?`title="compared with ${fmt(wkRef.date)}"`:''} style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">vs last week</div>
             <div style="font-size:20px;font-weight:700;color:${trend3col}">${trend3str}</div>${coLine(coTrend3,true)}
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px">
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06);${dupeSpan?'opacity:.45':''}">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">${diff6label}</div>
+            <div ${ftRef?`title="compared with ${fmt(ftRef.date)}"`:''} style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em">${diff6label}</div>
             <div style="font-size:20px;font-weight:700;color:${dupeSpan?'var(--muted2)':diff6col}">${diff6str}</div>${dupeSpan?'':coLine(coDiff6,true)}
           </div>
           <div style="background:rgba(255,255,255,.04);padding:12px;border-radius:10px;text-align:center;border:1px solid rgba(255,255,255,.06)">
@@ -5047,35 +5094,47 @@ function updateKpiMiniInsights(snaps) {
                    : unitsUp && costUp   ? 'more stock, higher ticket'
                    : !unitsUp && costUp  ? 'cheap stock selling first'
                    : !unitsUp && costDown? 'premium stock selling first' : 'holding steady';
-      el.innerHTML = `<span style="color:var(--muted2)">${arrow} ${diffStr} vs last</span><br>`
-        + `<span style="color:var(--muted2)">${ctxTxt}</span>`;
+      const nseg = (v,label,d) => (v===null || !Number.isFinite(v)) ? ''
+        : `<span class="kpi-cmp-row" title="compared with ${fmt(d)}"><span class="kpi-cmp-l">${label}</span><span class="kpi-cmp-v" style="color:var(--muted2)">${Math.abs(v)<0.005?'→ flat':(v>0?'↑ +£':'↓ -£')+Math.abs(v).toFixed(2)}</span></span>`;
+      const wkS = snapDaysBack(snaps, 7, 3, cfg.getter);
+      const ftR = snapDaysBack(snaps, 14, 3, cfg.getter);
+      const ftS = (ftR && wkS && ftR.date===wkS.date) ? null : ftR;
+      const rows = (wkS?nseg(cur-cfg.getter(wkS),'last week',wkS.date):'') + (ftS?nseg(cur-cfg.getter(ftS),'2 weeks',ftS.date):'');
+      el.innerHTML = (rows?`<span class="kpi-cmp">${rows}</span>`:'')
+        + `<span style="color:var(--muted2);display:block;margin-top:5px">${ctxTxt}</span>`;
       return;
     }
     else if (elId === 'kUnitsInsight') {
       // Available and Inbound are two halves of one picture, so each tile names the other.
       const inb = latest.inboundUnits ?? null;
       const dirCol = isFlat ? 'var(--muted2)' : isGood ? '#00f5a0' : '#ff8c42';
-      const line1 = `<span style="color:${dirCol}">${arrow} ${diffStr} vs last</span>`;
+      const seg = (v,label,d) => {
+        if (v===null || !Number.isFinite(v)) return '';
+        const c = Math.abs(v)<0.5?'var(--muted2)':v>0?'#00f5a0':'#ff8c42';
+        const a = Math.abs(v)<0.5?'→':v>0?'↑':'↓';
+        return `<span class="kpi-cmp-row" title="compared with ${fmt(d)}"><span class="kpi-cmp-l">${label}</span><span class="kpi-cmp-v" style="color:${c}">${a} ${v>0?'+':''}${Math.round(v).toLocaleString()}</span></span>`;
+      };
+      const wkS = snapDaysBack(snaps, 7, 3, cfg.getter);
+      const ftR = snapDaysBack(snaps, 14, 3, cfg.getter);
+      const ftS = (ftR && wkS && ftR.date===wkS.date) ? null : ftR;
+      const rows = (wkS?seg(cur-cfg.getter(wkS),'last week',wkS.date):'') + (ftS?seg(cur-cfg.getter(ftS),'2 weeks',ftS.date):'');
       const line2 = inb === null
-        ? '<span style="color:var(--muted2)">sellable stock only</span>'
-        : `<span style="color:var(--muted2)">+ ${Math.round(inb).toLocaleString()} inbound = <b style="color:var(--b)">${Math.round(cur+inb).toLocaleString()}</b> total</span>`;
-      el.innerHTML = `${line1}<br>${line2}`;
+        ? '<span style="color:var(--muted2);display:block;margin-top:5px">sellable stock only</span>'
+        : `<span style="color:var(--muted2);display:block;margin-top:5px">+ ${Math.round(inb).toLocaleString()} inbound = <b style="color:var(--b)">${Math.round(cur+inb).toLocaleString()}</b> total</span>`;
+      el.innerHTML = (rows?`<span class="kpi-cmp">${rows}</span>`:'') + line2;
       return;
     }
-    else if (elId === 'kWinBBInsight') {
+    else if (elId === 'kWinBBInsight' || elId === 'kMatchBBInsight') {
       const v=cur;
       const dirCol = diff > 0.05 ? '#00f5a0' : diff < -0.05 ? '#ff8c42' : 'var(--muted2)';
       const dir = diff > 0.05 ? '↑ Improving' : diff < -0.05 ? '↓ Declining' : '→ Flat';
-      const targetCtx = v>=10 ? '✓ Above 10% target' : v<5 ? '⚠ Critical — nearly invisible' : 'Below 10% target';
-      el.innerHTML = `<span style="color:${dirCol}">${dir}</span><br><span style="color:var(--muted2)">${targetCtx}</span>`;
-      return;
-    }
-    else if (elId === 'kMatchBBInsight') {
-      const v=cur;
-      const dirCol = diff > 0.05 ? '#00f5a0' : diff < -0.05 ? '#ff8c42' : 'var(--muted2)';
-      const dir = diff > 0.05 ? '↑ Improving' : diff < -0.05 ? '↓ Declining' : '→ Flat';
-      const targetCtx = v>=10 ? '✓ Above 10% target' : v<5 ? '⚠ Very low coverage' : 'Below 10% target';
-      el.innerHTML = `<span style="color:${dirCol}">${dir}</span><br><span style="color:var(--muted2)">${targetCtx}</span>`;
+      // "Below target" on its own has no teeth — since when, and for how many readings?
+      let below=0; for(let i=vals.length-1;i>=0;i--){ if(vals[i]<10) below++; else break; }
+      const sinceDate = below>0 ? snaps[snaps.length-below].date : null;
+      const targetCtx = v>=10 ? '✓ Above 10% target'
+        : `\u26A0 Below 10% since ${fmt(sinceDate)}${below>1?` \u00b7 ${below} readings`:''}`;
+      const extra = (elId==='kWinBBInsight' && v<5) ? '<span style="color:#ff4d6d;display:block">nearly invisible</span>' : '';
+      el.innerHTML = `<span style="color:${dirCol}">${dir}</span><br><span style="color:${v>=10?'var(--muted2)':'#ff8c42'}">${targetCtx}</span>`+extra;
       return;
     }
     else if (elId === 'kAgedRiskInsight') {
@@ -5086,18 +5145,11 @@ function updateKpiMiniInsights(snaps) {
       ctx = freshPctVal>=80?'✓ Above 80% target':freshPctVal>=70?'Below 80% target':'⚠ Well below target';
     }
 
-    // Mini insight: vs last snapshot, vs 3 entries, vs 6 ago — spaced out, no context comment
-    const allValsInsight = snaps.map(cfg.getter);
-    const curVal = allValsInsight[allValsInsight.length-1];
-    const prvVal = allValsInsight.length >= 2 ? allValsInsight[allValsInsight.length-2] : null;
-    const diffLast = prvVal !== null ? curVal - prvVal : null;
-
-    const last3vals = snaps.slice(-3).map(cfg.getter);
-    const trend3val = last3vals.length >= 2 ? last3vals[last3vals.length-1] - last3vals[0] : null;
-
-    const val6ago = allValsInsight.length >= 6 ? allValsInsight[allValsInsight.length-6] : allValsInsight.length >= 2 ? allValsInsight[0] : null;
-    const diff6 = val6ago !== null ? curVal - val6ago : null;
-    const n6label = allValsInsight.length >= 6 ? '6' : allValsInsight.length >= 2 ? `${allValsInsight.length-1}` : null;
+    // Three lines, three calendar comparisons: last entry, the reading nearest a week back,
+    // the reading nearest a fortnight back. Hover a line for the exact date it compares to.
+    const wkSnap = snapDaysBack(snaps, 7, 3, cfg.getter);
+    const ftRaw  = snapDaysBack(snaps, 14, 3, cfg.getter);
+    const ftSnap = (ftRaw && wkSnap && ftRaw.date === wkSnap.date) ? null : ftRaw;
 
     const fmtAmt = (v) => cfg.fmtDiff ? cfg.fmtDiff(Math.abs(v)) : cfg.fmt(Math.abs(v));
     const lineCol = (v, upGoodVal) => {
@@ -5105,19 +5157,18 @@ function updateKpiMiniInsights(snaps) {
       if (upGoodVal === null) return '#ffd166';
       return (upGoodVal ? v > 0 : v < 0) ? '#00f5a0' : '#ff8c42';
     };
-    const lineStr = (v, label) => {
-      if (v === null) return '';
+    // The pill above already says "vs last", so the old first line repeated it word for
+    // word. Just the two calendar rows now: quiet label left, coloured movement right.
+    const row = (v, label, cmpDate) => {
+      if (v === null || !Number.isFinite(v)) return '';
       const col = lineCol(v, cfg.upGood);
       const arrow = Math.abs(v) < 0.005 ? '→' : v > 0 ? '↑' : '↓';
-      const amt = Math.abs(v) < 0.005 ? 'Flat' : (v > 0 ? '+' : '-') + fmtAmt(v);
-      return `<span style="color:${col};display:block;margin-bottom:3px">${arrow} ${amt} ${label}</span>`;
+      const amt = Math.abs(v) < 0.005 ? 'flat' : (v > 0 ? '+' : '-') + fmtAmt(v);
+      return `<span class="kpi-cmp-row" title="compared with ${fmt(cmpDate)}"><span class="kpi-cmp-l">${label}</span><span class="kpi-cmp-v" style="color:${col}">${arrow} ${amt}</span></span>`;
     };
-
-    const l1 = diffLast !== null ? lineStr(diffLast, 'vs last snapshot') : '';
-    const l2 = trend3val !== null && snaps.length >= 3 ? lineStr(trend3val, 'over last 3') : '';
-    const l3 = diff6 !== null && n6label ? lineStr(diff6, `vs ${n6label} ago`) : '';
-
-    el.innerHTML = l1 + l2 + l3;
+    const r1 = wkSnap ? row(cur - cfg.getter(wkSnap), 'last week', wkSnap.date) : '';
+    const r2 = ftSnap ? row(cur - cfg.getter(ftSnap), '2 weeks',  ftSnap.date) : '';
+    el.innerHTML = (r1 || r2) ? `<span class="kpi-cmp">${r1}${r2}</span>` : '';
   });
 }
 
