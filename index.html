@@ -1329,6 +1329,26 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 /* ── Overview read-out ────────────────────────────────────────────────── */
 .kpi-panel{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;position:relative;z-index:1}
 #kpiModal::before{content:'';position:absolute;inset:0;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:0}
+.qc-note{background:rgba(61,158,255,.08);border:1px solid rgba(61,158,255,.35);border-radius:9px;
+  padding:10px 13px;font-size:11.5px;color:var(--muted2);line-height:1.6;margin-bottom:16px}
+.qc-note b{color:#3d9eff}
+.qc-picker{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px;max-height:112px;overflow-y:auto}
+.qc-chip{font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:20px;cursor:pointer;
+  border:1px solid var(--border2);background:var(--s2);color:var(--muted2);transition:all .13s;white-space:nowrap}
+.qc-chip:hover{border-color:var(--muted);color:var(--text)}
+.qc-chip.on{background:#3d9eff;border-color:#3d9eff;color:#06121f;font-weight:700}
+.qc-res{border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-top:16px}
+.qc-hd,.qc-row{display:grid;grid-template-columns:minmax(0,1.25fr) 78px 96px 74px 74px 88px;gap:9px;align-items:center;padding:9px 13px}
+.qc-hd{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  background:rgba(255,255,255,.02);border-bottom:1px solid var(--border)}
+.qc-hd span:nth-child(n+2),.qc-row>*:nth-child(n+2){text-align:right}
+.qc-row{border-bottom:1px solid rgba(255,255,255,.04);font-size:12px}
+.qc-row:last-child{border-bottom:none}
+.qc-nm{font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qc-sub{font-family:var(--mono);font-size:9.5px;color:var(--muted);font-weight:400}
+.qc-pct{font-family:var(--mono);font-size:15px;font-weight:800}
+.qc-mono{font-family:var(--mono);font-size:11px;color:var(--muted2)}
+.qc-new{font-family:var(--mono);font-size:9px;color:#3d9eff;background:rgba(61,158,255,.14);padding:1px 5px;border-radius:4px;margin-left:5px}
 .kpi-cmp{display:flex;flex-direction:column;gap:3px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08);width:100%}
 .kpi-cmp-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;cursor:default}
 .kpi-cmp-l{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
@@ -1855,6 +1875,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         <button class="cmp-btn primary" onclick="openKeepaFetch()" title="Pull today's overlaps from Keepa"><span class="ic">⬇</span> Fetch from Keepa</button>
         <button class="cmp-btn" onclick="openBulkUpdate()" title="Type the readings in by hand"><span class="ic">⌨</span> Enter manually</button>
         <button class="cmp-btn" onclick="openManageSellers()" title="Add, rename or remove competitors"><span class="ic">⚙</span> Manage competitors</button>
+        <button class="cmp-btn" onclick="openQuickCheck()" title="Look a seller up without recording anything"><span class="ic">🔍</span> Quick check</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <input type="text" class="comp-search" id="compSearch" placeholder="Search..." oninput="renderCompTab()" style="width:180px">
@@ -2297,6 +2318,47 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
 </div>
 
 <!-- Competitor detail popup — opens when clicking a competitor row -->
+<div class="overlay" id="quickModal" data-no-dismiss="true">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-hd">
+      <div class="modal-title">🔍 Quick check</div>
+      <button class="modal-x" onclick="closeOverlay('quickModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="qc-note">
+        <b>Nothing here is saved.</b> No reading is written, no session is created, and your
+        “vs last” figures are untouched. It is a look-up, not a fetch.
+      </div>
+
+      <label class="kf-label">Who do you want to check?</label>
+      <textarea id="qcIds" class="kf-input" style="min-height:74px;resize:vertical"
+        placeholder="Paste seller IDs or storefront links, one per line"></textarea>
+      <div class="qc-picker" id="qcPicker"></div>
+
+      <label class="kf-label" style="margin-top:14px">Keepa API key</label>
+      <input type="password" id="qcKey" class="kf-input" placeholder="paste your key" autocomplete="off" spellcheck="false">
+      <div class="kf-cost" id="qcCost">Pick someone to see the token cost.</div>
+
+      <div id="qcProgWrap" style="display:none;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">
+          <span id="qcProgLabel" style="font-size:12.5px;color:var(--text);font-weight:600">Starting…</span>
+          <span id="qcProgCount" style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)"></span>
+        </div>
+        <div style="height:8px;border-radius:5px;background:var(--s3);overflow:hidden">
+          <div id="qcProgBar" style="height:100%;width:0%;border-radius:5px;background:linear-gradient(90deg,#2f6fb5,#3d9eff);transition:width .25s"></div>
+        </div>
+      </div>
+
+      <div id="qcOut"></div>
+
+      <div class="form-actions" style="margin-top:16px">
+        <button class="btn" onclick="closeOverlay('quickModal')">Close</button>
+        <button class="btn-g" id="qcRunBtn" onclick="runQuickCheck()">Check — nothing saved</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="keepaModal" data-no-dismiss="true">
   <div class="modal" style="max-width:600px">
     <div class="modal-hd">
@@ -8701,6 +8763,181 @@ function mcHistory(sellerId){
 // Accepts a bare ID, a storefront link, or anything with one buried in it.
 const MARKETPLACE_IDS = new Set(['A1F83G8C2ARO7P','ATVPDKIKX0DER','A1PA6795UKMFR9','A13V1IB3VIYZZH',
   'APJ6JRA9NG5V4','A1RKKUPIHCS9HS','A1805IZSGTT6HS','A2NODRKZP88ZB9','A1F83G8C2ARO7P']);
+// ── Quick check ─────────────────────────────────────────────────────────
+// A read-only look-up. Runs the same two-step Keepa logic as the real fetch, but writes
+// nothing: no session, no reading, no persist(). "vs last" stays anchored to the last
+// proper Mon/Wed/Fri fetch, so spot-checking a seller mid-week cannot distort the history.
+let QC_PICKED = new Set();
+let QC_RUNNING = false;
+
+function openQuickCheck(){
+  QC_PICKED = new Set();
+  const box=document.getElementById('qcIds'); if(box) box.value='';
+  const out=document.getElementById('qcOut'); if(out) out.innerHTML='';
+  const key=document.getElementById('qcKey'); if(key) key.value = KEEPA_KEY || '';
+  document.getElementById('qcProgWrap').style.display='none';
+  const pick=document.getElementById('qcPicker');
+  pick.innerHTML = SELLERS.filter(x=>x.sellerId).map(x=>
+    `<button class="qc-chip" data-id="${kfEsc(x.sellerId)}" onclick="qcToggle(this)">${kfEsc(x.name)}</button>`).join('');
+  qcCost();
+  document.getElementById('qcIds').addEventListener('input', qcCost);
+  document.getElementById('quickModal').classList.add('open');
+}
+
+function qcToggle(btn){
+  const id=btn.dataset.id;
+  if(QC_PICKED.has(id)) QC_PICKED.delete(id); else QC_PICKED.add(id);
+  btn.classList.toggle('on', QC_PICKED.has(id));
+  qcCost();
+}
+
+// Typed IDs and tapped chips, de-duplicated.
+function qcTargets(){
+  const typed=(document.getElementById('qcIds')?.value||'').split(/\r?\n/)
+    .map(l=>mcExtractId(l)).filter(Boolean);
+  return [...new Set([...QC_PICKED, ...typed])];
+}
+
+function qcCost(){
+  const n=qcTargets().length;
+  const el=document.getElementById('qcCost'); if(!el) return;
+  el.textContent = !n ? 'Pick someone to see the token cost.'
+    : `${n} seller${n!==1?'s':''} · ${n} token${n!==1?'s':''} to ask Keepa, plus 10 for your own catalogue and 10 each for any Keepa cannot rank. Worst case about ${n + 10 + n*10}.`;
+}
+
+async function runQuickCheck(){
+  if(QC_RUNNING) return;
+  const ids=qcTargets();
+  const out=document.getElementById('qcOut');
+  const btn=document.getElementById('qcRunBtn');
+  if(!ids.length){ out.innerHTML='<div class="kf-note" style="margin-top:14px">Tap a competitor or paste a seller ID first.</div>'; return; }
+  const key=(document.getElementById('qcKey').value||'').trim();
+  if(!key){ out.innerHTML='<div class="kf-note" style="margin-top:14px">Paste your Keepa API key first.</div>'; return; }
+  if(KEEPA_RUNNING){ out.innerHTML='<div class="kf-note" style="margin-top:14px">A real fetch is running — let it finish first.</div>'; return; }
+
+  QC_RUNNING=true; KEEPA_KEY=key;
+  btn.disabled=true; btn.textContent='Checking…';
+  out.innerHTML='';
+  const prog=(done,total,label)=>{
+    document.getElementById('qcProgWrap').style.display='';
+    document.getElementById('qcProgLabel').textContent=label;
+    document.getElementById('qcProgCount').textContent=`${done} / ${total}`;
+    document.getElementById('qcProgBar').style.width=Math.round((done/Math.max(total,1))*100)+'%';
+  };
+
+  const res={}; let tokens=0;
+  try{
+    prog(0, ids.length+1, 'Asking Keepa…');
+    const batch = await keepaCall(`seller=${ids.map(encodeURIComponent).join(',')}`);
+    tokens += batch.tokensConsumed||0;
+    const map = batch.sellers||{};
+    const gaps=[];
+    ids.forEach(id=>{
+      const rec=map[id];
+      const nm = rec?.sellerName || (SELLERS.find(x=>x.sellerId===id)||{}).name || id;
+      if(!rec){ res[id]={name:nm, pct:null, note:'not in Keepa'}; return; }
+      const m=(rec.competitors||[]).find(c=>c.sellerId===KEEPA_ME);
+      const pv=m?Number(m.percent):NaN;
+      if(Number.isFinite(pv)) res[id]={name:nm, pct:pv, source:'keepa'};
+      else { res[id]={name:nm, pct:null}; gaps.push(id); }
+    });
+
+    // Only pay for the catalogue pull if something actually needs calculating.
+    if(gaps.length){
+      prog(1, gaps.length+2, 'Reading your own catalogue…');
+      const mine = await keepaCall(`seller=${KEEPA_ME}&storefront=1`);
+      tokens += mine.tokensConsumed||0;
+      const meRec=(mine.sellers||{})[KEEPA_ME];
+      const list=meRec?.asinList||[], seen=meRec?.asinListLastSeen||[];
+      const cut=Date.now()-KEEPA_FRESH_DAYS*86400000;
+      const fresh=new Set();
+      list.forEach((a,i)=>{ if(seen[i]!=null && keepaToMs(seen[i])>=cut) fresh.add(a); });
+      // Same rule as the real fetch: never give up because nothing is freshly verified.
+      let matchSet=fresh, stale=false;
+      if(!fresh.size && list.length){ matchSet=new Set(list); stale=true; }
+      for(let i=0;i<gaps.length;i++){
+        const id=gaps[i];
+        prog(i+2, gaps.length+2, `Reading ${res[id].name}…`);
+        try{
+          const r=await keepaCall(`seller=${encodeURIComponent(id)}&storefront=1`);
+          tokens += r.tokensConsumed||0;
+          const theirs=((r.sellers||{})[id]||{}).asinList||[];
+          if(!theirs.length){ res[id].note='no storefront'; continue; }
+          const shared=theirs.filter(a=>matchSet.has(a)).length;
+          res[id].pct=+(shared/theirs.length*100).toFixed(1);
+          res[id].source= stale?'calc~':'calc';
+          res[id].size=theirs.length; res[id].shared=shared;
+        }catch(e){ res[id].note=e.message; }
+      }
+    }
+
+    // Fill range/shared for the Keepa-ranked ones too, so the table reads consistently.
+    ids.forEach(id=>{
+      if(res[id] && res[id].size==null){
+        const det=compAsinFor(id);
+        if(det){ res[id].size=det.size; res[id].shared=(det.asins||[]).length; res[id].stored=true; }
+      }
+    });
+
+    document.getElementById('qcProgWrap').style.display='none';
+    out.innerHTML = qcTable(ids, res, tokens);
+  }catch(e){
+    document.getElementById('qcProgWrap').style.display='none';
+    out.innerHTML=`<div class="kf-note" style="margin-top:14px;border-color:rgba(255,77,109,.5);color:var(--r)">Keepa said: ${kfEsc(e.message||String(e))}</div>`;
+  }finally{
+    QC_RUNNING=false; btn.disabled=false; btn.textContent='Check — nothing saved';
+  }
+}
+
+function qcTable(ids, res, tokens){
+  // Last stored reading, so movement is visible without recording anything.
+  const lastByName={};
+  [...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date)).forEach(ses=>{
+    (ses.competitors||[]).forEach(c=>{ if(c.sellerId) lastByName[c.sellerId]={pct:c.pct, date:ses.date}; });
+  });
+  const rows = ids.map(id=>{
+    const r=res[id]||{};
+    const prev=lastByName[id];
+    const tracked=SELLERS.some(x=>x.sellerId===id);
+    const col = r.pct==null?'var(--muted)':r.pct>=25?'var(--g)':r.pct>=15?'#7bd88f':r.pct>=7?'var(--y)':'var(--o)';
+    let move='—', mcol='var(--muted)';
+    if(r.pct!=null && prev && prev.pct!=null){
+      const d=+(r.pct-prev.pct).toFixed(1);
+      mcol = Math.abs(d)<0.05?'var(--muted2)':d>0?'#00f5a0':'#ff8c42';
+      move = `${Math.abs(d)<0.05?'→':d>0?'▲ +':'▼ '}${Math.abs(d)<0.05?'0.0':Math.abs(d).toFixed(1)}pp`;
+    }
+    const gap = (r.size!=null && r.shared!=null) ? r.size-r.shared : null;
+    return `<div class="qc-row">
+      <div><span class="qc-nm">${kfEsc(r.name||id)}</span>${tracked?'':'<span class="qc-new">not tracked</span>'}
+        <div class="qc-sub">${kfEsc(id)}${r.source==='calc~'?' · worked out from unverified listings':r.note?' · '+kfEsc(r.note):''}</div></div>
+      <div class="qc-pct" style="color:${col}">${r.pct==null?'—':r.pct.toFixed(1)+'%'}</div>
+      <div class="qc-mono" style="color:${mcol}">${move}<div class="qc-sub">${prev?'vs '+fmt(prev.date):'no history'}</div></div>
+      <div class="qc-mono">${r.size!=null?r.size.toLocaleString():'—'}</div>
+      <div class="qc-mono" style="color:${r.shared?'var(--g)':'var(--muted)'}">${r.shared!=null?r.shared.toLocaleString():'—'}</div>
+      <div class="qc-mono" style="color:${gap?'var(--b)':'var(--muted)'}">${gap!=null?gap.toLocaleString():'—'}</div>
+    </div>`;
+  }).join('');
+  const untracked = ids.filter(id=>!SELLERS.some(x=>x.sellerId===id));
+  return `<div class="qc-res">
+      <div class="qc-hd"><span>Seller</span><span>Coverage</span><span>vs stored</span><span>Their range</span><span>You sell</span><span>To go after</span></div>
+      ${rows}
+    </div>
+    <div class="kf-cost" style="margin-top:10px">Used ${tokens} token${tokens!==1?'s':''} · <b style="color:#3d9eff">nothing was saved</b> — your history and “vs last” are unchanged.</div>
+    ${untracked.length?`<div style="margin-top:10px"><button class="cmp-chip" onclick="qcAddTracked()">+ Add ${untracked.length} new seller${untracked.length!==1?'s':''} to your tracked list</button></div>`:''}`;
+}
+
+// The only thing here that writes anything — and it opens the normal manage screen so the
+// save is still a deliberate press, not a side effect of looking someone up.
+function qcAddTracked(){
+  const untracked=qcTargets().filter(id=>!SELLERS.some(x=>x.sellerId===id));
+  if(!untracked.length) return;
+  closeOverlay('quickModal');
+  openManageSellers();
+  untracked.forEach(id=>addManageRow('', id, true));
+  mcPaintAll();
+  showToast(`${untracked.length} added — give them names and press Save list`);
+}
+
 function mcExtractId(txt){
   const t=String(txt||'');
   // seller=/smid= wins wherever it sits. A bare scan used to grab whichever id came first,
