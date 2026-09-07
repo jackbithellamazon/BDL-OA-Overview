@@ -1329,6 +1329,23 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 /* ── Overview read-out ────────────────────────────────────────────────── */
 .kpi-panel{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;position:relative;z-index:1}
 #kpiModal::before{content:'';position:absolute;inset:0;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:0}
+.ss-card{border:1px solid rgba(0,245,160,.28);background:linear-gradient(180deg,rgba(0,245,160,.05),transparent);
+  border-radius:12px;padding:15px 18px;margin-bottom:18px}
+.ss-hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:13px}
+.ss-title{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--g);font-weight:700}
+.ss-scope{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
+.ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px}
+.ss-cell{min-width:0}
+.ss-v{font-size:21px;font-weight:800;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums}
+.ss-l{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-top:5px}
+.ss-s{font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:2px}
+.ss-steps{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:13px;padding-top:11px;border-top:1px solid rgba(255,255,255,.07)}
+.ss-step{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:5px;background:rgba(255,255,255,.04)}
+.ss-steps-l{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.asin-fetch{background:var(--s3);border:1px solid var(--border2);color:var(--muted2);font-family:var(--mono);
+  font-size:10.5px;font-weight:700;padding:0 12px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:all .15s}
+.asin-fetch:hover{border-color:var(--b);color:var(--b)}
+.asin-fetch:disabled{opacity:.5;cursor:default}
 .qc-note{background:rgba(61,158,255,.08);border:1px solid rgba(61,158,255,.35);border-radius:9px;
   padding:10px 13px;font-size:11.5px;color:var(--muted2);line-height:1.6;margin-bottom:16px}
 .qc-note b{color:#3d9eff}
@@ -1344,6 +1361,13 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .qc-hd span:nth-child(n+2),.qc-row>*:nth-child(n+2){text-align:right}
 .qc-row{border-bottom:1px solid rgba(255,255,255,.04);font-size:12px}
 .qc-row:last-child{border-bottom:none}
+.qc-row{align-items:start}
+.qc-verdict{grid-column:1/-1;font-size:11px;line-height:1.45;padding-top:5px;margin-top:2px;
+  border-top:1px dashed rgba(255,255,255,.07)}
+.qc-mine{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-top:16px;padding:10px 13px;
+  background:var(--s2);border:1px solid var(--border);border-radius:9px;font-size:11.5px;color:var(--muted2)}
+.qc-mine-seg{font-family:var(--mono);font-size:11px;color:var(--muted2)}
+.qc-mine-seg b{color:var(--text);font-size:13px}
 .qc-nm{font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qc-sub{font-family:var(--mono);font-size:9.5px;color:var(--muted);font-weight:400}
 .qc-pct{font-family:var(--mono);font-size:15px;font-weight:800}
@@ -1863,6 +1887,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         <div class="kpi-mini-insight" id="compKpiMomentumSub">—</div>
       </div>
     </div>
+    <div id="sourcingScore"></div>
     <div class="insight-box" id="compInsightBox" style="padding:0">
       <div id="compInsightInner" style="padding:20px">
         <div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>
@@ -2077,7 +2102,13 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
           <span class="snap-section-title">Inventory</span>
         </div>
         <div class="snap-section-grid">
-          <div class="fg"><label>Total ASINs</label><input type="number" id="fAsins" placeholder="e.g. 320"></div>
+          <div class="fg"><label>Total ASINs</label>
+            <div style="display:flex;gap:6px">
+              <input type="number" id="fAsins" placeholder="e.g. 320" style="flex:1;min-width:0">
+              <button type="button" class="asin-fetch" id="asinFetchBtn" onclick="fetchAsinCount()" title="Ask Keepa for today's count">Fetch</button>
+            </div>
+            <span class="age-val" id="asinFetchNote"></span>
+          </div>
           <div class="fg"><label>Total SKUs</label><input type="number" id="fSkus" placeholder="e.g. 450"></div>
           <div class="fg"><label>Available Stock Units</label><input type="number" id="fUnits" placeholder="e.g. 669" oninput="calcAvgCost()"><span class="age-val">sellable only — not inbound</span></div>
           <div class="fg"><label>Total Stock Value (£)</label><input type="number" step="0.01" id="fStockValue" placeholder="e.g. 9700.00" oninput="calcAvgCost()"></div>
@@ -7080,11 +7111,113 @@ function renderContested(){
 
 // Newest stored ASIN detail for a seller, whichever date it was captured on.
 function compAsinFor(sellerId){
+  const hit = compAsinDatedFor(sellerId);
+  return hit ? hit.rec : null;
+}
+
+// The detail from the fetch BEFORE the newest one. Their range and your shared count are
+// levels; without this they never showed movement, so "61 listings" looked the same whether
+// they had just added 40 lines or trimmed 40.
+// ── Are we gaining on them? ─────────────────────────────────────────────
+// The one question the tab exists to answer. Two rules make it honest:
+//   1. Like for like. The roster went 30 -> 39 sellers in a fortnight; comparing totals
+//      across that shows "growth" that is just new names being added. Only sellers present
+//      on BOTH dates count.
+//   2. Split earned from handed. Coverage rises either because you picked lines up, or
+//      because they cut their range. Those are not the same achievement.
+function renderSourcingScore(){
+  const box=document.getElementById('sourcingScore'); if(!box) return;
+  const dates=Object.keys(COMPETITOR_ASINS||{}).sort();
+  if(dates.length<2){ box.innerHTML=''; return; }
+
+  const first=dates[0], last=dates[dates.length-1];
+  const cohort=Object.keys(COMPETITOR_ASINS[first]||{}).filter(id=>COMPETITOR_ASINS[last]?.[id]);
+  if(cohort.length<3){ box.innerHTML=''; return; }
+
+  const tally=(d,ids)=>{ let sh=0,rg=0;
+    ids.forEach(id=>{ const r=COMPETITOR_ASINS[d][id]||{}; sh+=(r.asins||[]).length; rg+=(r.size||0); });
+    return {sh,rg,cov:sh/Math.max(rg,1)*100}; };
+  const a=tally(first,cohort), b=tally(last,cohort);
+
+  const dLines = b.sh - a.sh;
+  const dRange = b.rg - a.rg;
+  const dCov   = b.cov - a.cov;
+  // What the coverage would be if their range had not moved — the part you actually earned.
+  const covHeld = b.sh / Math.max(a.rg,1) * 100;
+  const earned  = covHeld - a.cov;
+  const handed  = b.cov - covHeld;
+
+  const sign=v=>v>0?'+':v<0?'−':'';
+  const col =v=>Math.abs(v)<0.005?'var(--muted2)':v>0?'#00f5a0':'#ff8c42';
+  const headline = dCov>0.05 ? 'You are gaining on them' : dCov<-0.05 ? 'You are losing ground' : 'Holding level';
+  const hcol = dCov>0.05 ? 'var(--g)' : dCov<-0.05 ? '#ff8c42' : 'var(--muted2)';
+
+  // Plain-English split, only when there is something to split.
+  let mix='';
+  if(Math.abs(dCov)>0.05 && Math.abs(earned)>0.005){
+    const share=Math.round(Math.abs(earned)/Math.max(Math.abs(earned)+Math.abs(handed),0.0001)*100);
+    mix = earned>0 && handed>0 ? `${share}% of it earned, the rest is them shrinking`
+        : earned>0 && handed<=0 ? `all of it earned — they grew and you still gained`
+        : earned<=0 && handed>0 ? `none of it earned — it is only their range shrinking`
+        : `you lost lines and they grew`;
+  }
+
+  // Step-by-step, each pair compared like for like too.
+  const steps=[];
+  for(let i=Math.max(1,dates.length-5); i<dates.length; i++){
+    const c=Object.keys(COMPETITOR_ASINS[dates[i-1]]||{}).filter(id=>COMPETITOR_ASINS[dates[i]]?.[id]);
+    const x=tally(dates[i-1],c), y=tally(dates[i],c);
+    steps.push({date:dates[i], d:y.sh-x.sh});
+  }
+
+  box.innerHTML = `<div class="ss-card">
+    <div class="ss-hd">
+      <span class="ss-title">Are you gaining on them?</span>
+      <span class="ss-scope">${fmt(first)} → ${fmt(last)} · the ${cohort.length} sellers tracked throughout</span>
+    </div>
+    <div class="ss-grid">
+      <div class="ss-cell">
+        <div class="ss-v" style="color:${hcol}">${sign(dCov)}${Math.abs(dCov).toFixed(2)}pp</div>
+        <div class="ss-l">${kfEsc(headline)}</div>
+        <div class="ss-s">${a.cov.toFixed(2)}% → ${b.cov.toFixed(2)}%</div>
+      </div>
+      <div class="ss-cell">
+        <div class="ss-v" style="color:${col(dLines)}">${sign(dLines)}${Math.abs(dLines).toLocaleString()}</div>
+        <div class="ss-l">Lines picked up</div>
+        <div class="ss-s">${a.sh.toLocaleString()} → ${b.sh.toLocaleString()} of theirs</div>
+      </div>
+      <div class="ss-cell">
+        <div class="ss-v" style="color:var(--muted2)">${sign(dRange)}${Math.abs(dRange).toLocaleString()}</div>
+        <div class="ss-l">Their combined range</div>
+        <div class="ss-s">${a.rg.toLocaleString()} → ${b.rg.toLocaleString()} listings</div>
+      </div>
+      ${mix?`<div class="ss-cell">
+        <div class="ss-v" style="font-size:13px;font-weight:700;color:var(--muted2);line-height:1.35">${kfEsc(mix)}</div>
+        <div class="ss-l">Earned or handed to you</div>
+        <div class="ss-s">${sign(earned)}${Math.abs(earned).toFixed(2)}pp yours · ${sign(handed)}${Math.abs(handed).toFixed(2)}pp theirs</div>
+      </div>`:''}
+    </div>
+    ${steps.length?`<div class="ss-steps"><span class="ss-steps-l">Lines gained each fetch</span>
+      ${steps.map(x=>`<span class="ss-step" style="color:${col(x.d)}" title="${fmt(x.date)}">${sign(x.d)}${Math.abs(x.d)}</span>`).join('')}</div>`:''}
+  </div>`;
+}
+
+function compAsinPrevFor(sellerId){
+  if(!sellerId) return null;
+  const dates = Object.keys(COMPETITOR_ASINS||{}).sort();
+  const hits = dates.filter(d=>COMPETITOR_ASINS[d]?.[sellerId]);
+  if(hits.length<2) return null;
+  const d = hits[hits.length-2];
+  return {rec: COMPETITOR_ASINS[d][sellerId], date: d};
+}
+
+// Same lookup, but keeps the date — Quick check needs to say what it is comparing against.
+function compAsinDatedFor(sellerId){
   if(!sellerId) return null;
   const dates = Object.keys(COMPETITOR_ASINS||{}).sort();
   for(let i=dates.length-1;i>=0;i--){
     const rec = COMPETITOR_ASINS[dates[i]]?.[sellerId];
-    if(rec) return rec;
+    if(rec) return {rec, date:dates[i]};
   }
   return null;
 }
@@ -7155,6 +7288,8 @@ function renderCompTab() {
   const allSeenIds = new Set();
   COMPETITOR_SESSIONS.forEach(x=>(x.competitors||[]).forEach(c=>{ if(c.sellerId) allSeenIds.add(c.sellerId); }));
   const pending = SELLERS.filter(x => x.sellerId && !allSeenIds.has(x.sellerId));
+  renderSourcingScore();
+
   const staleNames = newestDate
     ? SELLERS.filter(x => !inNewest.has(x.name.trim()) && lastSeenByName[x.name.trim()]).map(x=>x.name)
     : [];
@@ -7449,10 +7584,6 @@ function renderCompTab() {
     const trendColor = diffLast > 0 ? 'var(--g)' : diffLast < 0 ? 'var(--r)' : 'var(--muted2)';
     const trendLabel = diffLast > 0 ? 'GAINED' : diffLast < 0 ? 'LOST' : 'NO CHANGE';
     
-    const vsLastHtml = diffLast !== null
-      ? `<div style="display:flex;align-items:center;gap:6px;color:${trendColor};font-weight:700;font-size:13px"><strong style="font-size:18px;color:${trendColor}">${diffLast>0?'↑':(diffLast<0?'↓':'→')}</strong> <div><strong>${Math.abs(diffLast).toFixed(1)}pp</strong><div style="font-size:10px;color:${trendColor};margin-top:2px">${trendLabel}</div></div></div>`
-      : '<div style="color:var(--muted2);font-size:12px;padding:2px">—</div>';
-
     // vs 1st of Month - positive when above month start value
     const diffMonth = (s.monthStartVal !== null && s.monthStartVal !== undefined)
       ? (s.latest - s.monthStartVal) : null;
@@ -7562,11 +7693,40 @@ function renderCompTab() {
     // Filled by a Keepa fetch. Until one has run these read "—", which is honest: we do not
     // know their catalogue size or which products you share without pulling the lists.
     const det = compAsinFor(s.sellerId);
+    // Movement since the previous fetch that carried detail — same idea as Quick check.
+    const prevDet = compAsinPrevFor(s.sellerId);
+    const dSize   = (det && prevDet && det.size!=null && prevDet.rec.size!=null) ? det.size - prevDet.rec.size : null;
+    const dShared = (det && prevDet && det.asins && prevDet.rec.asins) ? det.asins.length - prevDet.rec.asins.length : null;
+    const cmpNote = prevDet ? ` title="vs ${fmt(prevDet.date)}"` : '';
+    const dLine = (d, goodUp) => {
+      if(d===null) return '<div style="font-size:9.5px;color:var(--muted2);opacity:.85">&nbsp;</div>';
+      if(d===0)    return '<div style="font-size:9.5px;color:var(--muted);opacity:.7">→ same</div>';
+      const col = goodUp===null ? 'var(--muted2)' : (goodUp ? d>0 : d<0) ? '#00f5a0' : '#ff8c42';
+      return `<div style="font-size:9.5px;color:${col};font-weight:700">${d>0?'▲ +':'▼ '}${Math.abs(d).toLocaleString()}</div>`;
+    };
+
+    // Why the coverage moved, in two or three words. Same logic as Quick check's verdict,
+    // compressed — a full sentence on 39 rows would be a wall of text.
+    let causeTag = '';
+    if(dSize!==null && dShared!==null && (dSize!==0 || dShared!==0)){
+      const t = dShared>0 ? (dSize<0 ? ['you gained, they trimmed','#00f5a0'] : ['you gained','#00f5a0'])
+              : dShared<0 ? (dSize>0 ? ['you dropped, they grew','#ff4d6d']
+                          : dSize<0 ? ['both shrank','#ffd166']
+                          :           ['you dropped','#ff8c42'])
+              : dSize>0   ? ['they grew, you stood still','#ff8c42']
+              :             ['they trimmed, you held','#ffd166'];
+      causeTag = `<div style="font-size:9.5px;font-weight:600;color:${t[1]};margin-top:3px;line-height:1.25">${t[0]}</div>`;
+    }
+
+    const vsLastHtml = diffLast !== null
+      ? `<div style="display:flex;align-items:center;gap:6px;color:${trendColor};font-weight:700;font-size:13px"><strong style="font-size:18px;color:${trendColor}">${diffLast>0?'↑':(diffLast<0?'↓':'→')}</strong> <div><strong>${Math.abs(diffLast).toFixed(1)}pp</strong><div style="font-size:10px;color:${trendColor};margin-top:2px">${trendLabel}</div>${causeTag}</div></div>`
+      : `<div style="color:var(--muted2);font-size:12px;padding:2px">—${causeTag}</div>`;
+
     const catHtml = det && det.size != null
-      ? `<div style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">${det.size.toLocaleString()}<div style="font-size:9.5px;color:var(--muted2);opacity:.85">listings</div></div>`
+      ? `<div${cmpNote} style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">${det.size.toLocaleString()}<div style="font-size:9.5px;color:var(--muted2);opacity:.85">listings</div>${dLine(dSize,null)}</div>`
       : '<span style="font-size:11px;color:var(--muted2);opacity:.6">—</span>';
     const sharedHtml = det && det.asins
-      ? `<div style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--g)">${det.asins.length}<div style="font-size:9.5px;color:var(--muted2);opacity:.85;font-weight:400">already</div></div>`
+      ? `<div${cmpNote} style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--g)">${det.asins.length}<div style="font-size:9.5px;color:var(--muted2);opacity:.85;font-weight:400">already</div>${dLine(dShared,true)}</div>`
       : '<span style="font-size:11px;color:var(--muted2);opacity:.6">—</span>';
     // What they stock that you do not. A seller doing well has already proved these sell.
     const gapN = (det && det.size != null && det.asins) ? Math.max(0, det.size - det.asins.length) : null;
@@ -8770,6 +8930,40 @@ const MARKETPLACE_IDS = new Set(['A1F83G8C2ARO7P','ATVPDKIKX0DER','A1PA6795UKMFR
 let QC_PICKED = new Set();
 let QC_RUNNING = false;
 
+// ── Total ASINs, without anyone here holding a Keepa key ────────────────
+// The app never talks to Keepa for this. It asks Jack's Cloudflare Worker, which already
+// holds the key as a secret, and gets back a single number. Sarah needs no key and no Keepa
+// account. The endpoint is read-only and cached Worker-side, so it cannot be hammered into
+// a token bill — worst case someone learns how many ASINs the storefront has.
+const ASIN_COUNT_URL = 'https://keepa.jackbithellbusiness.workers.dev/asin-count';
+
+async function fetchAsinCount(){
+  const btn=document.getElementById('asinFetchBtn');
+  const note=document.getElementById('asinFetchNote');
+  const field=document.getElementById('fAsins');
+  if(!btn||!field) return;
+  btn.disabled=true; btn.textContent='…';
+  note.textContent=''; note.style.color='';
+  try{
+    const r=await fetch(ASIN_COUNT_URL, {cache:'no-store'});
+    if(!r.ok) throw new Error(`the counter replied ${r.status}`);
+    const j=await r.json();
+    const n=Number(j.count);
+    if(!Number.isFinite(n) || n<=0) throw new Error('no number came back');
+    field.value=n;
+    field.dispatchEvent(new Event('input',{bubbles:true}));   // keep avg-cost in step
+    const age=j.asOf ? ` · read ${fmt(String(j.asOf).slice(0,10))}` : '';
+    note.style.color='var(--g)';
+    note.textContent=`✓ ${n.toLocaleString()} from Keepa${j.cached?' (cached)':''}${age}`;
+  }catch(e){
+    // Never block the snapshot on this. The field stays typeable and Sarah carries on.
+    note.style.color='var(--o)';
+    note.textContent=`Couldn't fetch — type it in as usual (${e.message})`;
+  }finally{
+    btn.disabled=false; btn.textContent='Fetch';
+  }
+}
+
 function openQuickCheck(){
   QC_PICKED = new Set();
   const box=document.getElementById('qcIds'); if(box) box.value='';
@@ -8895,30 +9089,82 @@ function qcTable(ids, res, tokens){
   [...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date)).forEach(ses=>{
     (ses.competitors||[]).forEach(c=>{ if(c.sellerId) lastByName[c.sellerId]={pct:c.pct, date:ses.date}; });
   });
+  // A coverage % can only move two ways: you gained or lost shared products (the top of the
+  // fraction), or they grew or shrank their range (the bottom). Showing the percentage alone
+  // hides which — and "they added 40 products" reads very differently to "you dropped 4".
+  const delta = (now, then, goodUp) => {
+    if(now==null || then==null) return {txt:'', col:'var(--muted)', d:null};
+    const d = now - then;
+    if(Math.abs(d) < 0.5) return {txt:'→ same', col:'var(--muted2)', d:0};
+    const col = goodUp===null ? 'var(--muted2)' : (goodUp ? d>0 : d<0) ? '#00f5a0' : '#ff8c42';
+    return {txt:`${d>0?'▲ +':'▼ '}${Math.abs(Math.round(d)).toLocaleString()}`, col, d};
+  };
+
   const rows = ids.map(id=>{
     const r=res[id]||{};
     const prev=lastByName[id];
     const tracked=SELLERS.some(x=>x.sellerId===id);
     const col = r.pct==null?'var(--muted)':r.pct>=25?'var(--g)':r.pct>=15?'#7bd88f':r.pct>=7?'var(--y)':'var(--o)';
-    let move='—', mcol='var(--muted)';
+    let move='—', mcol='var(--muted)', pctD=null;
     if(r.pct!=null && prev && prev.pct!=null){
-      const d=+(r.pct-prev.pct).toFixed(1);
-      mcol = Math.abs(d)<0.05?'var(--muted2)':d>0?'#00f5a0':'#ff8c42';
-      move = `${Math.abs(d)<0.05?'→':d>0?'▲ +':'▼ '}${Math.abs(d)<0.05?'0.0':Math.abs(d).toFixed(1)}pp`;
+      pctD=+(r.pct-prev.pct).toFixed(1);
+      mcol = Math.abs(pctD)<0.05?'var(--muted2)':pctD>0?'#00f5a0':'#ff8c42';
+      move = `${Math.abs(pctD)<0.05?'→':pctD>0?'▲ +':'▼ '}${Math.abs(pctD)<0.05?'0.0':Math.abs(pctD).toFixed(1)}pp`;
     }
     const gap = (r.size!=null && r.shared!=null) ? r.size-r.shared : null;
+
+    // What we last stored for them, so range and shared-count can be compared too.
+    const stored = compAsinDatedFor(id);
+    const sizeThen  = stored ? stored.rec.size : null;
+    const sharedThen= stored ? (stored.rec.asins||[]).length : null;
+    const dSize   = delta(r.size,   r.stored?null:sizeThen,   null);   // their range: neither good nor bad on its own
+    const dShared = delta(r.shared, r.stored?null:sharedThen, true);   // you selling more of theirs is good
+
+    // The verdict: name the cause, not just the direction.
+    let verdict='', vcol='var(--muted)';
+    if(pctD!=null && dSize.d!=null && dShared.d!=null){
+      const grew=dSize.d>0, shrank=dSize.d<0, won=dShared.d>0, lost=dShared.d<0;
+      if(won && !shrank){ verdict=`Real gain — you picked up ${Math.abs(Math.round(dShared.d))} of their lines`; vcol='#00f5a0'; }
+      else if(won && shrank){ verdict=`You gained ${Math.abs(Math.round(dShared.d))} and they trimmed ${Math.abs(Math.round(dSize.d))} — flattering`; vcol='#00f5a0'; }
+      else if(!won && !lost && shrank){ verdict=`Only up because they cut ${Math.abs(Math.round(dSize.d))} lines — you added nothing`; vcol='var(--y)'; }
+      else if(!won && !lost && grew){ verdict=`Slipped because they added ${Math.abs(Math.round(dSize.d))} you don't stock`; vcol='#ff8c42'; }
+      else if(lost && grew){ verdict=`Losing ground — they grew ${Math.abs(Math.round(dSize.d))}, you dropped ${Math.abs(Math.round(dShared.d))}`; vcol='#ff4d6d'; }
+      else if(lost){ verdict=`You dropped ${Math.abs(Math.round(dShared.d))} of their lines`; vcol='#ff8c42'; }
+      else { verdict='Nothing moved either side'; vcol='var(--muted)'; }
+    } else if(!tracked){ verdict='First look — nothing stored to compare against'; }
+    else if(r.stored){ verdict='No product detail from this check — percentage only'; }
+
     return `<div class="qc-row">
       <div><span class="qc-nm">${kfEsc(r.name||id)}</span>${tracked?'':'<span class="qc-new">not tracked</span>'}
-        <div class="qc-sub">${kfEsc(id)}${r.source==='calc~'?' · worked out from unverified listings':r.note?' · '+kfEsc(r.note):''}</div></div>
+        <div class="qc-sub">${kfEsc(id)}${r.source==='calc~'?' · from unverified listings':r.note?' · '+kfEsc(r.note):''}</div></div>
       <div class="qc-pct" style="color:${col}">${r.pct==null?'—':r.pct.toFixed(1)+'%'}</div>
       <div class="qc-mono" style="color:${mcol}">${move}<div class="qc-sub">${prev?'vs '+fmt(prev.date):'no history'}</div></div>
-      <div class="qc-mono">${r.size!=null?r.size.toLocaleString():'—'}</div>
-      <div class="qc-mono" style="color:${r.shared?'var(--g)':'var(--muted)'}">${r.shared!=null?r.shared.toLocaleString():'—'}</div>
+      <div class="qc-mono">${r.size!=null?r.size.toLocaleString():'—'}<div class="qc-sub" style="color:${dSize.col}">${dSize.txt||'&nbsp;'}</div></div>
+      <div class="qc-mono" style="color:${r.shared?'var(--g)':'var(--muted)'}">${r.shared!=null?r.shared.toLocaleString():'—'}<div class="qc-sub" style="color:${dShared.col}">${dShared.txt||'&nbsp;'}</div></div>
       <div class="qc-mono" style="color:${gap?'var(--b)':'var(--muted)'}">${gap!=null?gap.toLocaleString():'—'}</div>
+      ${verdict?`<div class="qc-verdict" style="color:${vcol}">${kfEsc(verdict)}${stored&&!r.stored?` <span style="color:var(--muted)">· their detail last read ${fmt(stored.date)}</span>`:''}</div>`:''}
     </div>`;
   }).join('');
   const untracked = ids.filter(id=>!SELLERS.some(x=>x.sellerId===id));
-  return `<div class="qc-res">
+
+  // Your own side of the equation. Coverage is a fraction of THEIR range, so your catalogue
+  // growing does not move it on its own — but it says whether you have been buying at all.
+  const mineNow = DB.length ? DB[DB.length-1] : null;
+  const mineWk  = snapDaysBack(DB, 7, 4, x=>x.asins);
+  let mineLine = '';
+  if(mineNow){
+    const dA = mineWk ? (mineNow.asins||0)-(mineWk.asins||0) : null;
+    const dS = mineWk ? (mineNow.skus||0)-(mineWk.skus||0) : null;
+    const seg = (label,val,d) => `<span class="qc-mine-seg"><b>${val.toLocaleString()}</b> ${label}`
+      + (d==null?'' : ` <span style="color:${d>0?'#00f5a0':d<0?'#ff8c42':'var(--muted2)'}">${d>0?'▲ +':d<0?'▼ ':'→ '}${Math.abs(d).toLocaleString()}</span>`)
+      + `</span>`;
+    mineLine = `<div class="qc-mine">Your catalogue on ${fmt(mineNow.date)}: `
+      + seg('ASINs', mineNow.asins||0, dA) + seg('SKUs', mineNow.skus||0, dS)
+      + (mineWk?`<span class="qc-sub">vs ${fmt(mineWk.date)}</span>`:'<span class="qc-sub">no earlier snapshot to compare</span>')
+      + `</div>`;
+  }
+
+  return mineLine + `<div class="qc-res">
       <div class="qc-hd"><span>Seller</span><span>Coverage</span><span>vs stored</span><span>Their range</span><span>You sell</span><span>To go after</span></div>
       ${rows}
     </div>
