@@ -2366,8 +2366,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         placeholder="Paste seller IDs or storefront links, one per line"></textarea>
       <div class="qc-picker" id="qcPicker"></div>
 
-      <label class="kf-label" style="margin-top:14px">Keepa API key</label>
-      <input type="password" id="qcKey" class="kf-input" placeholder="paste your key" autocomplete="off" spellcheck="false">
       <div class="kf-cost" id="qcCost">Pick someone to see the token cost.</div>
 
       <div id="qcProgWrap" style="display:none;margin-top:14px">
@@ -2398,11 +2396,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
     </div>
     <div class="modal-body">
       <div class="kf-note">
-        Your key is used for this fetch only. It is never saved, never stored in this file, and
-        is sent to <b>api.keepa.com</b> and nowhere else. Close the tab and it is gone.
+        Goes through your Cloudflare Worker, which holds the Keepa key. No key is typed, stored or
+        sent from this page.
       </div>
-      <label class="kf-label">Keepa API key</label>
-      <input type="password" id="keepaKeyInput" class="kf-input" placeholder="paste your key" autocomplete="off" spellcheck="false">
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--muted2);cursor:pointer">
         <input type="checkbox" id="keepaDetail" checked onchange="KEEPA_WANT_DETAIL=this.checked;openKeepaFetch()">
         <span>Also pull the shared-product lists <span style="color:var(--muted)">— costs 10 tokens per competitor, and is what fills the shared-ASIN columns</span></span>
@@ -2492,7 +2488,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         Amazon's own accounts will top it — that is normal and they cannot be tracked here.<br>
         Costs 1 token, plus 1 per seller it names.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <input class="mc-search" id="mcFindKey" type="password" placeholder="Keepa API key" style="flex:1;min-width:200px">
         <button class="mc-btn" id="mcFindBtn" onclick="mcFindCompetitors()">Ask Keepa</button>
         <button class="mc-btn" onclick="mcToggleFind()">Cancel</button>
       </div>
@@ -8445,7 +8440,7 @@ const KEEPA_ME = 'A142PBK7GX1DM8';   // Lavarion
 const KEEPA_DOMAIN = 2;              // amazon.co.uk
 const KEEPA_FRESH_DAYS = 4;          // measured: closest match to Keepa's own numbers
 let KEEPA_WANT_DETAIL = true;        // pull ASIN lists for everyone, not just the gaps
-let KEEPA_KEY = '';                  // memory only — never persisted anywhere
+const KEEPA_PROXY = 'https://keepa.jackbithellbusiness.workers.dev';   // holds the Keepa key as a secret
 let KEEPA_RUNNING = false;           // blocks a second run from doubling the token spend
 let KEEPA_CANCELLED = false;         // set by Cancel; checked after every await
 // Keepa error text and seller names are third-party strings going into innerHTML.
@@ -8463,7 +8458,6 @@ function cancelKeepaFetch(){
 function openKeepaFetch(){
   if(!SELLERS.length){ alert('No competitors set up yet — add them in ⚙ Manage competitors first.'); return; }
   if(KEEPA_RUNNING){ document.getElementById('keepaModal').classList.add('open'); return; }
-  document.getElementById('keepaKeyInput').value = KEEPA_KEY;
   const log=document.getElementById('keepaFetchLog'); log.style.display='none'; log.innerHTML='';
   const pw=document.getElementById('keepaProgWrap'); if(pw) pw.style.display='none';
   document.getElementById('keepaRunBtn').disabled=false;
@@ -8474,7 +8468,6 @@ function openKeepaFetch(){
     ? `${SELLERS.length} competitors · about ${SELLERS.length + 10 + SELLERS.length*10} tokens (percentages + full shared-product lists).`
     : `${SELLERS.length} competitors · about ${SELLERS.length} tokens, plus 10 for your own catalogue and 10 per seller Keepa cannot rank.`;
   document.getElementById('keepaModal').classList.add('open');
-  setTimeout(()=>document.getElementById('keepaKeyInput').focus(),80);
 }
 
 // The run takes a few seconds pulling one storefront at a time. Without this it looks frozen.
@@ -8496,7 +8489,7 @@ function kfLog(msg,cls){
 }
 
 async function keepaCall(params){
-  const res = await fetch(`https://api.keepa.com/seller?key=${encodeURIComponent(KEEPA_KEY)}&domain=${KEEPA_DOMAIN}&${params}`);
+  const res = await fetch(`${KEEPA_PROXY}/keepa/seller?${params}`, { headers:{ 'x-bdl-app':'oa' }, cache:'no-store' });
   let j; try{ j=await res.json(); }catch(e){ throw new Error(`HTTP ${res.status} — response was not JSON`); }
   if(!res.ok || j.error) throw new Error(j.error ? (j.error.message||JSON.stringify(j.error)) : `HTTP ${res.status}`);
   return j;
@@ -8613,9 +8606,6 @@ async function applyKeepaFetch(fetched){
 
 async function runKeepaFetch(){
   if(KEEPA_RUNNING) return;            // a second run would bill the whole thing again
-  const key = document.getElementById('keepaKeyInput').value.trim();
-  if(!key){ alert('Paste your Keepa API key first.'); return; }
-  KEEPA_KEY = key;
   KEEPA_RUNNING = true; KEEPA_CANCELLED = false;
   let handedOff = false;
   const btn=document.getElementById('keepaRunBtn');
@@ -8968,7 +8958,6 @@ function openQuickCheck(){
   QC_PICKED = new Set();
   const box=document.getElementById('qcIds'); if(box) box.value='';
   const out=document.getElementById('qcOut'); if(out) out.innerHTML='';
-  const key=document.getElementById('qcKey'); if(key) key.value = KEEPA_KEY || '';
   document.getElementById('qcProgWrap').style.display='none';
   const pick=document.getElementById('qcPicker');
   pick.innerHTML = SELLERS.filter(x=>x.sellerId).map(x=>
@@ -9005,11 +8994,9 @@ async function runQuickCheck(){
   const out=document.getElementById('qcOut');
   const btn=document.getElementById('qcRunBtn');
   if(!ids.length){ out.innerHTML='<div class="kf-note" style="margin-top:14px">Tap a competitor or paste a seller ID first.</div>'; return; }
-  const key=(document.getElementById('qcKey').value||'').trim();
-  if(!key){ out.innerHTML='<div class="kf-note" style="margin-top:14px">Paste your Keepa API key first.</div>'; return; }
   if(KEEPA_RUNNING){ out.innerHTML='<div class="kf-note" style="margin-top:14px">A real fetch is running — let it finish first.</div>'; return; }
 
-  QC_RUNNING=true; KEEPA_KEY=key;
+  QC_RUNNING=true;
   btn.disabled=true; btn.textContent='Checking…';
   out.innerHTML='';
   const prog=(done,total,label)=>{
@@ -9209,7 +9196,6 @@ function openManageSellers() {
   // that is now on the list makes the whole save refuse for a duplicate id.
   const fp=document.getElementById('mcFind'); if(fp) fp.classList.remove('open');
   const fo=document.getElementById('mcFindOut'); if(fo) fo.innerHTML='';
-  const fk=document.getElementById('mcFindKey'); if(fk) fk.value='';
   const sb=document.getElementById('mcSearch'); if(sb) sb.value='';
   mcCount();
   document.getElementById('manageModal').classList.add('open');
@@ -9314,21 +9300,13 @@ function mcDrop(i, purge){
 function mcToggleFind(){
   const b=document.getElementById('mcFind');
   b.classList.toggle('open');
-  if(b.classList.contains('open')){
-    document.getElementById('mcFindKey').value = KEEPA_KEY || '';
-    document.getElementById('mcFindKey').focus();
-  } else {
-    document.getElementById('mcFindOut').innerHTML='';
-  }
+  if(!b.classList.contains('open')) document.getElementById('mcFindOut').innerHTML='';
 }
 
 async function mcFindCompetitors(){
-  const key=document.getElementById('mcFindKey').value.trim();
   const out=document.getElementById('mcFindOut');
   const btn=document.getElementById('mcFindBtn');
-  if(!key){ out.innerHTML='<div class="mc-hint" style="color:var(--y)">Paste your Keepa API key first.</div>'; return; }
-  if(KEEPA_RUNNING){ out.innerHTML='<div class="mc-hint" style="color:var(--y)">A Keepa fetch is running. Let it finish first — starting this now would swap the key it is using mid-run.</div>'; return; }
-  KEEPA_KEY=key;
+  if(KEEPA_RUNNING){ out.innerHTML='<div class="mc-hint" style="color:var(--y)">A Keepa fetch is running. Let it finish first.</div>'; return; }
   btn.disabled=true; btn.textContent='Asking…';
   out.innerHTML='<div class="mc-hint">Reading your seller record…</div>';
   try{
