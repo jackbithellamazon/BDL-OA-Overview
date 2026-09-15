@@ -256,6 +256,111 @@ window._supabaseSaveCompetitorAsins = async function(date, rows) {
   } catch(e) { console.error('Competitor ASIN save error:', e); return false; }
 };
 
+// ── Rivals' full shelves ─────────────────────────────────────────────────────────────────
+// One row per product per rival, written only when something changes: inserted when a line
+// appears, gone_on filled in when it leaves. A shelf that has not moved writes nothing, which is
+// what keeps this to megabytes a year rather than hundreds. The first time a rival is seen every
+// line is marked baseline, so what was already there never shows up as a "new lead".
+const SHELF_PAGE = 1000;
+const _shiftDate = (d, n) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+// PostgREST caps a select at 1,000 rows, and a full set of shelves is ~8,500. Page through it.
+async function _shelfSelectAll(build){
+  const out = [];
+  for (let from = 0; ; from += SHELF_PAGE) {
+    const { data, error } = await build().range(from, from + SHELF_PAGE - 1);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < SHELF_PAGE) break;
+  }
+  return out;
+}
+
+// Lines rivals added since `sinceDate` that are still on their shelf. Small: never baseline.
+window._shelfLoadRecent = async function(sinceDate){
+  try {
+    if (!supabase) return null;
+    const head = await supabase.from('bdl_competitor_shelf').select('id', { count: 'exact', head: true });
+    if (head.error) throw head.error;
+    window._shelfRowCount = head.count || 0;
+    const rows = await _shelfSelectAll(() => supabase.from('bdl_competitor_shelf')
+      .select('seller_id,asin,first_seen').eq('baseline', false).is('gone_on', null)
+      .gte('first_seen', sinceDate).order('id'));
+    window._hasShelfTable = true;
+    return rows;
+  } catch(e) {
+    window._hasShelfTable = false;
+    console.warn('bdl_competitor_shelf unavailable — run the SQL to start saving rival shelves.', e.message || e);
+    return null;
+  }
+};
+
+// Record what a fetch saw. `lists` = [{sellerId, asins:[every ASIN on their storefront]}].
+// Only rivals whose storefront actually came back are passed in, so a failed lookup can never
+// mark a whole shelf as gone.
+window._shelfApply = async function(today, lists){
+  const res = { ok:false, rivals:0, added:0, gone:0, back:0, baselined:0, skipped:[] };
+  try {
+    if (!supabase) { res.error = 'not connected'; return res; }
+    if (window._hasShelfTable === false) { res.error = 'the rival shelves table is not set up yet'; return res; }
+    if (!lists || !lists.length) { res.ok = true; return res; }
+    const ids = [...new Set(lists.map(l => l.sellerId))];
+    const cut7 = _shiftDate(today, -7);
+    const rows = await _shelfSelectAll(() => supabase.from('bdl_competitor_shelf')
+      .select('id,seller_id,asin,gone_on').in('seller_id', ids)
+      .or(`gone_on.is.null,gone_on.gte.${cut7}`).order('id'));
+
+    const by = {};
+    rows.forEach(r => {
+      const s = by[r.seller_id] = by[r.seller_id] || { open:new Map(), recent:new Map() };
+      if (r.gone_on == null) s.open.set(r.asin, r.id);
+      else if (!s.recent.has(r.asin)) s.recent.set(r.asin, r.id);
+    });
+
+    const inserts = [], closeIds = [], reopenIds = [];
+    for (const { sellerId, asins } of lists) {
+      const cur = new Set((asins || []).filter(a => /^[A-Z0-9]{10}$/.test(a)));
+      if (!cur.size) { res.skipped.push(sellerId); continue; }
+      const s = by[sellerId] || { open:new Map(), recent:new Map() };
+      // A shelf that suddenly comes back at half its usual size is Keepa having a bad day, not
+      // the rival clearing out. Closing hundreds of lines on that would fake a mass exodus and
+      // then flood the next fetch with "new" leads that were there all along.
+      if (s.open.size >= 20 && cur.size < s.open.size * 0.5) { res.skipped.push(sellerId); continue; }
+      const baseline = s.open.size === 0 && s.recent.size === 0;
+      cur.forEach(a => {
+        if (s.open.has(a)) return;
+        // Back within 7 days = it never really left (Keepa's lists blink). Reopen, don't re-add.
+        if (s.recent.has(a)) { reopenIds.push(s.recent.get(a)); res.back++; return; }
+        inserts.push({ seller_id:sellerId, asin:a, first_seen:today, baseline });
+        if (baseline) res.baselined++; else res.added++;
+      });
+      s.open.forEach((id, a) => { if (!cur.has(a)) { closeIds.push(id); res.gone++; } });
+      res.rivals++;
+    }
+
+    // Batched — row-by-row writes are what silently lost saves in this app before.
+    for (let i = 0; i < reopenIds.length; i += 300) {
+      const { error } = await supabase.from('bdl_competitor_shelf').update({ gone_on:null }).in('id', reopenIds.slice(i, i + 300));
+      if (error) throw error;
+    }
+    for (let i = 0; i < closeIds.length; i += 300) {
+      const { error } = await supabase.from('bdl_competitor_shelf').update({ gone_on:today }).in('id', closeIds.slice(i, i + 300));
+      if (error) throw error;
+    }
+    for (let i = 0; i < inserts.length; i += 500) {
+      const { error } = await supabase.from('bdl_competitor_shelf').insert(inserts.slice(i, i + 500));
+      if (error) throw error;
+    }
+    // Keep it bounded: lines that left more than a year ago are no use to anyone.
+    await supabase.from('bdl_competitor_shelf').delete().lt('gone_on', _shiftDate(today, -365));
+    res.ok = true;
+    return res;
+  } catch(e) {
+    console.error('Rival shelf save failed:', e);
+    res.error = e.message || String(e);
+    return res;
+  }
+};
+
 // Renaming a competitor in the list has to follow through to their stored readings.
 // The tables group history by the name on each reading, so a rename without this leaves
 // the seller split in two — half their series under the old name, half under the new.
@@ -283,6 +388,10 @@ window._supabaseDeleteSellerHistory = async function(sellerId) {
       const { error: aErr } = await supabase.from('bdl_competitor_asins').delete().eq('seller_id', sellerId);
       // The percentages are the record that matters; a stranded ASIN row is cosmetic.
       if (aErr) console.warn('Shared-product rows for this seller could not be removed:', aErr.message);
+    }
+    if (window._hasShelfTable) {
+      const { error: shErr } = await supabase.from('bdl_competitor_shelf').delete().eq('seller_id', sellerId);
+      if (shErr) console.warn('Saved shelf for this seller could not be removed:', shErr.message);
     }
     COMPETITOR_SESSIONS.forEach(s => { if (s.competitors) s.competitors = s.competitors.filter(c => c.sellerId!==sellerId); });
     Object.keys(COMPETITOR_ASINS||{}).forEach(d => { delete COMPETITOR_ASINS[d][sellerId]; });
@@ -602,6 +711,7 @@ window._startupLoad = async function() {
     ARCHIVED_PROVIDERS = data.providerArchived || [];
     PROVIDER_RULES = data.providerRules || [];
     COMPETITOR_ASINS = data.competitorAsins || {};
+    loadShelfLeads();   // not awaited — the page must not wait on it
 
     // One-time seed: if no providers have ever been set up (fresh Supabase project),
     // load the 17 known defaults with their aliases/stems so the importer works out of
@@ -1483,6 +1593,77 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .cmp-chip.on{background:var(--g);border-color:var(--g);color:#04120c}
 .cmp-chip.on.threat{background:var(--r);border-color:var(--r);color:#fff}
 .cmp-table-wrap{position:relative}
+/* ── Leads table ── numbers in Inter with tabular figures: plain zeros, columns line up */
+.ld-grid{display:grid;grid-template-columns:40px minmax(190px,1.35fr) minmax(210px,1.45fr) .85fr .85fr .75fr .8fr 26px;
+  align-items:center;column-gap:14px;min-width:980px}
+.cmp-head.ld-grid{padding:24px 16px 12px;font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:0;text-transform:none}
+.cmp-head.ld-grid > span:nth-child(n+3){text-align:left}
+.cmp-head.ld-grid > span.ld-r{text-align:right}
+#compTableBody{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ld-row{padding:15px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}
+.ld-row:hover{background:rgba(255,255,255,.025)}
+.ld-row.open{background:var(--s2);border-bottom-color:transparent}
+.ld-rank{font-size:12.5px;color:var(--muted)}
+.ld-name{font-family:var(--mono);font-size:14.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ld-sub{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ld-on-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ld-count{font-size:15px;font-weight:600;color:var(--text)}
+.ld-count span{color:var(--muted);font-weight:500}
+.ld-pct{font-size:14.5px;font-weight:700;color:var(--text)}
+.ld-bar{height:7px;border-radius:99px;background:var(--s3);overflow:hidden;margin-top:8px}
+.ld-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2f86e6,var(--b))}
+.ld-r{text-align:right}
+.ld-chg{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;font-weight:700;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.ld-chg small{font-size:11.5px;font-weight:600;opacity:.85}
+.ld-chg.up{color:var(--g);background:var(--g2)} .ld-chg.down{color:var(--r);background:var(--r2)}
+.ld-chg.same{color:var(--muted2);background:rgba(167,180,196,.10)} .ld-chg.na{color:var(--muted);padding:5px 0}
+.ld-num{font-size:14.5px;font-weight:600;color:var(--text)}
+.ld-dim{color:var(--muted)} .ld-zero{font-size:14.5px;font-weight:600;color:var(--muted)}
+.ld-leads{font-size:15px;font-weight:700;color:var(--p)}
+.ld-new{display:inline-block;margin-left:7px;font-size:11px;font-weight:700;color:var(--p);background:var(--p2);padding:2px 7px;border-radius:6px}
+.ld-caret{text-align:center;color:var(--muted);font-size:15px}
+.ld-row.open .ld-caret{color:var(--text)}
+.ld-detail{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;padding:4px 16px 20px;background:var(--s2);border-bottom:1px solid var(--border);cursor:default;min-width:980px}
+.ld-box{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px 18px;min-width:0}
+.ld-box.leads{border-color:rgba(192,132,252,.38)}
+.ld-box-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.ld-box h3{margin:0;font-family:var(--mono);font-size:14.5px;font-weight:700;color:var(--p)}
+.ld-box-hd p{margin:3px 0 0;font-size:12.5px;color:var(--muted2)}
+.ld-box-n{font-size:30px;font-weight:800;letter-spacing:-.6px;line-height:1}
+.ld-empty{margin:14px 0 0;font-size:13px;color:var(--muted2);line-height:1.55}
+.ld-list{list-style:none;margin:12px 0 0;padding:0;max-height:300px;overflow-y:auto}
+.ld-list li{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;padding:9px 0;border-top:1px solid var(--border);font-size:13.5px}
+.ld-asin{font-weight:600;color:var(--text);letter-spacing:.2px}
+.ld-list a{color:var(--b);font-size:12.5px;font-weight:600;text-decoration:none;justify-self:start}
+.ld-list a:hover{text-decoration:underline}
+.ld-when{color:var(--muted);font-size:12.5px;white-space:nowrap}
+.ld-when.fresh{color:var(--p);font-weight:600}
+.ld-warn{margin-top:12px;font-size:12.5px;color:var(--y);background:var(--y2);border-radius:9px;padding:9px 12px}
+.ld-keepa{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted2)}
+.ld-keepa b{color:var(--text)}
+.ld-tile-rows{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
+.ld-tile-rows .ld-chg{font-size:11.5px;padding:2px 7px}
+.ld-tile-unit{font-size:13px;color:var(--muted2);font-weight:600;margin:0 8px 0 4px}
+.ld-tile-name{font-size:clamp(13px,1.15vw,19px)}
+.ci-top{padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
+.ci-top .insight-hd{margin-bottom:9px}
+.ci-head{font-family:var(--mono);font-size:14px;line-height:1.65;color:var(--muted2)}
+.ci-head b{color:var(--text);font-weight:700}
+.ci-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;padding:12px 16px 14px;align-items:start}
+.ci-panel{background:var(--s1);border:1px solid var(--border);border-top:2px solid;border-radius:10px;padding:12px 14px}
+.ci-title{font-family:var(--mono);font-size:11.5px;font-weight:700;margin-bottom:6px}
+.ci-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;border-top:1px solid rgba(255,255,255,.04);font-family:var(--mono)}
+.ci-row:first-of-type{border-top:0}
+.ci-name{font-size:13px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci-val{font-size:12.5px;font-weight:700;flex-shrink:0;font-variant-numeric:tabular-nums}
+.ci-empty{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.ld-steps{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 16px;margin-bottom:14px;border:1px solid var(--border);border-radius:12px;background:var(--s1);font-family:var(--mono)}
+.ld-steps-l{display:flex;flex-direction:column;gap:1px;font-size:12.5px;color:var(--muted2)}
+.ld-steps-l b{color:var(--text);font-weight:700}
+.ld-steps-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.ld-step{display:inline-flex;flex-direction:column;align-items:center;padding:4px 9px;border-radius:8px;background:var(--s2);font-variant-numeric:tabular-nums}
+.ld-step em{font-style:normal;font-size:10.5px;color:var(--muted)}
+.ld-step b{font-size:12.5px}
 /* .content scrolls with 24px of top padding; a header pinned at top:0 let rows scroll
    visibly through that strip above it. Pin 24px higher and pad by the same amount so the
    header's own background covers the gap. Wrapping it with the rows also stops it
@@ -1712,7 +1893,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         <div class="kpi-mini-insight" id="kMatchBBInsight"></div>
       </div>
       <div class="kpi-tile" onclick="switchTab('competitors', document.getElementById('navCompetitors'))">
-        <div class="kpi-label">Avg Rival Coverage</div>
+        <div class="kpi-label">Their Leads You're On</div>
         <div class="kpi-value" id="kCompAvg">&mdash;</div>
         <div class="kpi-change"><span id="kCompAvgPill"></span></div>
         <div class="kpi-mini-insight" id="kCompAvgInsight"></div>
@@ -1857,31 +2038,31 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
   <div class="tab-page" id="tab-competitors">
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
       <div class="kpi-tile ct-green">
-        <div class="kpi-label">Best coverage</div>
+        <div class="kpi-label" id="compKpiHighestLabel">Their leads you're on</div>
         <div class="kpi-value" id="compKpiHighest">—</div>
         <div class="kpi-change"><span id="compKpiHighestPill"></span></div>
         <div class="kpi-mini-insight" id="compKpiHighestSub">—</div>
       </div>
-      <div class="kpi-tile ct-amber" onclick="openAvgOverlapModal()" title="Click for the full average-overlap trend">
-        <div class="kpi-label">Average coverage ›</div>
+      <div class="kpi-tile ct-amber">
+        <div class="kpi-label" id="compKpiAvgLabel">Over 2 weeks you are</div>
         <div class="kpi-value" id="compKpiAvg">—</div>
         <div class="kpi-change"><span id="compKpiAvgPill"></span></div>
         <div class="kpi-mini-insight" id="compKpiAvgSub">—</div>
       </div>
       <div class="kpi-tile ct-green">
-        <div class="kpi-label">Biggest gain</div>
+        <div class="kpi-label" id="compKpiRiserLabel">Biggest gain · 2 weeks</div>
         <div class="kpi-value" id="compKpiRiser" style="font-size:clamp(13px,1.15vw,20px)">—</div>
         <div class="kpi-change"><span id="compKpiRiserPill"></span></div>
         <div class="kpi-mini-insight" id="compKpiRiserSub">—</div>
       </div>
       <div class="kpi-tile ct-red">
-        <div class="kpi-label">Biggest loss</div>
+        <div class="kpi-label" id="compKpiDropperLabel">Biggest drop · 2 weeks</div>
         <div class="kpi-value" id="compKpiDropper" style="font-size:clamp(13px,1.15vw,20px)">—</div>
         <div class="kpi-change"><span id="compKpiDropperPill"></span></div>
         <div class="kpi-mini-insight" id="compKpiDropperSub">—</div>
       </div>
       <div class="kpi-tile ct-purple">
-        <div class="kpi-label">Net Momentum</div>
+        <div class="kpi-label" id="compKpiMomentumLabel">New leads · last fetch</div>
         <div class="kpi-value" id="compKpiMomentum">—</div>
         <div class="kpi-change"><span id="compKpiMomentumPill"></span></div>
         <div class="kpi-mini-insight" id="compKpiMomentumSub">—</div>
@@ -1909,24 +2090,23 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
     </div>
     <div class="cmp-filters" style="margin-bottom:12px">
       <button class="cmp-chip on" id="cf-all"      onclick="setCompFilter('all')">All</button>
-      <button class="cmp-chip" id="cf-closing" onclick="setCompFilter('closing')">Gained</button>
-      <button class="cmp-chip" id="cf-backing"   onclick="setCompFilter('backing')">Lost</button>
-      <button class="cmp-chip" id="cf-threat"    onclick="setCompFilter('threat')">20%+ covered</button>
+      <button class="cmp-chip" id="cf-closing" onclick="setCompFilter('closing')">▲ Up · 2 weeks</button>
+      <button class="cmp-chip" id="cf-backing"   onclick="setCompFilter('backing')">▼ Down · 2 weeks</button>
+      <button class="cmp-chip" id="cf-threat"    onclick="setCompFilter('threat')">Has new leads</button>
       <button class="cmp-chip" id="cfUntracked" style="display:none" onclick="toggleUntracked()" title="Sellers with readings on record that are no longer on your list"></button>
     </div>
     <div class="cmp-pending" id="compPending" style="display:none"></div>
     <div class="cmp-stalefetch" id="compFetchGap" style="display:none"></div>
     <div class="cmp-table-wrap">
-    <div class="cmp-head" id="compHead">
-      <span onclick="setCompSort('rank')"  id="cs-rank">Rank</span>
-      <span onclick="setCompSort('name')"  id="cs-name">Seller</span>
-      <span onclick="setCompSort('latest')" id="cs-latest" title="Share of their catalogue you already sell">Your coverage</span>
-      <span onclick="setCompSort('vslast')" id="cs-vslast">vs Last</span>
-      <span onclick="setCompSort('vs30')"  id="cs-vs30">vs 30d</span>
-      <span onclick="setCompSort('cat')"   id="cs-cat" title="How many products they list">Their range</span>
-      <span onclick="setCompSort('shared')" id="cs-shared" title="Products of theirs you already sell">You sell</span>
-      <span onclick="setCompSort('gap')"    id="cs-gap" title="Products they sell that you do not — your opportunity">To go after</span>
-      <!-- both hidden until a Keepa fetch has stored ASIN detail -->
+    <div class="cmp-head ld-grid" id="compHead">
+      <span></span>
+      <span onclick="setCompSort('name')" data-sort="name">Rival</span>
+      <span onclick="setCompSort('on')" data-sort="on" title="How many of their products you also sell">You're on</span>
+      <span onclick="setCompSort('vslast')" data-sort="vslast" class="ld-r">vs last fetch</span>
+      <span onclick="setCompSort('vs2w')" data-sort="vs2w" class="ld-r">vs 2 weeks</span>
+      <span onclick="setCompSort('toget')" data-sort="toget" class="ld-r" title="Their products you don't sell yet">Still to get</span>
+      <span onclick="setCompSort('leads')" data-sort="leads" class="ld-r" title="Lines they added recently that you're not on">New leads</span>
+      <span></span>
     </div>
     <div id="compTableBody" style="overflow-x:auto"></div>
     </div>
@@ -2399,10 +2579,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
         Goes through your Cloudflare Worker, which holds the Keepa key. No key is typed, stored or
         sent from this page.
       </div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--muted2);cursor:pointer">
-        <input type="checkbox" id="keepaDetail" checked onchange="KEEPA_WANT_DETAIL=this.checked;openKeepaFetch()">
-        <span>Also pull the shared-product lists <span style="color:var(--muted)">— costs 10 tokens per competitor, and is what fills the shared-ASIN columns</span></span>
-      </label>
       <div class="kf-cost" id="keepaCost">—</div>
       <div id="keepaProgWrap" style="display:none;margin-top:16px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">
@@ -5368,37 +5544,21 @@ function setKpiInbound(latest, prev) {
 function setKpiCompAvg() {
   const el=document.getElementById('kCompAvg'), pill=document.getElementById('kCompAvgPill'), ins=document.getElementById('kCompAvgInsight');
   if(!el||!pill) return;
-  const sessions=[...(typeof COMPETITOR_SESSIONS!=='undefined'?COMPETITOR_SESSIONS:[])]
-    .filter(x=>x.competitors && x.competitors.length)
-    .sort((a,b)=>a.date.localeCompare(b.date));
-  const mean = ses => { const v=(ses.competitors||[]).map(c=>+c.pct).filter(p=>!isNaN(p)&&p>0);
-    return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
-  const blank = m => { el.textContent='\u2014'; pill.innerHTML=''; if(ins) ins.textContent=m; };
-  if(!sessions.length) return blank('no readings yet');
-  const last=sessions[sessions.length-1], prevSes=sessions[sessions.length-2];
-  const cur=mean(last), pre=prevSes?mean(prevSes):null;
-  if(cur===null) return blank('no readings yet');
-  el.textContent=cur.toFixed(1)+'%';
-  const active=(last.competitors||[]).filter(c=>+c.pct>0).length;
-  if(pre!==null){
-    const d=+(cur-pre).toFixed(1);
-    // This is the share of each rival's range you already sell. More is better — it reads
-    // like every other tile. It used to be inverted, from back when the page was defensive.
-    const cls=Math.abs(d)<0.05?'flat':(d>0?'up':'down');
-    const arrow=Math.abs(d)<0.05?'\u2192':(d>0?'\u25B2':'\u25BC');
-    pill.innerHTML=`<span class="pill ${cls}">${arrow} ${d>0?'+':''}${d}pp</span>`;
-  } else pill.innerHTML='';
-  if(ins) ins.innerHTML=`across ${active} rivals' ranges<br><span style="color:var(--muted2)">${fmt(last.date)}</span>`;
-
+  const T = typeof leadTotals==='function' ? leadTotals() : null;
   const tile=el.closest('.kpi-tile');
-  if(tile){
-    tile.classList.remove('better','worse','same');
-    if(pre!==null){
-      if(cur>pre) tile.classList.add('better');
-      else if(cur<pre) tile.classList.add('worse');
-      else tile.classList.add('same');
-    }
-  }
+  if(tile) tile.classList.remove('better','worse','same');
+  if(!T){ el.textContent='—'; pill.innerHTML=''; if(ins) ins.textContent='no fetch yet'; return; }
+  el.textContent=T.on.toLocaleString();
+  // Up or down is the number of their leads you're on — not the %, which moves when their
+  // shelves shrink even if you have lost ground.
+  const d = T.vs2w != null ? T.vs2w : T.vsLast;
+  const lbl = T.vs2w != null ? 'vs 2 weeks' : 'vs last';
+  if(d!=null){
+    const cls=d===0?'flat':(d>0?'up':'down');
+    pill.innerHTML=`<span class="pill ${cls}">${d>0?'▲':d<0?'▼':'→'} ${Math.abs(d).toLocaleString()} ${Math.abs(d)===1?'lead':'leads'} ${lbl}</span>`;
+    if(tile) tile.classList.add(d>0?'better':d<0?'worse':'same');
+  } else pill.innerHTML='';
+  if(ins) ins.innerHTML=`of ${T.total.toLocaleString()} across ${T.rivals} rivals<br><span style="color:var(--muted2)">${fmt(T.date)}</span>`;
 }
 
 function setKpiPercent(valId, pillId, subId, curr, prev, upGood=true, avg=0) {
@@ -6939,7 +7099,7 @@ function compSessionsInRange(){
   return s;
 }
 // Sort and filter state for the competitor list. Both re-render in place.
-let compSort = 'rank', compSortDir = 1, compFilter = 'all';
+let compSort = 'vs2w', compSortDir = 1, compFilter = 'all';
 function setCompSort(k){
   if (compSort === k) compSortDir = -compSortDir; else { compSort = k; compSortDir = 1; }
   renderCompTab();
@@ -7124,76 +7284,22 @@ function renderSourcingScore(){
   const box=document.getElementById('sourcingScore'); if(!box) return;
   const dates=Object.keys(COMPETITOR_ASINS||{}).sort();
   if(dates.length<2){ box.innerHTML=''; return; }
-
-  const first=dates[0], last=dates[dates.length-1];
-  const cohort=Object.keys(COMPETITOR_ASINS[first]||{}).filter(id=>COMPETITOR_ASINS[last]?.[id]);
-  if(cohort.length<3){ box.innerHTML=''; return; }
-
-  const tally=(d,ids)=>{ let sh=0,rg=0;
-    ids.forEach(id=>{ const r=COMPETITOR_ASINS[d][id]||{}; sh+=(r.asins||[]).length; rg+=(r.size||0); });
-    return {sh,rg,cov:sh/Math.max(rg,1)*100}; };
-  const a=tally(first,cohort), b=tally(last,cohort);
-
-  const dLines = b.sh - a.sh;
-  const dRange = b.rg - a.rg;
-  const dCov   = b.cov - a.cov;
-  // What the coverage would be if their range had not moved — the part you actually earned.
-  const covHeld = b.sh / Math.max(a.rg,1) * 100;
-  const earned  = covHeld - a.cov;
-  const handed  = b.cov - covHeld;
-
-  const sign=v=>v>0?'+':v<0?'−':'';
-  const col =v=>Math.abs(v)<0.005?'var(--muted2)':v>0?'#00f5a0':'#ff8c42';
-  const headline = dCov>0.05 ? 'You are gaining on them' : dCov<-0.05 ? 'You are losing ground' : 'Holding level';
-  const hcol = dCov>0.05 ? 'var(--g)' : dCov<-0.05 ? '#ff8c42' : 'var(--muted2)';
-
-  // Plain-English split, only when there is something to split.
-  let mix='';
-  if(Math.abs(dCov)>0.05 && Math.abs(earned)>0.005){
-    const share=Math.round(Math.abs(earned)/Math.max(Math.abs(earned)+Math.abs(handed),0.0001)*100);
-    mix = earned>0 && handed>0 ? `${share}% of it earned, the rest is them shrinking`
-        : earned>0 && handed<=0 ? `all of it earned — they grew and you still gained`
-        : earned<=0 && handed>0 ? `none of it earned — it is only their range shrinking`
-        : `you lost lines and they grew`;
-  }
-
-  // Step-by-step, each pair compared like for like too.
+  const tracked=new Set((SELLERS||[]).map(s=>s.sellerId).filter(Boolean));
+  // Each step compared like for like: only rivals present on both fetches count, so adding a
+  // rival to your list never shows up as leads you won.
   const steps=[];
-  for(let i=Math.max(1,dates.length-5); i<dates.length; i++){
-    const c=Object.keys(COMPETITOR_ASINS[dates[i-1]]||{}).filter(id=>COMPETITOR_ASINS[dates[i]]?.[id]);
-    const x=tally(dates[i-1],c), y=tally(dates[i],c);
-    steps.push({date:dates[i], d:y.sh-x.sh});
+  for(let i=Math.max(1,dates.length-8); i<dates.length; i++){
+    const both=Object.keys(COMPETITOR_ASINS[dates[i]]||{}).filter(id=>COMPETITOR_ASINS[dates[i-1]]?.[id] && (!tracked.size||tracked.has(id)));
+    const on=d=>both.reduce((t,id)=>t+((COMPETITOR_ASINS[d][id].asins)||[]).length,0);
+    steps.push({date:dates[i], d:on(dates[i])-on(dates[i-1])});
   }
-
-  box.innerHTML = `<div class="ss-card">
-    <div class="ss-hd">
-      <span class="ss-title">Are you gaining on them?</span>
-      <span class="ss-scope">${fmt(first)} → ${fmt(last)} · the ${cohort.length} sellers tracked throughout</span>
-    </div>
-    <div class="ss-grid">
-      <div class="ss-cell">
-        <div class="ss-v" style="color:${hcol}">${sign(dCov)}${Math.abs(dCov).toFixed(2)}pp</div>
-        <div class="ss-l">${kfEsc(headline)}</div>
-        <div class="ss-s">${a.cov.toFixed(2)}% → ${b.cov.toFixed(2)}%</div>
-      </div>
-      <div class="ss-cell">
-        <div class="ss-v" style="color:${col(dLines)}">${sign(dLines)}${Math.abs(dLines).toLocaleString()}</div>
-        <div class="ss-l">Lines picked up</div>
-        <div class="ss-s">${a.sh.toLocaleString()} → ${b.sh.toLocaleString()} of theirs</div>
-      </div>
-      <div class="ss-cell">
-        <div class="ss-v" style="color:var(--muted2)">${sign(dRange)}${Math.abs(dRange).toLocaleString()}</div>
-        <div class="ss-l">Their combined range</div>
-        <div class="ss-s">${a.rg.toLocaleString()} → ${b.rg.toLocaleString()} listings</div>
-      </div>
-      ${mix?`<div class="ss-cell">
-        <div class="ss-v" style="font-size:13px;font-weight:700;color:var(--muted2);line-height:1.35">${kfEsc(mix)}</div>
-        <div class="ss-l">Earned or handed to you</div>
-        <div class="ss-s">${sign(earned)}${Math.abs(earned).toFixed(2)}pp yours · ${sign(handed)}${Math.abs(handed).toFixed(2)}pp theirs</div>
-      </div>`:''}
-    </div>
-    ${steps.length?`<div class="ss-steps"><span class="ss-steps-l">Lines gained each fetch</span>
-      ${steps.map(x=>`<span class="ss-step" style="color:${col(x.d)}" title="${fmt(x.date)}">${sign(x.d)}${Math.abs(x.d)}</span>`).join('')}</div>`:''}
+  const net=steps.reduce((t,s)=>t+s.d,0);
+  const col=v=>v>0?'var(--g)':v<0?'var(--r)':'var(--muted2)';
+  const sg=v=>v>0?'▲ ':v<0?'▼ ':'→ ';
+  box.innerHTML=`<div class="ld-steps">
+    <div class="ld-steps-l"><b>Leads you're on, fetch by fetch</b><span>last ${steps.length} fetches · net <b style="color:${col(net)}">${sg(net)}${Math.abs(net)}</b></span></div>
+    <div class="ld-steps-chips">${steps.map(s=>`<span class="ld-step" title="${fmt(s.date)}"><em>${fmtShort(s.date)}</em><b style="color:${col(s.d)}">${sg(s.d)}${Math.abs(s.d)}</b></span>`).join('')}</div>
+    <button class="cmp-chip" onclick="openAvgOverlapModal()" title="Keepa's own average % over time">Keepa % history ›</button>
   </div>`;
 }
 
@@ -7220,582 +7326,291 @@ function compAsinDatedFor(sellerId){
 let COMP_SHOW_UNTRACKED = false;
 function toggleUntracked(){ COMP_SHOW_UNTRACKED = !COMP_SHOW_UNTRACKED; renderCompTab(); }
 
+// ── Leads model ─────────────────────────────────────────────────────────────────────────────
+// A rival's products are leads. What matters is how many of THEIR leads you are on, and whether
+// that number is going up. Up or down is decided by the count, never by the %: 19 of 95 is the
+// same 20% as 20 of 100, but it is one lead fewer, and that is the one that counts.
+let SHELF_NEW = {};            // sellerId -> [{asin, first_seen}] newest first: lines they added, still listed
+let SHELF_LOADED = false;
+let LD_OPEN = null;            // sellerId of the row opened underneath
+const LD_LEAD_DAYS = 21;       // how far back the "new leads" list looks
+const _ldDay = d => Date.parse(d + 'T00:00:00Z');
+
+async function loadShelfLeads(){
+  if (!window._shelfLoadRecent) return;
+  const since = new Date(Date.now() - LD_LEAD_DAYS*864e5).toISOString().slice(0,10);
+  const rows = await window._shelfLoadRecent(since);
+  const map = {};
+  (rows||[]).forEach(r => { (map[r.seller_id] = map[r.seller_id] || []).push({ asin:r.asin, first_seen:r.first_seen }); });
+  Object.values(map).forEach(a => a.sort((x,y) => y.first_seen.localeCompare(x.first_seen)));
+  SHELF_NEW = map;
+  SHELF_LOADED = true;
+  try { if (document.getElementById('tab-competitors')) renderCompTab(); setKpiCompAvg(); } catch(e) { console.error(e); }
+}
+
+// The fetch nearest to N days before `from`, within ±3 days — fetches land Mon/Wed/Fri, never
+// exactly 14 days apart.
+function ldNearest(dates, from, daysBack){
+  const target = _ldDay(from) - daysBack*864e5;
+  let best = null, gap = Infinity;
+  dates.forEach(d => { if (d >= from) return; const g = Math.abs(_ldDay(d) - target); if (g <= 3*864e5 && g < gap) { gap = g; best = d; } });
+  return best;
+}
+
+function leadStats(sellerId){
+  if (!sellerId) return null;
+  const all = Object.keys(COMPETITOR_ASINS||{}).sort();
+  const mine = all.filter(d => COMPETITOR_ASINS[d]?.[sellerId]);
+  if (!mine.length) return null;
+  const L = mine[mine.length-1], rec = COMPETITOR_ASINS[L][sellerId];
+  const onList = rec.asins || [], on = onList.length;
+  const total = rec.size != null ? rec.size : null;
+  const P = mine.length > 1 ? mine[mine.length-2] : null;
+  const W = ldNearest(mine, L, 14);
+  const count = d => (COMPETITOR_ASINS[d][sellerId].asins || []).length;
+  const onSet = new Set(onList);
+  const prevSet = P ? new Set(COMPETITOR_ASINS[P][sellerId].asins || []) : null;
+  const latestFetch = all[all.length-1];
+  const leads = (SHELF_NEW[sellerId] || []).filter(x => !onSet.has(x.asin));
+  return {
+    date:L, on, total, pct: total ? on/total*100 : null,
+    prevDate:P, vsLast: P ? on - count(P) : null,
+    w2Date:W, vs2w: W ? on - count(W) : null,
+    toGet: total != null ? Math.max(0, total - on) : null,
+    gotOn: prevSet ? onList.filter(a => !prevSet.has(a)) : [],
+    leads, newSinceLast: leads.filter(x => x.first_seen === latestFetch).length,
+    stale: L !== latestFetch
+  };
+}
+
+// Totals across tracked rivals, like for like: a rival added last week must not look like
+// leads you gained.
+function leadTotals(){
+  const all = Object.keys(COMPETITOR_ASINS||{}).sort();
+  if (!all.length) return null;
+  const L = all[all.length-1];
+  const tracked = new Set((SELLERS||[]).map(s => s.sellerId).filter(Boolean));
+  const ids = Object.keys(COMPETITOR_ASINS[L]).filter(id => !tracked.size || tracked.has(id));
+  const sum = (d, list) => list.reduce((t, id) => { const r = COMPETITOR_ASINS[d][id]; return { on:t.on + (r.asins||[]).length, total:t.total + (r.size||0) }; }, { on:0, total:0 });
+  const cur = sum(L, ids);
+  const change = d => { if (!d) return null; const both = ids.filter(id => COMPETITOR_ASINS[d]?.[id]); return both.length ? sum(L, both).on - sum(d, both).on : null; };
+  const P = all.length > 1 ? all[all.length-2] : null, W = ldNearest(all, L, 14);
+  return { date:L, rivals:ids.length, on:cur.on, total:cur.total, pct: cur.total ? cur.on/cur.total*100 : null,
+           prevDate:P, vsLast:change(P), w2Date:W, vs2w:change(W) };
+}
+
+const ldChange = (v, unit=true) => {
+  if (v == null) return '<span class="ld-chg na" title="Nothing to compare with yet">—</span>';
+  const cls = v > 0 ? 'up' : v < 0 ? 'down' : 'same';
+  const arrow = v > 0 ? '▲' : v < 0 ? '▼' : '→';
+  const n = Math.abs(v);
+  return `<span class="ld-chg ${cls}">${arrow} ${n.toLocaleString()}${unit ? ` <small>${n === 1 ? 'lead' : 'leads'}</small>` : ''}</span>`;
+};
+// Calendar days, not hours — a line from yesterday afternoon is "yesterday", not "2 days ago".
+const ldAgo = d => { const n = Math.round((_ldDay(new Date().toLocaleDateString('en-CA')) - _ldDay(d)) / 864e5); return n <= 0 ? 'added today' : n === 1 ? 'added yesterday' : `added ${n} days ago`; };
+
+function toggleLeadRow(id){ LD_OPEN = LD_OPEN === id ? null : id; renderCompTab(); }
+window.toggleLeadRow = toggleLeadRow;
+
 function renderCompTab() {
-  const search = document.getElementById('compSearch').value.toLowerCase();
+  const search = (document.getElementById('compSearch')?.value || '').toLowerCase().trim();
   const tbody = document.getElementById('compTableBody');
   const meta = document.getElementById('compMeta');
-  const snaps = filteredSnaps(); // Get filtered snapshots
+  if (!tbody) return;
 
-  // Competitor sessions within the selected date range (stats, analysis, ranking)
-  const sellerMap = {};
-  compSessionsInRange().forEach(session => {
-    (session.competitors||[]).forEach(c => {
-      const key = c.name.trim();
-      if (!sellerMap[key]) sellerMap[key] = { sellerId: c.sellerId||'', data: [] };
-      sellerMap[key].data.push({ date: session.date, pct: c.pct||0 });
-      if (c.sellerId) sellerMap[key].sellerId = c.sellerId;
-    });
-  });
-  // All-time history for sparklines (always full picture regardless of range)
-  const allHistoryMap = {};
-  [...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date)).forEach(session => {
-    (session.competitors||[]).forEach(c => {
-      const key = c.name.trim();
-      if (!allHistoryMap[key]) allHistoryMap[key] = { pcts:[], dates:[] };
-      allHistoryMap[key].pcts.push(c.pct||0);
-      allHistoryMap[key].dates.push(fmtShort(session.date));
-    });
-  });
+  const sessionsSorted = [...COMPETITOR_SESSIONS].sort((a,b) => a.date.localeCompare(b.date));
+  const nameById = {}, keepaById = {};
+  sessionsSorted.forEach(ses => (ses.competitors||[]).forEach(c => {
+    if (!c.sellerId) return;
+    nameById[c.sellerId] = c.name.trim();
+    keepaById[c.sellerId] = { pct:c.pct, date:ses.date };
+  }));
+  (SELLERS||[]).forEach(s => { if (s.sellerId) nameById[s.sellerId] = s.name; });
 
-  // These tables are built from the readings, not from the seller list, so a seller taken
-  // off the list used to keep appearing here forever. Drop them unless asked for — the
-  // readings stay in the database and in Comp History either way.
-  // The newest session is "today". A seller absent from it is showing an older number, and
-  // nothing said so — Oslo sat at 9.6% looking current when that reading was two days old.
-  const newestDate = [...COMPETITOR_SESSIONS].map(x=>x.date).sort().pop() || null;
-  const inNewest = new Set(
-    ((COMPETITOR_SESSIONS.find(x=>x.date===newestDate)||{}).competitors||[]).map(c=>c.name.trim()));
-  const lastSeenByName = {};
-  [...COMPETITOR_SESSIONS].sort((a,b)=>a.date.localeCompare(b.date)).forEach(ses=>{
-    (ses.competitors||[]).forEach(c=>{ lastSeenByName[c.name.trim()] = ses.date; });
-  });
-
-  const trackedIds = new Set(SELLERS.map(x=>x.sellerId).filter(Boolean));
-  let untrackedCount = 0;
-  if (trackedIds.size) {
-    Object.keys(sellerMap).forEach(k => {
-      const id = sellerMap[k].sellerId;
-      if (id && !trackedIds.has(id)) {
-        untrackedCount++;
-        if (!COMP_SHOW_UNTRACKED) { delete sellerMap[k]; delete allHistoryMap[k]; }
-      }
-    });
-  }
-  const untrackedChip = document.getElementById('cfUntracked');
-  if (untrackedChip) {
-    untrackedChip.style.display = untrackedCount || COMP_SHOW_UNTRACKED ? '' : 'none';
-    untrackedChip.classList.toggle('on', COMP_SHOW_UNTRACKED);
-    untrackedChip.textContent = COMP_SHOW_UNTRACKED ? `Hide ${untrackedCount} untracked` : `+ ${untrackedCount} untracked`;
-  }
-
-  // Sellers on the list that Keepa has never returned a reading for — otherwise adding a
-  // competitor looks like nothing happened until the next fetch.
-  const allSeenIds = new Set();
-  COMPETITOR_SESSIONS.forEach(x=>(x.competitors||[]).forEach(c=>{ if(c.sellerId) allSeenIds.add(c.sellerId); }));
-  const pending = SELLERS.filter(x => x.sellerId && !allSeenIds.has(x.sellerId));
-  renderSourcingScore();
-
-  const staleNames = newestDate
-    ? SELLERS.filter(x => !inNewest.has(x.name.trim()) && lastSeenByName[x.name.trim()]).map(x=>x.name)
-    : [];
+  // Banners: rivals missed by the latest fetch, and rivals never fetched at all.
+  const newestDate = sessionsSorted.length ? sessionsSorted[sessionsSorted.length-1].date : null;
+  const inNewest = new Set(((sessionsSorted[sessionsSorted.length-1]||{}).competitors||[]).map(c => c.sellerId).filter(Boolean));
+  const staleNames = newestDate ? (SELLERS||[]).filter(x => x.sellerId && !inNewest.has(x.sellerId) && keepaById[x.sellerId]).map(x => x.name) : [];
   const staleEl = document.getElementById('compFetchGap');
   if (staleEl) {
     if (staleNames.length) {
-      staleEl.style.display='';
-      staleEl.innerHTML = `<span><b>${staleNames.length}</b> competitor${staleNames.length!==1?'s were':' was'} not covered by the ${fmt(newestDate)} fetch — `
-        + `${staleNames.length!==1?'they are':'it is'} showing an older reading: ${staleNames.slice(0,8).map(kfEsc).join(', ')}`
-        + `${staleNames.length>8?`, +${staleNames.length-8} more`:''}</span>`
-        + `<button class="cmp-chip" onclick="openKeepaFetch()">Fetch again</button>`;
-    } else staleEl.style.display='none';
+      staleEl.style.display = '';
+      staleEl.innerHTML = `<span><b>${staleNames.length}</b> rival${staleNames.length!==1?'s were':' was'} not covered by the ${fmt(newestDate)} fetch — showing older numbers: ${staleNames.slice(0,8).map(kfEsc).join(', ')}${staleNames.length>8?`, +${staleNames.length-8} more`:''}</span><button class="cmp-chip" onclick="openKeepaFetch()">Fetch again</button>`;
+    } else staleEl.style.display = 'none';
   }
-
+  const pending = (SELLERS||[]).filter(x => x.sellerId && !keepaById[x.sellerId] && !leadStats(x.sellerId));
   const pendEl = document.getElementById('compPending');
   if (pendEl) {
     if (pending.length) {
-      pendEl.style.display='';
-      pendEl.innerHTML = `<span><b>${pending.length}</b> waiting for their first reading: ${pending.map(x=>kfEsc(x.name)).join(', ')}</span>`
-        + `<button class="cmp-chip" onclick="openKeepaFetch()">Fetch now</button>`;
-    } else pendEl.style.display='none';
+      pendEl.style.display = '';
+      pendEl.innerHTML = `<span><b>${pending.length}</b> waiting for their first fetch: ${pending.map(x => kfEsc(x.name)).join(', ')}</span><button class="cmp-chip" onclick="openKeepaFetch()">Fetch now</button>`;
+    } else pendEl.style.display = 'none';
   }
 
-  let sellers = Object.entries(sellerMap).map(([name, info]) => ({
-    name, sellerId: info.sellerId,
-    latest: info.data[info.data.length-1]?.pct||0,
-    prev: info.data.length>1 ? info.data[info.data.length-2]?.pct : null,
-    history: info.data.map(d=>d.pct),
-    dates: info.data.map(d=>fmtShort(d.date)),
-    sparkHistory: allHistoryMap[name]?.pcts || info.data.map(d=>d.pct),
-    sparkDates: allHistoryMap[name]?.dates || info.data.map(d=>fmtShort(d.date)),
-    daysSeen: info.data.length,
-  }));
+  // Who is in the table: your list, plus anyone no longer on it when asked for.
+  const tracked = (SELLERS||[]).filter(s => s.sellerId).map(s => s.sellerId);
+  const trackedSet = new Set(tracked);
+  const latestAsinDate = Object.keys(COMPETITOR_ASINS||{}).sort().pop();
+  const untracked = [...new Set([...Object.keys((latestAsinDate && COMPETITOR_ASINS[latestAsinDate]) || {}), ...Object.keys(keepaById)])]
+    .filter(id => trackedSet.size && !trackedSet.has(id));
+  const untrackedChip = document.getElementById('cfUntracked');
+  if (untrackedChip) {
+    untrackedChip.style.display = untracked.length || COMP_SHOW_UNTRACKED ? '' : 'none';
+    untrackedChip.classList.toggle('on', COMP_SHOW_UNTRACKED);
+    untrackedChip.textContent = COMP_SHOW_UNTRACKED ? `Hide ${untracked.length} untracked` : `+ ${untracked.length} untracked`;
+  }
+  const ids = COMP_SHOW_UNTRACKED ? [...tracked, ...untracked] : tracked;
 
-  // Calculate average for each seller
-  sellers = sellers.map(s => ({
-    ...s,
-    avg: s.history.length > 0 ? (s.history.reduce((a,b)=>a+b,0) / s.history.length) : 0,
-    // "vs 30d ago" — rolling 30-day comparison. The old calendar-month-start logic
-    // returned 0 for everyone early in a month (only one session existed that month),
-    // so this uses a rolling 30-day-ago reading which is always meaningful.
-    monthStartVal: (() => {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-      const cutoffStr = cutoff.toLocaleDateString('en-CA');
-      // All sessions for this seller, oldest first
-      const rows = [...COMPETITOR_SESSIONS]
-        .sort((a,b) => a.date.localeCompare(b.date))
-        .map(ses => {
-          const r = (ses.competitors||[]).find(c=>c.name.trim()===s.name);
-          return r && r.pct!==undefined ? { date: ses.date, pct: r.pct||0 } : null;
-        })
-        .filter(Boolean);
-      if (!rows.length) return null;
-      // Prefer the oldest reading that is still within the last 30 days;
-      // if none in-window (sparse history), fall back to the earliest reading we have.
-      const inWindow = rows.filter(r => r.date >= cutoffStr);
-      const ref = inWindow.length ? inWindow[0] : rows[0];
-      // If the reference IS the latest reading, there's nothing to compare → null
-      return rows.length > 1 && ref.date !== rows[rows.length-1].date ? ref.pct : null;
-    })(),
-  }));
+  let rows = ids.map(id => ({ id, name: nameById[id] || id, keepa: keepaById[id] || null, st: leadStats(id) }));
 
-  // Sort by latest overlap % descending (highest threat first)
-  sellers.sort((a,b) => b.latest - a.latest);
-  sellers = sellers.map((s,i) => ({...s, rank: i+1}));
-
-  // Add unique colors for each seller (matches chart palette)
-  const COMP_COLORS = ['#00f5a0', '#3d9eff', '#ffd166', '#ff8c42', '#ff4d6d', '#c084fc', '#ff6b6b', '#ff99cc', '#66ffcc', '#ffcc00', '#ff00ff', '#00ffff'];
-  sellers = sellers.map((s, idx) => ({ ...s, color: COMP_COLORS[idx % COMP_COLORS.length] }));
-
-  if (search) sellers = sellers.filter(s => s.name.toLowerCase().includes(search) || s.sellerId.toLowerCase().includes(search));
-
-  // Calculate KPI metrics before filtering
-  const allSellers = Object.entries(sellerMap).map(([name, info]) => ({
-    name, sellerId: info.sellerId,
-    latest: info.data[info.data.length-1]?.pct||0,
-    prev: info.data.length>1 ? info.data[info.data.length-2]?.pct : null,
-    history: info.data.map(d=>d.pct),
-      dates: info.data.map(d=>fmtShort(d.date)),
-  })).map(s => ({...s, avg: s.history.length > 0 ? (s.history.reduce((a,b)=>a+b,0) / s.history.length) : 0}));
-  
-  // Average overlap per session, oldest first — drives the sparkline on two of the cards.
-  const avgSeries = compSessionsInRange().map(ses => {
-    const v = (ses.competitors||[]).map(c=>+c.pct).filter(p=>!isNaN(p) && p>0);
-    return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null;
-  }).filter(v => v !== null);
-
-  // Highest overlap
-  const highest = allSellers.length > 0 ? [...allSellers].sort((a,b)=>b.latest-a.latest)[0] : null;
-
-  // Active average — exclude zeros (no data entered yet)
-  const activeSellersKpi = allSellers.filter(s => s.latest > 0);
-  const avgOverlap = activeSellersKpi.length > 0
-    ? (activeSellersKpi.reduce((sum,s)=>sum+s.latest,0) / activeSellersKpi.length)
-    : 0;
-
-  // Avg trend — active sellers with prev data
-  const activeWithPrev = activeSellersKpi.filter(s=>s.prev!==null&&s.prev>0);
-  const avgPrev = activeWithPrev.length > 0
-    ? (activeWithPrev.reduce((sum,s)=>sum+s.prev,0) / activeWithPrev.length)
-    : null;
-  const avgDiff = avgPrev !== null ? parseFloat((avgOverlap - avgPrev).toFixed(1)) : null;
-
-  // Top riser/dropper — prefer meaningful movement, fall back to 3-entry trend
-  const withPrevKpi = allSellers.filter(s=>s.prev!==null);
-  const byLastEntry = [...withPrevKpi].sort((a,b)=>(b.latest-b.prev)-(a.latest-a.prev));
-  const topRiser = byLastEntry[0] || null;
-  const topDropper = byLastEntry[byLastEntry.length-1] || null;
-  const riserDiffVal = topRiser ? parseFloat((topRiser.latest - topRiser.prev).toFixed(1)) : 0;
-  const dropperDiffVal = topDropper ? parseFloat((topDropper.latest - topDropper.prev).toFixed(1)) : 0;
-
-  // If no meaningful last-entry movement, use 3-entry trend
-  const withHistory = allSellers.filter(s=>s.history.length>=3);
-  const by3entry = [...withHistory].sort((a,b)=>{
-    const ta = a.history[a.history.length-1]-a.history[a.history.length-3];
-    const tb = b.history[b.history.length-1]-b.history[b.history.length-3];
-    return tb-ta;
-  });
-  const top3Riser = by3entry[0];
-  const top3Dropper = by3entry[by3entry.length-1];
-  const top3RiserVal = top3Riser ? parseFloat((top3Riser.history[top3Riser.history.length-1]-top3Riser.history[top3Riser.history.length-3]).toFixed(1)) : 0;
-  const top3DropperVal = top3Dropper ? parseFloat((top3Dropper.history[top3Dropper.history.length-1]-top3Dropper.history[top3Dropper.history.length-3]).toFixed(1)) : 0;
-
-  // ── KPI cards ────────────────────────────────────────────────────────────
-  // Colour encodes good-or-bad FOR YOU, not direction of the number. A rival gaining
-  // ground is red however you slice it; a rival retreating is green. The old cards had
-  // "Highest Overlap" and "Top Riser" both in green, which read as good news.
-  // "Is this getting better or worse?" is the question every one of these cards was failing
-  // to answer. A sparkline of the metric's own history answers it without another click.
-  // The last few readings written out, rather than a line drawn through them.
-  // Deliberately empty. The cards carry a headline number, its movement and one line of
-  // context — a trend crammed in beside them was noise at this size, whichever form it took.
-  const cSpark = () => '';
-
-  const setCompCard = (key, opts) => {
-    const val=document.getElementById('compKpi'+key), pill=document.getElementById('compKpi'+key+'Pill'), sub=document.getElementById('compKpi'+key+'Sub');
-    if(!val) return;
-    // value and delta sit on one line so the card is not two thirds empty
-    val.innerHTML = `<div class="cmp-krow"><span>${opts.valueHtml != null ? opts.valueHtml : '\u2014'}</span>${opts.pillHtml||''}</div>`
-      + (opts.sparkHtml || '');
-    if(pill) pill.innerHTML = '';
-    if(sub)  sub.innerHTML  = opts.subHtml  || '';
+  // ── Summary tiles ──
+  const T = leadTotals();
+  const withSt = rows.filter(r => r.st && trackedSet.has(r.id));
+  const up2 = withSt.filter(r => r.st.vs2w > 0), down2 = withSt.filter(r => r.st.vs2w < 0), same2 = withSt.filter(r => r.st.vs2w === 0);
+  const card = (key, label, valueHtml, subHtml) => {
+    const v = document.getElementById('compKpi'+key), p = document.getElementById('compKpi'+key+'Pill'), s = document.getElementById('compKpi'+key+'Sub');
+    const l = document.getElementById('compKpi'+key+'Label');
+    if (l) l.textContent = label;
+    if (v) v.innerHTML = valueHtml;
+    if (p) p.innerHTML = '';
+    if (s) s.innerHTML = subHtml;
   };
-  const pill = (txt,tone) => {
-    const c = tone==='bad' ? 'var(--r)' : tone==='good' ? 'var(--g)' : 'var(--muted2)';
-    const bg = tone==='bad' ? 'rgba(255,77,109,.14)' : tone==='good' ? 'rgba(0,245,160,.14)' : 'rgba(255,255,255,.05)';
-    return `<span style="display:inline-block;padding:2px 8px;border-radius:20px;background:${bg};color:${c};font-family:var(--mono);font-size:10.5px;font-weight:700">${txt}</span>`;
-  };
-  const ppTxt = v => `${v>0?'+':''}${v.toFixed(1)}pp`;
-
-  // 1. Highest overlap — the single biggest threat. Value coloured on a threat scale.
-  if (highest) {
-    const d = highest.prev !== null ? +(highest.latest - highest.prev).toFixed(1) : null;
-    const threat = highest.latest>=25?'var(--g)':highest.latest>=15?'#7bd88f':highest.latest>=7?'var(--y)':'var(--o)';
-    const hiTile = document.getElementById('compKpiHighest')?.closest('.kpi-tile');
-    if (hiTile) { hiTile.style.cursor='pointer'; hiTile.title='Open '+highest.name;
-      hiTile.onclick = () => openCompetitorDetail(highest.name); }
-    setCompCard('Highest', {
-      valueHtml:`<span style="color:${threat}">${highest.latest.toFixed(1)}%</span>`,
-      pillHtml: d===null?pill('first reading','neutral'):pill((d>0.05?'\u25B2 ':d<-0.05?'\u25BC ':'\u2192 ')+ppTxt(d), d>0.05?'good':d<-0.05?'bad':'neutral'),
-      sparkHtml: cSpark(highest.history, threat),
-      subHtml:`<span style="color:var(--text);font-weight:700;font-size:11px">${highest.name}</span>`
-    });
-  } else setCompCard('Highest', { subHtml:'no readings yet' });
-
-  // 2. Average across active sellers
-  setCompCard('Avg', {
-    valueHtml:`${avgOverlap.toFixed(1)}%`,
-    pillHtml: avgDiff===null?'':pill((avgDiff>0.05?'\u25B2 ':avgDiff<-0.05?'\u25BC ':'\u2192 ')+ppTxt(avgDiff), avgDiff>0.05?'good':avgDiff<-0.05?'bad':'neutral'),
-    sparkHtml: cSpark(avgSeries, '#ffd166'),
-    subHtml:`${activeSellersKpi.length} active \u00B7 zeros excluded`
-  });
-
-  // 3. Top riser — someone closing in. Always bad news, so always red.
-  if (topRiser && withPrevKpi.length > 0 && riserDiffVal > 0.05) {
-    const useThree = Math.abs(riserDiffVal) < 0.1 && top3Riser && Math.abs(top3RiserVal) > 0.1;
-    const nm = useThree ? top3Riser.name : topRiser.name;
-    const v  = useThree ? top3RiserVal : riserDiffVal;
+  if (T) {
+    card('Highest', "Their leads you're on", `${T.on.toLocaleString()}`,
+      `of ${T.total.toLocaleString()} · ${T.pct!=null?T.pct.toFixed(1):'—'}%<div class="ld-tile-rows"><span>vs last ${ldChange(T.vsLast,false)}</span><span>vs 2 weeks ${ldChange(T.vs2w,false)}</span></div>`);
+    card('Avg', 'Over 2 weeks you are', withSt.some(r => r.st.vs2w != null)
+      ? `<span style="color:var(--g)">${up2.length}</span><span class="ld-tile-unit">up</span> <span style="color:var(--r)">${down2.length}</span><span class="ld-tile-unit">down</span>`
+      : '—', withSt.some(r => r.st.vs2w != null) ? `${same2.length} unchanged · counted in leads` : 'needs 2 weeks of fetches');
+    const byGain = [...withSt].filter(r => r.st.vs2w != null).sort((a,b) => b.st.vs2w - a.st.vs2w);
+    const g = byGain[0], d = byGain[byGain.length-1];
+    card('Riser', 'Biggest gain · 2 weeks', g && g.st.vs2w > 0 ? `<span class="ld-tile-name">${kfEsc(g.name)}</span>` : '<span style="color:var(--muted)">nobody</span>',
+      g && g.st.vs2w > 0 ? ldChange(g.st.vs2w) : 'no rival gained');
+    card('Dropper', 'Biggest drop · 2 weeks', d && d.st.vs2w < 0 ? `<span class="ld-tile-name">${kfEsc(d.name)}</span>` : '<span style="color:var(--muted)">nobody</span>',
+      d && d.st.vs2w < 0 ? ldChange(d.st.vs2w) : 'no rival dropped');
     const riserTile = document.getElementById('compKpiRiser')?.closest('.kpi-tile');
-    if (riserTile) { riserTile.style.cursor='pointer'; riserTile.title='Open '+nm;
-      riserTile.onclick = () => openCompetitorDetail(nm); }
-    setCompCard('Riser', {
-      valueHtml:`<span style="color:var(--g)">${nm}</span>`,
-      pillHtml: pill('\u25B2 '+ppTxt(v),'good'),
-      subHtml: useThree ? 'over last 3 readings' : 'you gained the most here'
-    });
-  } else setCompCard('Riser', { valueHtml:'<span style="color:var(--muted)">nobody</span>', subHtml:'no coverage gained' });
-
-  // 4. Top drop — someone backing off. Good news, so green.
-  if (topDropper && withPrevKpi.length > 0 && dropperDiffVal < -0.05) {
-    const useThreeD = Math.abs(dropperDiffVal) < 0.1 && top3Dropper && Math.abs(top3DropperVal) > 0.1;
-    const nm = useThreeD ? top3Dropper.name : topDropper.name;
-    const v  = useThreeD ? top3DropperVal : dropperDiffVal;
+    if (riserTile) riserTile.onclick = g && g.st.vs2w > 0 ? () => { LD_OPEN = g.id; renderCompTab(); } : null;
     const dropTile = document.getElementById('compKpiDropper')?.closest('.kpi-tile');
-    if (dropTile) { dropTile.style.cursor='pointer'; dropTile.title='Open '+nm;
-      dropTile.onclick = () => openCompetitorDetail(nm); }
-    setCompCard('Dropper', {
-      valueHtml:`<span style="color:var(--r)">${nm}</span>`,
-      pillHtml: pill('\u25BC '+ppTxt(v),'bad'),
-      subHtml: useThreeD ? 'over last 3 readings' : 'you lost the most ground here'
-    });
-  } else setCompCard('Dropper', { valueHtml:'<span style="color:var(--muted)">nobody</span>', subHtml:'no coverage lost' });
-
-  // 5. Net momentum — the whole field, one number.
-  if (withPrevKpi.length > 0) {
-    const gained = withPrevKpi.filter(s => (s.latest - s.prev) > 0.05).length;
-    const dropped = withPrevKpi.filter(s => (s.latest - s.prev) < -0.05).length;
-    const net = +(withPrevKpi.reduce((sum,s)=>sum+(s.latest-s.prev),0)).toFixed(1);
-    const tone = net > 0.1 ? 'good' : net < -0.1 ? 'bad' : 'neutral';
-    const col  = tone==='bad'?'var(--r)':tone==='good'?'var(--g)':'var(--muted2)';
-    setCompCard('Momentum', {
-      valueHtml:`<span style="color:${col}">${net>0?'+':''}${net}pp</span>`,
-      pillHtml: pill(`${gained} up \u00B7 ${dropped} down`, tone),
-      subHtml: net > 0.1 ? 'you gained across the field' : net < -0.1 ? 'you lost across the field' : 'no net movement'
-    });
-  } else setCompCard('Momentum', { subHtml:'need 2+ readings' });
-
-  renderBadges();   // one owner for the nav badge: how many competitors are on your list
-
-  // Hide zero-overlap (no-data / N/A) competitors from the table — they only clutter it.
-  // Keep them if the user is actively searching (so a search can still surface them).
-  const hiddenZeroCount = sellers.filter(s => s.latest === 0).length;
-  if (!search) {
-    sellers = sellers.filter(s => s.latest > 0);
-    sellers = sellers.map((s,i) => ({...s, rank: i+1})); // re-rank after filtering
+    if (dropTile) dropTile.onclick = d && d.st.vs2w < 0 ? () => { LD_OPEN = d.id; renderCompTab(); } : null;
+  } else {
+    card('Highest', "Their leads you're on", '—', 'no fetch yet');
+    card('Avg', 'Over 2 weeks you are', '—', 'no fetch yet');
+    card('Riser', 'Biggest gain · 2 weeks', '—', '');
+    card('Dropper', 'Biggest drop · 2 weeks', '—', '');
   }
+  const newLeadsTotal = withSt.reduce((t, r) => t + r.st.newSinceLast, 0);
+  card('Momentum', 'New leads · last fetch',
+    window._hasShelfTable === false ? '—' : `<span style="color:var(--p)">${newLeadsTotal.toLocaleString()}</span>`,
+    window._hasShelfTable === false ? 'run the SQL to start' : !window._shelfRowCount ? 'starts after your next fetch' : "added by rivals · you're not on them");
 
-  // Do we have any stored shared-ASIN detail at all? If not, those two columns are dropped
-  // rather than printed as a column of dashes.
-  const hasAsinDetail = sellers.some(x => compAsinFor(x.sellerId));
+  renderSourcingScore();
+  renderBadges();
+
+  // ── Search, filter, sort ──
+  if (search) rows = rows.filter(r => r.name.toLowerCase().includes(search) || r.id.toLowerCase().includes(search));
+  if (compFilter === 'closing')      rows = rows.filter(r => r.st && r.st.vs2w > 0);
+  else if (compFilter === 'backing') rows = rows.filter(r => r.st && r.st.vs2w < 0);
+  else if (compFilter === 'threat')  rows = rows.filter(r => r.st && r.st.leads.length);
+  ['all','closing','backing','threat'].forEach(f => document.getElementById('cf-'+f)?.classList.toggle('on', compFilter === f));
+
+  const key = {
+    name:   r => r.name.toLowerCase(),
+    on:     r => r.st ? r.st.on : -Infinity,
+    vslast: r => r.st && r.st.vsLast != null ? r.st.vsLast : -Infinity,
+    vs2w:   r => r.st && r.st.vs2w != null ? r.st.vs2w : -Infinity,
+    toget:  r => r.st && r.st.toGet != null ? r.st.toGet : -Infinity,
+    leads:  r => r.st ? r.st.leads.length : -Infinity
+  }[compSort] || (r => r.st && r.st.vs2w != null ? r.st.vs2w : -Infinity);
+  rows.sort((a, b) => {
+    // rivals with no shelf data yet always sit at the bottom
+    if (!!a.st !== !!b.st) return a.st ? -1 : 1;
+    const x = key(a), y = key(b);
+    if (typeof x === 'string') return x.localeCompare(y) * compSortDir;
+    return ((y - x) * compSortDir) || a.name.localeCompare(b.name);
+  });
+
   const head = document.getElementById('compHead');
   if (head) {
-    head.classList.toggle('cmp-grid-full', hasAsinDetail);
-    head.classList.toggle('cmp-grid-lean', !hasAsinDetail);
-    ['cs-cat','cs-shared','cs-gap'].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display = hasAsinDetail ? '' : 'none'; });
+    head.classList.remove('cmp-grid-full','cmp-grid-lean'); head.classList.add('ld-grid');
+    head.querySelectorAll('span').forEach(h => h.classList.toggle('act', h.dataset.sort === compSort));
   }
-
-  // Quick filters — narrow to what you actually came to look at.
-  if (compFilter === 'closing')      sellers = sellers.filter(s => s.prev !== null && (s.latest - s.prev) > 0.05);
-  else if (compFilter === 'backing') sellers = sellers.filter(s => s.prev !== null && (s.latest - s.prev) < -0.05);
-  else if (compFilter === 'threat')  sellers = sellers.filter(s => s.latest >= 20);
-
-  if (compSort !== 'rank') {
-    const key = {
-      name:   s => s.name.toLowerCase(),
-      latest: s => s.latest,
-      vslast: s => (s.prev !== null ? s.latest - s.prev : -Infinity),
-      vs30:   s => ((s.monthStartVal !== null && s.monthStartVal !== undefined) ? s.latest - s.monthStartVal : -Infinity),
-      peak:   s => (s.history && s.history.length ? Math.max(...s.history) : -Infinity),
-      cat:    s => (compAsinFor(s.sellerId)?.size ?? -Infinity),
-      shared: s => (compAsinFor(s.sellerId)?.asins?.length ?? -Infinity),
-      gap:    s => { const d=compAsinFor(s.sellerId); return (d&&d.size!=null&&d.asins) ? d.size-d.asins.length : -Infinity; }
-    }[compSort];
-    if (key) sellers = [...sellers].sort((a,b)=>{
-      const x=key(a), y=key(b);
-      if (typeof x === 'string') return x.localeCompare(y) * compSortDir;
-      return (y - x) * compSortDir;
-    });
-  }
-  sellers = sellers.map((s,i) => ({...s, rank: s.rank || i+1}));
-
-  document.querySelectorAll('.cmp-head span').forEach(h=>h.classList.remove('act'));
-  document.getElementById('cs-'+({rank:'rank',name:'name',latest:'latest',vslast:'vslast',vs30:'vs30'}[compSort]||'rank'))?.classList.add('act');
-  ['all','closing','backing','threat'].forEach(f=>{
-    const c=document.getElementById('cf-'+f); if(c) c.classList.toggle('on', compFilter===f);
-  });
   renderCompStale();
   renderContested();
 
-  if (!sellers.length) {
+  if (meta) meta.textContent = search ? `${rows.length} matching` : `${rows.length} rivals`;
+  if (!rows.length) {
     tbody.innerHTML = search
-      ? `<div class="cmp-empty">No competitor matches “${kfEsc(search)}”.<br>Clear the search to see all ${allSellers.length}.</div>`
+      ? `<div class="cmp-empty">No rival matches “${kfEsc(search)}”.</div>`
       : compFilter !== 'all'
       ? `<div class="cmp-empty">Nobody fits that filter right now.<br><button class="cmp-chip" style="margin-top:10px" onclick="setCompFilter('all')">Show all</button></div>`
-      : '<div class="cmp-empty">No competitor data yet.<br>Use ⚙ Manage competitors to add your list, then ⚡ Update Overlaps to log readings.</div>';
+      : '<div class="cmp-empty">No rivals yet.<br>Use ⚙ Manage competitors to add them, then ⬇ Fetch from Keepa.</div>';
     return;
   }
 
-  if (meta) meta.textContent = search
-    ? `${sellers.length} matching`
-    : `${sellers.length} active${hiddenZeroCount ? ` · ${hiddenZeroCount} no-data hidden` : ''}`;
+  const latestFetch = Object.keys(COMPETITOR_ASINS||{}).sort().pop();
+  tbody.innerHTML = rows.map((r, i) => {
+    const s = r.st, open = LD_OPEN === r.id;
+    const idArg = r.id.replace(/'/g, "\\'");
+    const subLine = !s ? 'waiting for the first fetch'
+      : s.stale ? `<span style="color:var(--o)">⚠ not in the latest fetch · last read ${fmt(s.date)}</span>`
+      : kfEsc(r.id);
+    const onCell = !s ? '<span class="ld-dim">—</span>' : `
+      <div class="ld-on-top"><span class="ld-count">${s.on.toLocaleString()} <span>of ${s.total != null ? s.total.toLocaleString() : '—'}</span></span><span class="ld-pct">${s.pct != null ? s.pct.toFixed(1)+'%' : ''}</span></div>
+      <div class="ld-bar"><i style="width:${Math.min(100, s.pct || 0)}%"></i></div>`;
+    const leadsCell = !s ? '<span class="ld-dim">—</span>'
+      : window._hasShelfTable === false || !window._shelfRowCount ? '<span class="ld-dim" title="Starts once rival shelves are being saved">—</span>'
+      : s.leads.length ? `<span class="ld-leads">${s.leads.length}</span>${s.newSinceLast ? `<span class="ld-new">${s.newSinceLast} new</span>` : ''}`
+      : '<span class="ld-zero">0</span>';
 
-  tbody.innerHTML = sellers.map(s => {
-    // Trend is positive when you're catching them (overlap increasing)
-    const diffLast = s.prev !== null ? (s.latest - s.prev) : null;
-    
-    // Color based on IMPROVEMENT: green if gaining, orange if losing, gray if flat
-    // Said "GAINING" in green when a rival moved onto more of your catalogue. Read from your
-    // side: them gaining is bad, them retreating is good.
-    // Gaining coverage on a seller who is doing well is the goal, so up is green.
-    const trendColor = diffLast > 0 ? 'var(--g)' : diffLast < 0 ? 'var(--r)' : 'var(--muted2)';
-    const trendLabel = diffLast > 0 ? 'GAINED' : diffLast < 0 ? 'LOST' : 'NO CHANGE';
-    
-    // vs 1st of Month - positive when above month start value
-    const diffMonth = (s.monthStartVal !== null && s.monthStartVal !== undefined)
-      ? (s.latest - s.monthStartVal) : null;
-    const diffMonthColor = diffMonth > 0 ? 'var(--g)' : diffMonth < 0 ? 'var(--r)' : 'var(--muted2)';
-    const vsMonthHtml = s.monthStartVal !== null && s.monthStartVal !== undefined
-      ? `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-          <div style="font-size:11px;color:var(--muted2)">${s.monthStartVal.toFixed(1)}%</div>
-          <div style="display:flex;align-items:center;gap:6px;color:${diffMonthColor};font-weight:700;font-size:13px">
-            <strong style="font-size:18px;color:${diffMonthColor}">${diffMonth>0?'↑':(diffMonth<0?'↓':'→')}</strong> ${Math.abs(diffMonth).toFixed(1)}pp
-          </div>
-        </div>`
-      : '<div style="color:var(--muted2);font-size:12px">—</div>';
-    
-    // Rich per-row analysis
-    let analysisText = '';
-    const histPcts = sellerMap[s.name]?.data.map(d => d.pct) || [];
-    const histDates = sellerMap[s.name]?.data.map(d => d.date) || [];
-    const h = histPcts;
-
-    // Streak calculation
-    let streak = 0;
-    for (let i = h.length-1; i >= 1; i--) {
-      const delta = h[i] - h[i-1];
-      if (i === h.length-1) streak = delta > 0.1 ? 1 : delta < -0.1 ? -1 : 0;
-      else if ((streak > 0 && delta > 0.1) || (streak < 0 && delta < -0.1)) streak += streak > 0 ? 1 : -1;
-      else break;
-    }
-
-    // 3-entry trend
-    const last3h = h.slice(-3);
-    const trend3h = last3h.length >= 2 ? parseFloat((last3h[last3h.length-1] - last3h[0]).toFixed(1)) : null;
-
-    // Net change over all history
-    const netChange = h.length >= 2 ? parseFloat((h[h.length-1] - h[0]).toFixed(1)) : null;
-    const netColor = netChange > 0 ? 'var(--r)' : netChange < 0 ? 'var(--g)' : 'var(--muted2)';
-
-    // Movement history: last 5 entries
-    const last5 = h.slice(-5);
-    const last5dates = histDates.slice(-5);
-    const moveHistory = last5.length >= 2
-      ? last5.slice(1).map((v, i) => {
-          const d = parseFloat((v - last5[i]).toFixed(1));
-          const col = d > 0.1 ? '#ff4d6d' : d < -0.1 ? '#00f5a0' : '#8b99ab';
-          const dd = last5dates[i+1]?.split('-'); const lbl = dd ? `${dd[2]}/${dd[1]}` : '';
-          return `<span style="font-family:var(--mono);font-size:10px;color:${col}">${lbl} <strong>${d > 0 ? '+' : ''}${d}pp</strong></span>`;
-        }).join('<span style="color:var(--border2);margin:0 3px">→</span>')
-      : '';
-
-    // Compact single-line verdict — no waffle
-    let verdict = '';
-    const latestPct = h[h.length-1];
-    const sessionCount = h.length;
-    const highPoint = Math.max(...h);
-    const lowPoint = Math.min(...h);
-    if (sessionCount < 2) {
-      verdict = `First reading. Baseline set at ${latestPct.toFixed(1)}%.`;
-    } else if (streak >= 3) {
-      verdict = `↑ Rising ${streak} entries in a row — sustained upward trend.`;
-    } else if (streak <= -3) {
-      verdict = `↓ Falling ${Math.abs(streak)} entries in a row — clear sustained decline.`;
-    } else if (diffLast !== null && diffLast > 5) {
-      verdict = `Big jump this entry (+${diffLast.toFixed(1)}pp) — watch next session to confirm.`;
-    } else if (diffLast !== null && diffLast < -5) {
-      verdict = `Sharp drop this entry (${diffLast.toFixed(1)}pp) — confirm direction next session.`;
-    } else if (trend3h !== null && trend3h > 2) {
-      verdict = `Gradual climb over last 3 entries (+${trend3h}pp) — building steadily.`;
-    } else if (trend3h !== null && trend3h < -2) {
-      verdict = `Gradual decline over last 3 entries (${trend3h}pp) — watch if it continues.`;
-    } else if (diffLast !== null && Math.abs(diffLast) <= 0.5) {
-      verdict = `Flat this entry — stable, no meaningful movement.`;
-    } else {
-      verdict = `Mixed movement — no clear trend yet.`;
-    }
-    const posTag = latestPct >= 30 ? 'well covered' : latestPct >= 15 ? 'partly covered' : latestPct >= 8 ? 'mostly untapped' : 'barely touched';
-    verdict += ` <span style="color:var(--muted)">${latestPct.toFixed(1)}% — ${posTag}</span>`;
-
-    analysisText = `<div style="display:flex;flex-direction:column;gap:6px">
-      <div style="font-family:var(--mono);font-size:10.5px;color:var(--muted2);line-height:1.5">${verdict}</div>
-      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
-        ${moveHistory ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${moveHistory}</div>` : ''}
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          ${netChange !== null ? `<span style="font-family:var(--mono);font-size:10px">Net: <span style="color:${netColor};font-weight:600">${netChange > 0 ? '+' : ''}${netChange}pp</span></span>` : ''}
-          ${trend3h !== null ? `<span style="font-family:var(--mono);font-size:10px">Last 3: <span style="color:${trend3h > 0 ? 'var(--r)' : trend3h < 0 ? 'var(--g)' : 'var(--muted2)'};font-weight:600">${trend3h > 0 ? '+' : ''}${trend3h}pp</span></span>` : ''}
-          ${streak !== 0 ? `<span style="font-family:var(--mono);font-size:10px">Streak: <span style="color:${streak > 0 ? 'var(--r)' : 'var(--g)'};font-weight:600">${streak > 0 ? '↑' : '↓'}${Math.abs(streak)}×</span></span>` : ''}
-          <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${sessionCount} sessions · ${lowPoint.toFixed(1)}–${highPoint.toFixed(1)}%</span>
+    let detail = '';
+    if (open) {
+      const leadBody = window._hasShelfTable === false
+        ? `<p class="ld-empty">Rival shelves aren't being saved yet. Run the SQL file in Supabase, then fetch.</p>`
+        : !window._shelfRowCount
+        ? `<p class="ld-empty">Starts from your next fetch. That fetch records what's on their shelf now — anything they add after it shows up here.</p>`
+        : !s || !s.leads.length
+        ? `<p class="ld-empty">Nothing new from them in the last ${LD_LEAD_DAYS} days that you're not already on.</p>`
+        : `<ul class="ld-list">${s.leads.map(x => `<li><span class="ld-asin">${kfEsc(x.asin)}</span><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(x.asin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open on Amazon ↗</a><span class="ld-when${x.first_seen === latestFetch ? ' fresh' : ''}">${ldAgo(x.first_seen)}</span></li>`).join('')}</ul>
+           <div class="ld-warn">⚠ Keepa can't see stock you've bought that isn't live yet — check it isn't already on its way in.</div>`;
+      const got = s ? s.gotOn : [];
+      const gotBody = !s || !s.prevDate
+        ? `<p class="ld-empty">Needs two fetches to compare.</p>`
+        : !got.length
+        ? `<p class="ld-empty">None of their leads went live on your storefront since ${fmt(s.prevDate)}.</p>`
+        : `<ul class="ld-list tight">${got.map(a => `<li><span class="ld-asin">${kfEsc(a)}</span><span></span><span class="ld-when">${fmtShort(s.date)}</span></li>`).join('')}</ul>`;
+      detail = `<div class="ld-detail" onclick="event.stopPropagation()">
+        <div class="ld-box leads">
+          <div class="ld-box-hd"><div><h3>New ${kfEsc(r.name)} leads you're not on</h3><p>Added to their shelf in the last ${LD_LEAD_DAYS} days. Newest first.</p></div>
+            <div class="ld-box-n" style="color:var(--p)">${s && window._shelfRowCount ? s.leads.length : '—'}</div></div>
+          ${leadBody}
         </div>
-      </div>
-    </div>`;
-
-    // Current value color based on thresholds: green 35-50%, blue >50%, yellow up to 35%, red <15%
-    // Threat scale, from your side of the table: a competitor sitting on a big slice of your
-    // catalogue is the problem, and one barely touching it is fine. The old rule ran the other
-    // way — anything under 15% was painted red — so low overlap read as a crisis.
-    // Coverage of their catalogue: more is better. Low is not danger, it is headroom.
-    const progressColor = s.latest >= 25 ? 'var(--g)'
-      : s.latest >= 15 ? '#7bd88f'
-      : s.latest >= 7  ? 'var(--y)'
-      : 'var(--o)';
-    const barPct = Math.max(2, Math.min(100, s.latest * 2));   // 50% overlap fills the bar
-
-    // Their own range gives the reading context a bare percentage cannot: 19% means one
-    // thing for a seller who lives at 20%, another for one whose peak was 39%.
-    const hist = (s.history||[]).filter(v=>typeof v==='number');
-    const pk = hist.length ? Math.max(...hist) : null;
-    const lo = hist.length ? Math.min(...hist) : null;
-    const posPct = (pk !== null && pk !== lo) ? Math.round(((s.latest - lo)/(pk - lo))*100) : null;
-    // Filled by a Keepa fetch. Until one has run these read "—", which is honest: we do not
-    // know their catalogue size or which products you share without pulling the lists.
-    const det = compAsinFor(s.sellerId);
-    // Movement since the previous fetch that carried detail — same idea as Quick check.
-    const prevDet = compAsinPrevFor(s.sellerId);
-    const dSize   = (det && prevDet && det.size!=null && prevDet.rec.size!=null) ? det.size - prevDet.rec.size : null;
-    const dShared = (det && prevDet && det.asins && prevDet.rec.asins) ? det.asins.length - prevDet.rec.asins.length : null;
-    const cmpNote = prevDet ? ` title="vs ${fmt(prevDet.date)}"` : '';
-    const dLine = (d, goodUp) => {
-      if(d===null) return '<div style="font-size:9.5px;color:var(--muted2);opacity:.85">&nbsp;</div>';
-      if(d===0)    return '<div style="font-size:9.5px;color:var(--muted);opacity:.7">→ same</div>';
-      const col = goodUp===null ? 'var(--muted2)' : (goodUp ? d>0 : d<0) ? '#00f5a0' : '#ff8c42';
-      return `<div style="font-size:9.5px;color:${col};font-weight:700">${d>0?'▲ +':'▼ '}${Math.abs(d).toLocaleString()}</div>`;
-    };
-
-    // Why the coverage moved, in two or three words. Same logic as Quick check's verdict,
-    // compressed — a full sentence on 39 rows would be a wall of text.
-    let causeTag = '';
-    if(dSize!==null && dShared!==null && (dSize!==0 || dShared!==0)){
-      const t = dShared>0 ? (dSize<0 ? ['you gained, they trimmed','#00f5a0'] : ['you gained','#00f5a0'])
-              : dShared<0 ? (dSize>0 ? ['you dropped, they grew','#ff4d6d']
-                          : dSize<0 ? ['both shrank','#ffd166']
-                          :           ['you dropped','#ff8c42'])
-              : dSize>0   ? ['they grew, you stood still','#ff8c42']
-              :             ['they trimmed, you held','#ffd166'];
-      causeTag = `<div style="font-size:9.5px;font-weight:600;color:${t[1]};margin-top:3px;line-height:1.25">${t[0]}</div>`;
-    }
-
-    const vsLastHtml = diffLast !== null
-      ? `<div style="display:flex;align-items:center;gap:6px;color:${trendColor};font-weight:700;font-size:13px"><strong style="font-size:18px;color:${trendColor}">${diffLast>0?'↑':(diffLast<0?'↓':'→')}</strong> <div><strong>${Math.abs(diffLast).toFixed(1)}pp</strong><div style="font-size:10px;color:${trendColor};margin-top:2px">${trendLabel}</div>${causeTag}</div></div>`
-      : `<div style="color:var(--muted2);font-size:12px;padding:2px">—${causeTag}</div>`;
-
-    const catHtml = det && det.size != null
-      ? `<div${cmpNote} style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">${det.size.toLocaleString()}<div style="font-size:9.5px;color:var(--muted2);opacity:.85">listings</div>${dLine(dSize,null)}</div>`
-      : '<span style="font-size:11px;color:var(--muted2);opacity:.6">—</span>';
-    const sharedHtml = det && det.asins
-      ? `<div${cmpNote} style="font-family:var(--mono);font-size:13px;font-weight:800;color:var(--g)">${det.asins.length}<div style="font-size:9.5px;color:var(--muted2);opacity:.85;font-weight:400">already</div>${dLine(dShared,true)}</div>`
-      : '<span style="font-size:11px;color:var(--muted2);opacity:.6">—</span>';
-    // What they stock that you do not. A seller doing well has already proved these sell.
-    const gapN = (det && det.size != null && det.asins) ? Math.max(0, det.size - det.asins.length) : null;
-    const gapHtml = gapN === null
-      ? '<span style="font-size:11px;color:var(--muted2);opacity:.6">—</span>'
-      : `<div style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--b)">${gapN.toLocaleString()}<div style="font-size:9.5px;color:var(--muted2);opacity:.85;font-weight:400">to source</div></div>`;
-
-    // Inline SVG: no chart instance to create, track or leak, and it can carry a band showing
-    // where the reading sits in their own range.
-    // No line. The readings themselves, newest last, with each step coloured by whether that
-    // move was good or bad for you. A squiggle over four points was never worth the space.
-    const trendHtml = (() => {
-      const v = hist.filter(x=>typeof x==='number' && isFinite(x));
-      if (!v.length) return '<span style="font-size:10.5px;color:var(--muted2);opacity:.6">no readings</span>';
-      if (v.length === 1) return `<span style="font-family:var(--mono);font-size:12px;color:var(--muted2)">${v[0].toFixed(0)}% only</span>`;
-      const show = v.slice(-5);
-      return `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-family:var(--mono);font-size:12px">` +
-        show.map((x,i)=>{
-          const prev = i>0 ? show[i-1] : null;
-          const d = prev===null ? 0 : x-prev;
-          const arrow = prev===null ? '' :
-            `<span style="color:${d>0.05?'var(--r)':d<-0.05?'var(--g)':'var(--muted)'};font-size:10px">${d>0.05?'\u25B8':d<-0.05?'\u25BE':'\u2192'}</span>`;
-          const isLast = i===show.length-1;
-          return `${arrow}<span style="color:${isLast?progressColor:'var(--muted2)'};font-weight:${isLast?'800':'600'}">${x.toFixed(0)}</span>`;
-        }).join('') + `</div>`;
-    })();
-
-    // Where today's reading sits between this seller's own lowest and highest ever. Near the
-    // right means they are at their most aggressive against you; near the left, their quietest.
-    const posLabel = posPct === null ? ''
-      : posPct >= 90 ? 'their highest yet'
-      : posPct >= 65 ? 'high for them'
-      : posPct >= 35 ? 'mid for them'
-      : posPct > 10  ? 'low for them'
-      : 'their quietest yet';
-    const rangeHtml = pk === null ? '<span style="font-size:11px;color:var(--muted2);opacity:.6">—</span>' : `
-      <div style="width:100%;max-width:150px">
-        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--muted2);opacity:.8">
-          <span>${lo.toFixed(0)}%</span><span>${pk.toFixed(0)}%</span>
+        <div class="ld-box">
+          <div class="ld-box-hd"><div><h3 style="color:var(--g)">You got on this fetch</h3><p>${s && s.prevDate ? `Their leads that went live on your storefront since ${fmt(s.prevDate)}.` : 'Their leads that went live on your storefront.'}</p></div>
+            <div class="ld-box-n" style="color:var(--g)">${s && s.prevDate ? got.length : '—'}</div></div>
+          ${gotBody}
+          <div class="ld-keepa">Keepa's own figure: <b>${r.keepa ? r.keepa.pct + '%' : '—'}</b>${r.keepa ? ` · ${fmt(r.keepa.date)}` : ''}
+            ${r.keepa ? `<button class="cmp-chip" onclick="openCompetitorDetail('${kfEsc(r.keepa && nameOfReading(r.id)).replace(/'/g,"\\'")}')">Keepa % history ›</button>` : ''}</div>
         </div>
-        <div style="position:relative;height:6px;border-radius:4px;margin:4px 0 5px;
-          background:linear-gradient(90deg,rgba(255,255,255,.10),${progressColor}44)">
-          <div style="position:absolute;top:50%;left:${posPct===null?50:posPct}%;transform:translate(-50%,-50%);
-            width:9px;height:9px;border-radius:50%;background:${progressColor};box-shadow:0 0 0 2px var(--s1)"></div>
-        </div>
-        <div style="font-family:var(--mono);font-size:9.5px;color:var(--muted2);text-align:center">${posLabel}</div>
       </div>`;
+    }
 
-    // Sparkline
-    const sparkId = 'spark_' + s.name.replace(/[^\w]/g,'_');
-
-    // The dense read-out used to sit in a second table row under every seller, which made the
-    // page a wall of text. It is stashed here and shown in the detail popup instead.
-    window.__cmpAnalysis = window.__cmpAnalysis || {};
-    window.__cmpAnalysis[s.name] = analysisText;
-
-    return `<div class="cmp-row ${hasAsinDetail?'cmp-grid-full':'cmp-grid-lean'}" onclick="openCompetitorDetail('${s.name.replace(/'/g, "\\'")}')" title="Click for the full read-out">
-      <div class="cmp-rank ${s.rank<=3?'top':''}">#${s.rank}</div>
-      <div style="min-width:0">
-        <div class="cmp-name">${kfEsc(s.name)}</div>
-        <div class="cmp-sub">${newestDate && !inNewest.has(s.name.trim())
-            ? `<span style="color:var(--o)">\u26A0 not in the latest fetch \u00b7 last read ${fmt(lastSeenByName[s.name.trim()]||'')}</span> \u00b7 `
-            : ''}avg ${s.avg.toFixed(1)}%${diffLast!==null?` · ${diffLast>0?'↑':diffLast<0?'↓':'→'} this reading`:''} · ${kfEsc(s.sellerId||'no id')}</div>
-      </div>
-      <div>
-        <div class="cmp-pct" style="color:${progressColor}">${s.latest.toFixed(1)}%</div>
-        <div class="cmp-bar"><span style="width:${barPct}%;background:${progressColor}"></span></div>
-      </div>
-      <div>${vsLastHtml}</div>
-      <div>${vsMonthHtml}</div>
-      ${hasAsinDetail ? `<div>${catHtml}</div><div>${sharedHtml}</div><div>${gapHtml}</div>` : ''}
-    </div>`;
+    return `<div class="ld-row ld-grid${open ? ' open' : ''}" onclick="toggleLeadRow('${idArg}')">
+      <div class="ld-rank">${i+1}</div>
+      <div style="min-width:0"><div class="ld-name">${kfEsc(r.name)}</div><div class="ld-sub">${subLine}</div></div>
+      <div class="ld-oncell">${onCell}</div>
+      <div class="ld-r">${s ? ldChange(s.vsLast) : '<span class="ld-dim">—</span>'}</div>
+      <div class="ld-r">${s ? ldChange(s.vs2w) : '<span class="ld-dim">—</span>'}</div>
+      <div class="ld-r"><span class="ld-num">${s && s.toGet != null ? s.toGet.toLocaleString() : '—'}</span></div>
+      <div class="ld-r">${leadsCell}</div>
+      <div class="ld-caret">${open ? '⌄' : '›'}</div>
+    </div>${detail}`;
   }).join('');
-  
+}
+
+// The name a seller's readings are stored under — the history popup looks readings up by name.
+function nameOfReading(id){
+  let nm = '';
+  COMPETITOR_SESSIONS.forEach(s => (s.competitors||[]).forEach(c => { if (c.sellerId === id) nm = c.name.trim(); }));
+  return nm;
 }
 
 function highlightCompetitor(sellerName) {
@@ -7999,142 +7814,63 @@ function drawCompDetailChart(range){
 function renderCompInsights(snaps) {
   const box = document.getElementById('compInsightInner');
   if (!box) return;
-
-  if (!COMPETITOR_SESSIONS.length) {
-    box.innerHTML = `<div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div><div style="color:var(--muted2);font-family:var(--mono);font-size:11px">Add competitor readings using ⚡ Update Overlaps to start tracking trends.</div>`;
+  const hd = `<div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>`;
+  const T = typeof leadTotals === 'function' ? leadTotals() : null;
+  if (!T) {
+    box.innerHTML = `${hd}<div style="color:var(--muted2);font-family:var(--mono);font-size:12px">Fetch from Keepa to start tracking how many of their leads you're on.</div>`;
     return;
   }
 
-  // Build seller map (within selected date range)
-  const sellerMap = {};
-  compSessionsInRange().forEach(session => {
-    (session.competitors||[]).forEach(c => {
-      const k = c.name.trim();
-      if (!sellerMap[k]) sellerMap[k] = { sellerId: c.sellerId||'', data: [] };
-      sellerMap[k].data.push({ date: session.date, pct: c.pct||0 });
-      if (c.sellerId) sellerMap[k].sellerId = c.sellerId;
-    });
-  });
+  // Same rule as the table: up or down is the number of their leads you're on. The old panel
+  // ran on Keepa's %, so it could list a rival under "gained" while the table showed ▼ leads.
+  const nameById = {};
+  COMPETITOR_SESSIONS.forEach(s => (s.competitors||[]).forEach(c => { if (c.sellerId) nameById[c.sellerId] = c.name.trim(); }));
+  (SELLERS||[]).forEach(s => { if (s.sellerId) nameById[s.sellerId] = s.name; });
+  const rows = (SELLERS||[]).filter(s => s.sellerId).map(s => ({ id:s.sellerId, name:nameById[s.sellerId]||s.sellerId, st:leadStats(s.sellerId) })).filter(r => r.st);
+  const with2 = rows.filter(r => r.st.vs2w != null);
+  const gained = with2.filter(r => r.st.vs2w > 0).sort((a,b) => b.st.vs2w - a.st.vs2w);
+  const lost   = with2.filter(r => r.st.vs2w < 0).sort((a,b) => a.st.vs2w - b.st.vs2w);
+  const still  = with2.filter(r => r.st.vs2w === 0);
 
-  const sellers = Object.entries(sellerMap).map(([name, info]) => {
-    const d = info.data;
-    const latest = d[d.length-1]?.pct ?? 0;
-    const prev = d.length > 1 ? d[d.length-2]?.pct : null;
-    const diff = prev !== null ? parseFloat((latest - prev).toFixed(1)) : null;
-    const avg = parseFloat((d.reduce((s,x)=>s+x.pct,0)/d.length).toFixed(1));
-    const last3 = d.slice(-3).map(x=>x.pct);
-    const trend3 = last3.length >= 2 ? parseFloat((last3[last3.length-1] - last3[0]).toFixed(1)) : null;
-    // Net change over all entries
-    const netChange = d.length >= 2 ? parseFloat((d[d.length-1].pct - d[0].pct).toFixed(1)) : null;
-    // Active = has had at least one non-zero reading
-    const hasData = d.some(x => x.pct > 0);
-    // Consecutive streak
-    let streak = 0;
-    for (let i = d.length-1; i >= 1; i--) {
-      const delta = d[i].pct - d[i-1].pct;
-      if (i === d.length-1) streak = delta > 0.1 ? 1 : delta < -0.1 ? -1 : 0;
-      else if ((streak > 0 && delta > 0.1) || (streak < 0 && delta < -0.1)) streak += streak > 0 ? 1 : -1;
-      else break;
-    }
-    return { name, latest, prev, diff, avg, trend3, streak, netChange, hasData, history: d, entries: d.length };
-  }).sort((a,b) => b.latest - a.latest);
-
-  if (!sellers.length) {
-    box.innerHTML = `<div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div><div style="color:var(--muted2);font-family:var(--mono);font-size:11px">No competitor data yet.</div>`;
-    return;
-  }
-
-  // Active competitors = those with at least one non-zero reading
-  const activeSellers = sellers.filter(s => s.hasData);
-  const zeroSellers = sellers.filter(s => !s.hasData);
-
-  // Averages — exclude zeros for meaningful avg
-  const activeWithLatest = activeSellers.filter(s => s.latest > 0);
-  const activeAvg = activeWithLatest.length
-    ? parseFloat((activeWithLatest.reduce((s,x)=>s+x.latest,0)/activeWithLatest.length).toFixed(1))
-    : null;
-  const overallAvg = parseFloat((sellers.reduce((s,x)=>s+x.latest,0)/sellers.length).toFixed(1));
-
-  // Top 3 by latest
-  const top3 = activeSellers.slice(0,3);
-
-  // Trends
-  const withPrev = sellers.filter(s => s.diff !== null);
-  const up = withPrev.filter(s => s.diff > 0.1);
-  const down = withPrev.filter(s => s.diff < -0.1);
-  const flat = withPrev.filter(s => Math.abs(s.diff) <= 0.1);
-  const with3 = sellers.filter(s => s.trend3 !== null && s.entries >= 3);
-  const trendingUp = with3.filter(s => s.trend3 > 0.5).sort((a,b)=>b.trend3-a.trend3);
-  const trendingDown = with3.filter(s => s.trend3 < -0.5).sort((a,b)=>a.trend3-b.trend3);
-  const flatliners = with3.filter(s => Math.abs(s.trend3) <= 0.5 && s.latest > 0);
-  const consecutiveUp = sellers.filter(s => s.streak >= 3);
-  const hotStreak = sellers.filter(s => s.streak >= 2);
-  const fastestGaining = with3.filter(s=>s.trend3>0).sort((a,b)=>b.trend3-a.trend3)[0];
-  const fastestDropping = with3.filter(s=>s.trend3<0).sort((a,b)=>a.trend3-b.trend3)[0];
-
-  // Threats — meaningful overlap AND rising = competitors closing in on your space
-  const threats = sellers.filter(s=>s.latest>=20 && s.trend3!==null && s.trend3>0.5)
-    .sort((a,b)=>b.latest-a.latest);
-
-  // Net gainers over full history
-  const netGainers = sellers.filter(s=>s.netChange!==null&&s.netChange>0).sort((a,b)=>b.netChange-a.netChange);
-  const netDroppers = sellers.filter(s=>s.netChange!==null&&s.netChange<0).sort((a,b)=>a.netChange-b.netChange);
-
-  // ── Panel ────────────────────────────────────────────────────────────────
-  // Rebuilt around what the reader actually needs: the plain-English verdict first, then
-  // who is closing in, who is backing off, and the state of the field. Colour follows the
-  // same rule as the cards — a rival gaining is red, a rival retreating is green. The old
-  // version painted "fastest gaining" green, which read as good news.
-  const row = (name, right, tone) => {
+  const row = (name, right, tone, id) => {
     const c = tone==='bad' ? 'var(--r)' : tone==='good' ? 'var(--g)' : 'var(--muted2)';
-    return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0">
-      <span style="font-size:11.5px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
-      <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${c};flex-shrink:0">${right}</span>
-    </div>`;
+    const click = id ? ` onclick="LD_OPEN='${id.replace(/'/g,"\\'")}';renderCompTab();document.getElementById('compHead')?.scrollIntoView({behavior:'smooth'})" style="cursor:pointer"` : '';
+    return `<div${click} class="ci-row"><span class="ci-name">${name}</span><span class="ci-val" style="color:${c}">${right}</span></div>`;
   };
   const panel = (title, accent, bodyHtml, emptyMsg) =>
-    `<div style="background:var(--s1);border:1px solid var(--border);border-top:2px solid ${accent};border-radius:8px;padding:11px 13px">
-      <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:${accent};margin-bottom:6px;font-weight:700">${title}</div>
-      ${bodyHtml || `<div style="font-family:var(--mono);font-size:10.5px;color:var(--muted)">${emptyMsg}</div>`}
+    `<div class="ci-panel" style="border-top-color:${accent}">
+      <div class="ci-title" style="color:${accent}">${title}</div>
+      ${bodyHtml || `<div class="ci-empty">${emptyMsg}</div>`}
     </div>`;
 
-  // Headline verdict, in plain words, at the top where it gets read.
-  const mood = activeAvg===null ? '' :
-    activeAvg>30 ? 'You already sell a large share of what they stock.'
-    : activeAvg>15 ? 'Decent coverage, with room to add more of what they carry.'
-    : 'Plenty of headroom \u2014 most of what they stock, you do not.';
-  const netUpDown = up.length>down.length ? `you gained on <span style="color:var(--g)">${up.length}</span> and slipped on ${down.length}`
-    : down.length>up.length ? `you slipped on <span style="color:var(--r)">${down.length}</span> and gained on ${up.length}`
-    : `${up.length} up, ${down.length} down \u2014 evenly split`;
-  const headline = `<div style="font-size:13px;line-height:1.6;color:var(--text)">
-      You sell <b style="color:${activeAvg>30?'var(--g)':activeAvg>15?'var(--y)':'var(--o)'}">${activeAvg!==null?activeAvg+'%':'—'}</b> of what they stock, on average,
-      across ${activeWithLatest.length} competitors with readings in this range. ${mood}
-      This reading, ${netUpDown}.${fastestGaining?` Biggest gain this reading: <b style="color:var(--g)">${fastestGaining.name}</b>.`:''}
+  const net = T.vs2w;
+  const netTxt = net == null ? '' : net > 0 ? `<b style="color:var(--g)">▲ ${net}</b>` : net < 0 ? `<b style="color:var(--r)">▼ ${Math.abs(net)}</b>` : '<b>no change</b>';
+  const headline = `<div class="ci-head">
+      You're on <b>${T.on.toLocaleString()}</b> of your rivals' <b>${T.total.toLocaleString()}</b> leads
+      (<b>${T.pct != null ? T.pct.toFixed(1) : '—'}%</b>) across ${T.rivals} rivals.
+      ${with2.length ? `Over the last 2 weeks you gained leads on <b style="color:var(--g)">${gained.length}</b> and lost them on <b style="color:var(--r)">${lost.length}</b>${net != null ? ` — net ${netTxt}` : ''}.` : 'Two weeks of fetches are needed to show movement.'}
+      ${gained.length ? ` Biggest gain: <b style="color:var(--g)">${kfEsc(gained[0].name)}</b> (▲ ${gained[0].st.vs2w}).` : ''}
     </div>`;
 
-  const closingIn = (threats.length ? threats : trendingUp).filter(s => s.latest > 0).slice(0,7)
-    .map(s => row(s.name, `${s.latest.toFixed(0)}% ▲+${s.trend3}pp`, 'good')).join('');
-  // A fall to 0% means the seller dropped out of Keepa's ranking, not that they retreated.
-  // Listing them as "backing off" reads as good news that has not actually happened.
-  const backingOff = trendingDown.filter(s => s.latest > 0).slice(0,7)
-    .map(s => row(s.name, `${s.latest.toFixed(0)}% ▼${s.trend3}pp`, 'bad')).join('');
-
+  const gBody = gained.slice(0,7).map(r => row(kfEsc(r.name), `${r.st.on} of ${r.st.total} ▲ ${r.st.vs2w}`, 'good', r.id)).join('');
+  const lBody = lost.slice(0,7).map(r => row(kfEsc(r.name), `${r.st.on} of ${r.st.total} ▼ ${Math.abs(r.st.vs2w)}`, 'bad', r.id)).join('');
+  const closest = [...rows].filter(r => r.st.pct != null).sort((a,b) => b.st.pct - a.st.pct)[0];
+  const mostToGet = [...rows].filter(r => r.st.toGet != null).sort((a,b) => b.st.toGet - a.st.toGet)[0];
+  const upBoth = rows.filter(r => r.st.vsLast > 0 && r.st.vs2w > 0);
+  const leadsTotal = rows.reduce((t, r) => t + r.st.leads.length, 0);
   const fieldBody = `
-    ${row('With readings in range', `${activeWithLatest.length}${(sellers.length-activeWithLatest.length)?` · ${sellers.length-activeWithLatest.length} without`:''}`, 'neutral')}
-    ${top3.length ? row('Best covered', `${top3[0].name} ${top3[0].latest.toFixed(0)}%`, 'neutral') : ''}
-    ${netGainers.length ? row('Most coverage won', `${netGainers[0].name} +${netGainers[0].netChange}pp`, 'good') : ''}
-    ${netDroppers.length ? row('Most coverage lost', `${netDroppers[0].name} ${netDroppers[0].netChange}pp`, 'bad') : ''}
-    ${hotStreak.length ? row('On a streak', sellers.filter(s=>Math.abs(s.streak)>=2).slice(0,2).map(s=>`${s.name} ${s.streak>0?'↑':'↓'}${Math.abs(s.streak)}×`).join(', '), 'neutral') : ''}
-    ${flatliners.length ? row('Not moving', flatliners.slice(0,3).map(s=>s.name).join(', '), 'neutral') : ''}`;
+    ${row('Rivals tracked', `${rows.length}`, 'neutral')}
+    ${closest ? row('Closest to all their leads', `${kfEsc(closest.name)} · ${closest.st.pct.toFixed(1)}%`, 'neutral', closest.id) : ''}
+    ${mostToGet ? row('Most still to get', `${kfEsc(mostToGet.name)} · ${mostToGet.st.toGet.toLocaleString()}`, 'neutral', mostToGet.id) : ''}
+    ${upBoth.length ? row('Up last fetch and 2 weeks', `${upBoth.length} rival${upBoth.length!==1?'s':''}`, 'good') : ''}
+    ${window._shelfRowCount ? row('New leads to look at', `${leadsTotal}`, 'neutral') : ''}
+    ${still.length ? row('Not moving', still.slice(0,3).map(r => kfEsc(r.name)).join(', '), 'neutral') : ''}`;
 
   box.innerHTML = `
-    <div style="padding:13px 15px 11px;border-bottom:1px solid rgba(255,255,255,.06)">
-      <div class="insight-hd" style="margin-bottom:9px"><span class="insight-badge">✦ Competitor Analysis</span></div>
-      ${headline}
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;padding:11px 14px 12px;align-items:start;grid-auto-rows:min-content">
-      ${panel('You gained coverage','var(--g)',closingIn,'No coverage gained this reading.')}
-      ${panel('You lost coverage','var(--r)',backingOff,'No coverage lost this reading.')}
+    <div class="ci-top">${hd}${headline}</div>
+    <div class="ci-grid">
+      ${panel('You gained leads · 2 weeks','var(--g)',gBody,'No rival gained over 2 weeks.')}
+      ${panel('You lost leads · 2 weeks','var(--r)',lBody,'No rival lost over 2 weeks.')}
       ${panel('The field','var(--muted2)',fieldBody,'No data yet.')}
     </div>`;
 }
@@ -8439,7 +8175,7 @@ let manageRowCount = 0;
 const KEEPA_ME = 'A142PBK7GX1DM8';   // Lavarion
 const KEEPA_DOMAIN = 2;              // amazon.co.uk
 const KEEPA_FRESH_DAYS = 4;          // measured: closest match to Keepa's own numbers
-let KEEPA_WANT_DETAIL = true;        // pull ASIN lists for everyone, not just the gaps
+let KEEPA_WANT_DETAIL = true;        // always on: full shelves for everyone, which is what finds new leads
 const KEEPA_PROXY = 'https://keepa.jackbithellbusiness.workers.dev';   // holds the Keepa key as a secret
 let KEEPA_RUNNING = false;           // blocks a second run from doubling the token spend
 let KEEPA_CANCELLED = false;         // set by Cancel; checked after every await
@@ -8462,11 +8198,10 @@ function openKeepaFetch(){
   const pw=document.getElementById('keepaProgWrap'); if(pw) pw.style.display='none';
   document.getElementById('keepaRunBtn').disabled=false;
   document.getElementById('keepaRunBtn').textContent='Fetch & save';
-  const withDetail = document.getElementById('keepaDetail')?.checked ?? KEEPA_WANT_DETAIL;
-  KEEPA_WANT_DETAIL = withDetail;
-  document.getElementById('keepaCost').textContent = withDetail
-    ? `${SELLERS.length} competitors · about ${SELLERS.length + 10 + SELLERS.length*10} tokens (percentages + full shared-product lists).`
-    : `${SELLERS.length} competitors · about ${SELLERS.length} tokens, plus 10 for your own catalogue and 10 per seller Keepa cannot rank.`;
+  // Always the full pull now: every rival's whole shelf is what finds their new leads.
+  KEEPA_WANT_DETAIL = true;
+  document.getElementById('keepaCost').textContent =
+    `${SELLERS.length} competitors · about ${SELLERS.length + 10 + SELLERS.length*10} tokens · pulls every rival's full shelf.`;
   document.getElementById('keepaModal').classList.add('open');
 }
 
@@ -8591,6 +8326,21 @@ async function applyKeepaFetch(fetched){
     window.__keepaAsinRows = null;
   }
 
+  // Rival shelves last, and never allowed to fail the fetch — the readings are already safe.
+  const shelf = window.__keepaShelf; window.__keepaShelf = null;
+  if (shelf && shelf.length && window._shelfApply) {
+    const sr = await window._shelfApply(today, shelf);
+    if (sr.ok) {
+      const firstTime = sr.baselined && !sr.added;
+      kfLog(firstTime
+        ? `Rival shelves: first look at ${sr.rivals} — ${sr.baselined.toLocaleString()} products recorded. New leads start from the next fetch.`
+        : `Rival shelves: ${sr.added} new lines added by rivals · ${sr.gone} gone${sr.back ? ` · ${sr.back} back` : ''}`, 'ok');
+      if (sr.skipped.length) kfLog(`${sr.skipped.length} shelf${sr.skipped.length!==1?'s':''} came back short and ${sr.skipped.length!==1?'were':'was'} left as it was.`, 'warn');
+    } else {
+      kfLog(`Rival shelves not saved: ${sr.error}. Your readings are saved.`, 'warn');
+    }
+  }
+
   try{
     const data = await window._supabaseLoad();
     if(data){
@@ -8598,6 +8348,7 @@ async function applyKeepaFetch(fetched){
       COMPETITOR_ASINS   = data.competitorAsins   || COMPETITOR_ASINS;
     }
   }catch(e){ console.error('reload after Keepa save failed', e); }
+  await loadShelfLeads(true);
 
   renderCompTab(); renderCompHistory(); renderCompInsights(filteredSnaps());
   setKpiCompAvg(); renderBadges();
@@ -8696,11 +8447,11 @@ async function runKeepaFetch(){
         const prior = fetched[g.sellerId];
         if (prior && prior.pct != null && prior.source === 'keepa') {
           // Keepa's own figure stays authoritative; we are only adding the detail here.
-          prior.size = theirs.length; prior.asins = sharedList;
+          prior.size = theirs.length; prior.asins = sharedList; prior.full = theirs;
           kfLog(`${g.name}: ${shared} shared of ${theirs.length} (Keepa says ${prior.pct}%)`);
         } else {
           fetched[g.sellerId]={pct:+(shared/theirs.length*100).toFixed(1), source: usedStale?'calc~':'calc',
-                               size:theirs.length, asins:sharedList};
+                               size:theirs.length, asins:sharedList, full:theirs};
           kfLog(`${g.name}: ${shared}/${theirs.length} shared = ${fetched[g.sellerId].pct}%${usedStale?' (unverified listings)':''}`);
         }
       }
@@ -8729,6 +8480,10 @@ async function runKeepaFetch(){
     window.__keepaAsinRows = Object.entries(fetched)
       .filter(([,v]) => Array.isArray(v.asins))
       .map(([sellerId,v]) => ({ sellerId, size:v.size, asins:v.asins }));
+    // Their whole shelf, not just the overlap — already downloaded, so saving it costs no tokens.
+    window.__keepaShelf = Object.entries(fetched)
+      .filter(([,v]) => Array.isArray(v.full) && v.full.length)
+      .map(([sellerId,v]) => ({ sellerId, asins:v.full }));
 
     // One press does the whole job. The review modal is still there under "Enter manually"
     // if a number ever needs amending after the fact.
