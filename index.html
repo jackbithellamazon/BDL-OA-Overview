@@ -294,6 +294,16 @@ window._shelfLoadRecent = async function(sinceDate){
   }
 };
 
+// How many DIFFERENT products are on rivals' shelves right now. Summing shelf sizes counts a
+// product five times if five rivals sell it; this counts it once.
+window._shelfUniqueOpen = async function(){
+  try {
+    if (!supabase || !window._shelfRowCount) return null;
+    const rows = await _shelfSelectAll(() => supabase.from('bdl_competitor_shelf').select('asin').is('gone_on', null).order('id'));
+    return new Set(rows.map(r => r.asin)).size;
+  } catch(e) { console.warn('Could not count unique rival products:', e.message || e); return null; }
+};
+
 // Record what a fetch saw. `lists` = [{sellerId, asins:[every ASIN on their storefront]}].
 // Only rivals whose storefront actually came back are passed in, so a failed lookup can never
 // mark a whole shelf as gone.
@@ -1600,7 +1610,26 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .cmp-head.ld-grid > span:nth-child(n+3){text-align:left}
 .cmp-head.ld-grid > span.ld-r{text-align:right}
 #compTableBody{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.ld-row{padding:15px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}
+.ld-row{padding:15px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;box-shadow:inset 3px 0 0 transparent}
+.ld-row.dir-up{box-shadow:inset 3px 0 0 var(--g)}
+.ld-row.dir-down{box-shadow:inset 3px 0 0 var(--r)}
+.ld-row.dir-same{box-shadow:inset 3px 0 0 var(--border2)}
+.ld-who{display:flex;align-items:center;gap:12px;min-width:0}
+.ld-av{flex:0 0 auto;width:34px;height:34px;border-radius:10px;border:1px solid;display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.3px}
+.ld-chg.zero{color:var(--muted);font-size:12.5px;font-weight:500;padding:5px 0}
+.ld-num.togo{color:var(--y)}
+.ld-soon{font-size:12px;font-weight:600;color:var(--p);opacity:.6}
+.ld-asin.got{color:var(--g)}
+.ld-keys{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 12px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:var(--s1);font-family:var(--mono);font-size:12px;color:var(--muted2)}
+.ld-key{display:inline-flex;align-items:center;gap:7px}
+.ld-key i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.ld-key b{color:var(--text);font-weight:600}
+.ld-key em{font-style:normal;color:var(--p)}
+.ld-howto{display:grid;grid-template-columns:30px 1fr;gap:10px 12px;align-items:start;margin-top:14px}
+.ld-howto b{display:block;font-size:13.5px;color:var(--text);font-weight:600}
+.ld-howto span{display:block;font-size:12.5px;color:var(--muted2);margin-top:1px}
+.ld-step-n{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;color:var(--p);background:var(--p2);border:1px solid rgba(192,132,252,.35)}
+.ld-step-n.done{color:var(--g);background:var(--g2);border-color:rgba(0,245,160,.35)}
 .ld-row:hover{background:rgba(255,255,255,.025)}
 .ld-row.open{background:var(--s2);border-bottom-color:transparent}
 .ld-rank{font-size:12.5px;color:var(--muted)}
@@ -1611,7 +1640,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .ld-count span{color:var(--muted);font-weight:500}
 .ld-pct{font-size:14.5px;font-weight:700;color:var(--text)}
 .ld-bar{height:7px;border-radius:99px;background:var(--s3);overflow:hidden;margin-top:8px}
-.ld-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#2f86e6,var(--b))}
+.ld-bar i{display:block;height:100%;border-radius:99px;background:var(--b)}
 .ld-r{text-align:right}
 .ld-chg{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;font-weight:700;padding:5px 10px;border-radius:8px;white-space:nowrap}
 .ld-chg small{font-size:11.5px;font-weight:600;opacity:.85}
@@ -1657,13 +1686,30 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .ci-name{font-size:13px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ci-val{font-size:12.5px;font-weight:700;flex-shrink:0;font-variant-numeric:tabular-nums}
 .ci-empty{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.ci-panel.good{background:linear-gradient(180deg,rgba(0,245,160,.07),var(--s1) 70%)}
+.ci-panel.bad{background:linear-gradient(180deg,rgba(255,77,109,.07),var(--s1) 70%)}
+.ci-panel.field{background:linear-gradient(180deg,rgba(61,158,255,.07),var(--s1) 70%)}
+.ci-title{font-size:12.5px !important}
+.ci-mover{display:flex;align-items:center;gap:11px;padding:7px 0;border-top:1px solid rgba(255,255,255,.05);cursor:pointer;font-family:var(--mono)}
+.ci-mover:first-of-type{border-top:0}
+.ci-mover:hover .ci-name{color:#fff}
+.ci-mover .ld-av{width:28px;height:28px;border-radius:8px;font-size:11px}
+.ci-mv-mid{flex:1;min-width:0}
+.ci-mv-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.ci-mv-of{font-size:12px;color:var(--muted2);flex-shrink:0}
+.ci-mv-bar{height:5px;border-radius:99px;background:var(--s3);overflow:hidden;margin-top:5px}
+.ci-mv-bar i{display:block;height:100%;border-radius:99px}
+.ci-mover .ld-chg{font-size:12.5px;padding:3px 9px}
 .ld-steps{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 16px;margin-bottom:14px;border:1px solid var(--border);border-radius:12px;background:var(--s1);font-family:var(--mono)}
 .ld-steps-l{display:flex;flex-direction:column;gap:1px;font-size:12.5px;color:var(--muted2)}
 .ld-steps-l b{color:var(--text);font-weight:700}
 .ld-steps-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
-.ld-step{display:inline-flex;flex-direction:column;align-items:center;padding:4px 9px;border-radius:8px;background:var(--s2);font-variant-numeric:tabular-nums}
-.ld-step em{font-style:normal;font-size:10.5px;color:var(--muted)}
-.ld-step b{font-size:12.5px}
+.ld-step{display:inline-flex;flex-direction:column;align-items:center;min-width:50px;padding:5px 10px;border-radius:9px;background:var(--s2);border:1px solid var(--border);font-variant-numeric:tabular-nums}
+.ld-step em{font-style:normal;font-size:10.5px;color:var(--muted2)}
+.ld-step b{font-size:13px}
+.ld-step.up{background:var(--g2);border-color:rgba(0,245,160,.3)} .ld-step.up b{color:var(--g)}
+.ld-step.down{background:var(--r2);border-color:rgba(255,77,109,.3)} .ld-step.down b{color:var(--r)}
+.ld-step.flat b{color:var(--muted2)}
 /* .content scrolls with 24px of top padding; a header pinned at top:0 let rows scroll
    visibly through that strip above it. Pin 24px higher and pad by the same amount so the
    header's own background covers the gap. Wrapping it with the rows also stops it
@@ -2095,6 +2141,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       <button class="cmp-chip" id="cf-threat"    onclick="setCompFilter('threat')">Has new leads</button>
       <button class="cmp-chip" id="cfUntracked" style="display:none" onclick="toggleUntracked()" title="Sellers with readings on record that are no longer on your list"></button>
     </div>
+    <div class="ld-keys" id="ldKey"></div>
     <div class="cmp-pending" id="compPending" style="display:none"></div>
     <div class="cmp-stalefetch" id="compFetchGap" style="display:none"></div>
     <div class="cmp-table-wrap">
@@ -2105,7 +2152,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       <span onclick="setCompSort('vslast')" data-sort="vslast" class="ld-r">vs last fetch</span>
       <span onclick="setCompSort('vs2w')" data-sort="vs2w" class="ld-r">vs 2 weeks</span>
       <span onclick="setCompSort('toget')" data-sort="toget" class="ld-r" title="Their products you don't sell yet">Still to get</span>
-      <span onclick="setCompSort('leads')" data-sort="leads" class="ld-r" title="Lines they added recently that you're not on">New leads</span>
+      <span onclick="setCompSort('leads')" data-sort="leads" class="ld-r" title="Products they've just added that you don't sell">New leads</span>
       <span></span>
     </div>
     <div id="compTableBody" style="overflow-x:auto"></div>
@@ -5548,17 +5595,21 @@ function setKpiCompAvg() {
   const tile=el.closest('.kpi-tile');
   if(tile) tile.classList.remove('better','worse','same');
   if(!T){ el.textContent='—'; pill.innerHTML=''; if(ins) ins.textContent='no fetch yet'; return; }
-  el.textContent=T.on.toLocaleString();
+  el.textContent=T.uOn.toLocaleString();
   // Up or down is the number of their leads you're on — not the %, which moves when their
-  // shelves shrink even if you have lost ground.
-  const d = T.vs2w != null ? T.vs2w : T.vsLast;
-  const lbl = T.vs2w != null ? 'vs 2 weeks' : 'vs last';
+  // shelves shrink even if you have lost ground. Each product counted once, however many
+  // rivals sell it (832 across rivals was really 298 products).
+  const d = T.uVs2w != null ? T.uVs2w : T.uVsLast;
+  const lbl = T.uVs2w != null ? 'vs 2 weeks' : 'vs last';
   if(d!=null){
     const cls=d===0?'flat':(d>0?'up':'down');
     pill.innerHTML=`<span class="pill ${cls}">${d>0?'▲':d<0?'▼':'→'} ${Math.abs(d).toLocaleString()} ${Math.abs(d)===1?'lead':'leads'} ${lbl}</span>`;
     if(tile) tile.classList.add(d>0?'better':d<0?'worse':'same');
   } else pill.innerHTML='';
-  if(ins) ins.innerHTML=`of ${T.total.toLocaleString()} across ${T.rivals} rivals<br><span style="color:var(--muted2)">${fmt(T.date)}</span>`;
+  if(ins) ins.innerHTML=(T.uTotal
+      ? `products · of ${T.uTotal.toLocaleString()} your rivals sell`
+      : T.myAsins ? `products · ${Math.round(T.uOn/T.myAsins*100)}% of your ${T.myAsins.toLocaleString()} ASINs` : `products · ${T.rivals} rivals`)
+    + `<br><span style="color:var(--muted2)">${T.rivals} rivals · ${fmt(T.date)}</span>`;
 }
 
 function setKpiPercent(valId, pillId, subId, curr, prev, upGood=true, avg=0) {
@@ -7290,15 +7341,16 @@ function renderSourcingScore(){
   const steps=[];
   for(let i=Math.max(1,dates.length-8); i<dates.length; i++){
     const both=Object.keys(COMPETITOR_ASINS[dates[i]]||{}).filter(id=>COMPETITOR_ASINS[dates[i-1]]?.[id] && (!tracked.size||tracked.has(id)));
-    const on=d=>both.reduce((t,id)=>t+((COMPETITOR_ASINS[d][id].asins)||[]).length,0);
+    // each product once, however many rivals sell it
+    const on=d=>{ const s=new Set(); both.forEach(id=>((COMPETITOR_ASINS[d][id].asins)||[]).forEach(a=>s.add(a))); return s.size; };
     steps.push({date:dates[i], d:on(dates[i])-on(dates[i-1])});
   }
   const net=steps.reduce((t,s)=>t+s.d,0);
   const col=v=>v>0?'var(--g)':v<0?'var(--r)':'var(--muted2)';
   const sg=v=>v>0?'▲ ':v<0?'▼ ':'→ ';
   box.innerHTML=`<div class="ld-steps">
-    <div class="ld-steps-l"><b>Leads you're on, fetch by fetch</b><span>last ${steps.length} fetches · net <b style="color:${col(net)}">${sg(net)}${Math.abs(net)}</b></span></div>
-    <div class="ld-steps-chips">${steps.map(s=>`<span class="ld-step" title="${fmt(s.date)}"><em>${fmtShort(s.date)}</em><b style="color:${col(s.d)}">${sg(s.d)}${Math.abs(s.d)}</b></span>`).join('')}</div>
+    <div class="ld-steps-l"><b>Products you're on, fetch by fetch</b><span>last ${steps.length} fetches · net <span class="ld-chg ${net>0?'up':net<0?'down':'zero'}" style="font-size:12px;padding:2px 8px">${sg(net)}${Math.abs(net)}</span></span></div>
+    <div class="ld-steps-chips">${steps.map(s=>`<span class="ld-step ${s.d>0?'up':s.d<0?'down':'flat'}" title="${fmt(s.date)}"><em>${fmtShort(s.date)}</em><b>${sg(s.d)}${Math.abs(s.d)}</b></span>`).join('')}</div>
     <button class="cmp-chip" onclick="openAvgOverlapModal()" title="Keepa's own average % over time">Keepa % history ›</button>
   </div>`;
 }
@@ -7332,6 +7384,7 @@ function toggleUntracked(){ COMP_SHOW_UNTRACKED = !COMP_SHOW_UNTRACKED; renderCo
 // same 20% as 20 of 100, but it is one lead fewer, and that is the one that counts.
 let SHELF_NEW = {};            // sellerId -> [{asin, first_seen}] newest first: lines they added, still listed
 let SHELF_LOADED = false;
+let SHELF_UNIQUE_TOTAL = null;   // different products across all rivals' shelves (needs saved shelves)
 let LD_OPEN = null;            // sellerId of the row opened underneath
 const LD_LEAD_DAYS = 21;       // how far back the "new leads" list looks
 const _ldDay = d => Date.parse(d + 'T00:00:00Z');
@@ -7344,6 +7397,7 @@ async function loadShelfLeads(){
   (rows||[]).forEach(r => { (map[r.seller_id] = map[r.seller_id] || []).push({ asin:r.asin, first_seen:r.first_seen }); });
   Object.values(map).forEach(a => a.sort((x,y) => y.first_seen.localeCompare(x.first_seen)));
   SHELF_NEW = map;
+  SHELF_UNIQUE_TOTAL = window._shelfUniqueOpen ? await window._shelfUniqueOpen() : null;
   SHELF_LOADED = true;
   try { if (document.getElementById('tab-competitors')) renderCompTab(); setKpiCompAvg(); } catch(e) { console.error(e); }
 }
@@ -7395,12 +7449,20 @@ function leadTotals(){
   const cur = sum(L, ids);
   const change = d => { if (!d) return null; const both = ids.filter(id => COMPETITOR_ASINS[d]?.[id]); return both.length ? sum(L, both).on - sum(d, both).on : null; };
   const P = all.length > 1 ? all[all.length-2] : null, W = ldNearest(all, L, 14);
+  // Unique: a product five rivals sell is one lead you're on, not five.
+  const uni = (d, list) => { const s = new Set(); list.forEach(id => (COMPETITOR_ASINS[d][id].asins || []).forEach(a => s.add(a))); return s.size; };
+  const uChange = d => { if (!d) return null; const both = ids.filter(id => COMPETITOR_ASINS[d]?.[id]); return both.length ? uni(L, both) - uni(d, both) : null; };
+  const snap = [...(DB||[])].filter(x => x.asins).sort((a,b) => a.date.localeCompare(b.date)).pop();
+  const uOn = uni(L, ids);
   return { date:L, rivals:ids.length, on:cur.on, total:cur.total, pct: cur.total ? cur.on/cur.total*100 : null,
-           prevDate:P, vsLast:change(P), w2Date:W, vs2w:change(W) };
+           prevDate:P, vsLast:change(P), w2Date:W, vs2w:change(W),
+           uOn, uVsLast:uChange(P), uVs2w:uChange(W),
+           uTotal: SHELF_UNIQUE_TOTAL, myAsins: snap ? snap.asins : null };
 }
 
 const ldChange = (v, unit=true) => {
   if (v == null) return '<span class="ld-chg na" title="Nothing to compare with yet">—</span>';
+  if (v === 0) return '<span class="ld-chg zero">no change</span>';
   const cls = v > 0 ? 'up' : v < 0 ? 'down' : 'same';
   const arrow = v > 0 ? '▲' : v < 0 ? '▼' : '→';
   const n = Math.abs(v);
@@ -7408,6 +7470,15 @@ const ldChange = (v, unit=true) => {
 };
 // Calendar days, not hours — a line from yesterday afternoon is "yesterday", not "2 days ago".
 const ldAgo = d => { const n = Math.round((_ldDay(new Date().toLocaleDateString('en-CA')) - _ldDay(d)) / 864e5); return n <= 0 ? 'added today' : n === 1 ? 'added yesterday' : `added ${n} days ago`; };
+
+// A steady colour per rival so the eye can find them again — same name, same colour, every time.
+const ldHue = s => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
+const ldAvatar = name => {
+  const h = ldHue(name), letters = String(name).replace(/[^A-Za-z0-9 ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
+  return `<span class="ld-av" style="background:hsla(${h},75%,55%,.16);color:hsl(${h},85%,72%);border-color:hsla(${h},75%,60%,.35)">${letters}</span>`;
+};
+// How much of their shelf you're on: amber = barely started, blue = getting there, green = strong.
+const ldBand = pct => pct == null ? 'var(--muted)' : pct >= 20 ? 'var(--g)' : pct >= 12 ? '#2dd4bf' : pct >= 6 ? 'var(--b)' : 'var(--y)';
 
 function toggleLeadRow(id){ LD_OPEN = LD_OPEN === id ? null : id; renderCompTab(); }
 window.toggleLeadRow = toggleLeadRow;
@@ -7476,8 +7547,10 @@ function renderCompTab() {
     if (s) s.innerHTML = subHtml;
   };
   if (T) {
-    card('Highest', "Their leads you're on", `${T.on.toLocaleString()}`,
-      `of ${T.total.toLocaleString()} · ${T.pct!=null?T.pct.toFixed(1):'—'}%<div class="ld-tile-rows"><span>vs last ${ldChange(T.vsLast,false)}</span><span>vs 2 weeks ${ldChange(T.vs2w,false)}</span></div>`);
+    const ofTxt = T.uTotal ? `of ${T.uTotal.toLocaleString()} different products they sell · ${(T.uOn/T.uTotal*100).toFixed(1)}%`
+      : T.myAsins ? `${Math.round(T.uOn/T.myAsins*100)}% of your ${T.myAsins.toLocaleString()} ASINs` : `across ${T.rivals} rivals`;
+    card('Highest', "Their leads you're on", `${T.uOn.toLocaleString()}<span class="ld-tile-unit">products</span>`,
+      `${ofTxt}<div class="ld-tile-rows"><span>vs last ${ldChange(T.uVsLast,false)}</span><span>vs 2 weeks ${ldChange(T.uVs2w,false)}</span></div>`);
     card('Avg', 'Over 2 weeks you are', withSt.some(r => r.st.vs2w != null)
       ? `<span style="color:var(--g)">${up2.length}</span><span class="ld-tile-unit">up</span> <span style="color:var(--r)">${down2.length}</span><span class="ld-tile-unit">down</span>`
       : '—', withSt.some(r => r.st.vs2w != null) ? `${same2.length} unchanged · counted in leads` : 'needs 2 weeks of fetches');
@@ -7537,6 +7610,13 @@ function renderCompTab() {
   renderContested();
 
   if (meta) meta.textContent = search ? `${rows.length} matching` : `${rows.length} rivals`;
+  const shelfLive = window._hasShelfTable !== false && window._shelfRowCount > 0;
+  const keyEl = document.getElementById('ldKey');
+  if (keyEl) keyEl.innerHTML = `
+    <span class="ld-key"><i style="background:var(--b)"></i><b>You're on</b> how many of their products you also sell</span>
+    <span class="ld-key"><i style="background:var(--g)"></i><b>▲ / ▼ leads</b> more or fewer of their products than before</span>
+    <span class="ld-key"><i style="background:var(--y)"></i><b>Still to get</b> their products you don't sell yet</span>
+    <span class="ld-key"><i style="background:var(--p)"></i><b>New leads</b> products they've just added that you don't sell${shelfLive ? '' : ' <em>— starts after your next fetch</em>'}</span>`;
   if (!rows.length) {
     tbody.innerHTML = search
       ? `<div class="cmp-empty">No rival matches “${kfEsc(search)}”.</div>`
@@ -7553,12 +7633,13 @@ function renderCompTab() {
     const subLine = !s ? 'waiting for the first fetch'
       : s.stale ? `<span style="color:var(--o)">⚠ not in the latest fetch · last read ${fmt(s.date)}</span>`
       : kfEsc(r.id);
+    const band = ldBand(s && s.pct);
     const onCell = !s ? '<span class="ld-dim">—</span>' : `
-      <div class="ld-on-top"><span class="ld-count">${s.on.toLocaleString()} <span>of ${s.total != null ? s.total.toLocaleString() : '—'}</span></span><span class="ld-pct">${s.pct != null ? s.pct.toFixed(1)+'%' : ''}</span></div>
-      <div class="ld-bar"><i style="width:${Math.min(100, s.pct || 0)}%"></i></div>`;
+      <div class="ld-on-top"><span class="ld-count">${s.on.toLocaleString()} <span>of ${s.total != null ? s.total.toLocaleString() : '—'}</span></span><span class="ld-pct" style="color:${band}">${s.pct != null ? s.pct.toFixed(1)+'%' : ''}</span></div>
+      <div class="ld-bar"><i style="width:${Math.max(2, Math.min(100, s.pct || 0))}%;background:${band}"></i></div>`;
     const leadsCell = !s ? '<span class="ld-dim">—</span>'
-      : window._hasShelfTable === false || !window._shelfRowCount ? '<span class="ld-dim" title="Starts once rival shelves are being saved">—</span>'
-      : s.leads.length ? `<span class="ld-leads">${s.leads.length}</span>${s.newSinceLast ? `<span class="ld-new">${s.newSinceLast} new</span>` : ''}`
+      : window._hasShelfTable === false || !window._shelfRowCount ? '<span class="ld-soon" title="Starts after your next fetch">soon</span>'
+      : s.leads.length ? `<span class="ld-leads">${s.leads.length}</span>${s.newSinceLast ? `<span class="ld-new">${s.newSinceLast} today</span>` : ''}`
       : '<span class="ld-zero">0</span>';
 
     let detail = '';
@@ -7566,7 +7647,11 @@ function renderCompTab() {
       const leadBody = window._hasShelfTable === false
         ? `<p class="ld-empty">Rival shelves aren't being saved yet. Run the SQL file in Supabase, then fetch.</p>`
         : !window._shelfRowCount
-        ? `<p class="ld-empty">Starts from your next fetch. That fetch records what's on their shelf now — anything they add after it shows up here.</p>`
+        ? `<div class="ld-howto">
+             <div class="ld-step-n done">✓</div><div><b>Set up</b><span>Their shelf is ready to be saved.</span></div>
+             <div class="ld-step-n">1</div><div><b>Your next fetch</b><span>Records everything on their shelf right now.</span></div>
+             <div class="ld-step-n">2</div><div><b>The fetch after</b><span>Anything they've added since shows up here — products you don't sell yet.</span></div>
+           </div>`
         : !s || !s.leads.length
         ? `<p class="ld-empty">Nothing new from them in the last ${LD_LEAD_DAYS} days that you're not already on.</p>`
         : `<ul class="ld-list">${s.leads.map(x => `<li><span class="ld-asin">${kfEsc(x.asin)}</span><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(x.asin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open on Amazon ↗</a><span class="ld-when${x.first_seen === latestFetch ? ' fresh' : ''}">${ldAgo(x.first_seen)}</span></li>`).join('')}</ul>
@@ -7576,11 +7661,11 @@ function renderCompTab() {
         ? `<p class="ld-empty">Needs two fetches to compare.</p>`
         : !got.length
         ? `<p class="ld-empty">None of their leads went live on your storefront since ${fmt(s.prevDate)}.</p>`
-        : `<ul class="ld-list tight">${got.map(a => `<li><span class="ld-asin">${kfEsc(a)}</span><span></span><span class="ld-when">${fmtShort(s.date)}</span></li>`).join('')}</ul>`;
+        : `<ul class="ld-list tight">${got.map(a => `<li><span class="ld-asin got">${kfEsc(a)}</span><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open on Amazon ↗</a><span class="ld-when">${fmtShort(s.date)}</span></li>`).join('')}</ul>`;
       detail = `<div class="ld-detail" onclick="event.stopPropagation()">
         <div class="ld-box leads">
           <div class="ld-box-hd"><div><h3>New ${kfEsc(r.name)} leads you're not on</h3><p>Added to their shelf in the last ${LD_LEAD_DAYS} days. Newest first.</p></div>
-            <div class="ld-box-n" style="color:var(--p)">${s && window._shelfRowCount ? s.leads.length : '—'}</div></div>
+            ${s && window._shelfRowCount ? `<div class="ld-box-n" style="color:var(--p)">${s.leads.length}</div>` : ''}</div>
           ${leadBody}
         </div>
         <div class="ld-box">
@@ -7593,13 +7678,14 @@ function renderCompTab() {
       </div>`;
     }
 
-    return `<div class="ld-row ld-grid${open ? ' open' : ''}" onclick="toggleLeadRow('${idArg}')">
+    const dir = !s || s.vs2w == null ? 'none' : s.vs2w > 0 ? 'up' : s.vs2w < 0 ? 'down' : 'same';
+    return `<div class="ld-row ld-grid dir-${dir}${open ? ' open' : ''}" onclick="toggleLeadRow('${idArg}')">
       <div class="ld-rank">${i+1}</div>
-      <div style="min-width:0"><div class="ld-name">${kfEsc(r.name)}</div><div class="ld-sub">${subLine}</div></div>
+      <div class="ld-who">${ldAvatar(r.name)}<div style="min-width:0"><div class="ld-name">${kfEsc(r.name)}</div><div class="ld-sub">${subLine}</div></div></div>
       <div class="ld-oncell">${onCell}</div>
       <div class="ld-r">${s ? ldChange(s.vsLast) : '<span class="ld-dim">—</span>'}</div>
       <div class="ld-r">${s ? ldChange(s.vs2w) : '<span class="ld-dim">—</span>'}</div>
-      <div class="ld-r"><span class="ld-num">${s && s.toGet != null ? s.toGet.toLocaleString() : '—'}</span></div>
+      <div class="ld-r"><span class="ld-num togo">${s && s.toGet != null ? s.toGet.toLocaleString() : '—'}</span></div>
       <div class="ld-r">${leadsCell}</div>
       <div class="ld-caret">${open ? '⌄' : '›'}</div>
     </div>${detail}`;
@@ -7843,17 +7929,25 @@ function renderCompInsights(snaps) {
       ${bodyHtml || `<div class="ci-empty">${emptyMsg}</div>`}
     </div>`;
 
-  const net = T.vs2w;
+  const net = T.uVs2w;
   const netTxt = net == null ? '' : net > 0 ? `<b style="color:var(--g)">▲ ${net}</b>` : net < 0 ? `<b style="color:var(--r)">▼ ${Math.abs(net)}</b>` : '<b>no change</b>';
   const headline = `<div class="ci-head">
-      You're on <b>${T.on.toLocaleString()}</b> of your rivals' <b>${T.total.toLocaleString()}</b> leads
-      (<b>${T.pct != null ? T.pct.toFixed(1) : '—'}%</b>) across ${T.rivals} rivals.
-      ${with2.length ? `Over the last 2 weeks you gained leads on <b style="color:var(--g)">${gained.length}</b> and lost them on <b style="color:var(--r)">${lost.length}</b>${net != null ? ` — net ${netTxt}` : ''}.` : 'Two weeks of fetches are needed to show movement.'}
+      You're on <b style="color:var(--b)">${T.uOn.toLocaleString()}</b> different products your ${T.rivals} rivals sell${T.uTotal ? ` — out of <b>${T.uTotal.toLocaleString()}</b> on their shelves` : T.myAsins ? ` — <b>${Math.round(T.uOn/T.myAsins*100)}%</b> of your ${T.myAsins.toLocaleString()} ASINs` : ''}.
+      ${with2.length ? `Over 2 weeks you gained leads on <b style="color:var(--g)">${gained.length}</b> rivals and lost them on <b style="color:var(--r)">${lost.length}</b>${net != null ? ` — ${netTxt} products overall` : ''}.` : 'Two weeks of fetches are needed to show movement.'}
       ${gained.length ? ` Biggest gain: <b style="color:var(--g)">${kfEsc(gained[0].name)}</b> (▲ ${gained[0].st.vs2w}).` : ''}
     </div>`;
 
-  const gBody = gained.slice(0,7).map(r => row(kfEsc(r.name), `${r.st.on} of ${r.st.total} ▲ ${r.st.vs2w}`, 'good', r.id)).join('');
-  const lBody = lost.slice(0,7).map(r => row(kfEsc(r.name), `${r.st.on} of ${r.st.total} ▼ ${Math.abs(r.st.vs2w)}`, 'bad', r.id)).join('');
+  const mover = (r, tone) => {
+    const band = ldBand(r.st.pct);
+    return `<div class="ci-mover" onclick="LD_OPEN='${r.id.replace(/'/g,"\\'")}';renderCompTab();document.getElementById('compHead')?.scrollIntoView({behavior:'smooth'})">
+      ${ldAvatar(r.name)}
+      <div class="ci-mv-mid"><div class="ci-mv-top"><span class="ci-name">${kfEsc(r.name)}</span><span class="ci-mv-of">${r.st.on} of ${r.st.total}</span></div>
+        <div class="ci-mv-bar"><i style="width:${Math.max(2,Math.min(100,r.st.pct||0))}%;background:${band}"></i></div></div>
+      <span class="ld-chg ${tone}">${tone==='up'?'▲':'▼'} ${Math.abs(r.st.vs2w)}</span>
+    </div>`;
+  };
+  const gBody = gained.slice(0,7).map(r => mover(r,'up')).join('');
+  const lBody = lost.slice(0,7).map(r => mover(r,'down')).join('');
   const closest = [...rows].filter(r => r.st.pct != null).sort((a,b) => b.st.pct - a.st.pct)[0];
   const mostToGet = [...rows].filter(r => r.st.toGet != null).sort((a,b) => b.st.toGet - a.st.toGet)[0];
   const upBoth = rows.filter(r => r.st.vsLast > 0 && r.st.vs2w > 0);
@@ -7869,9 +7963,9 @@ function renderCompInsights(snaps) {
   box.innerHTML = `
     <div class="ci-top">${hd}${headline}</div>
     <div class="ci-grid">
-      ${panel('You gained leads · 2 weeks','var(--g)',gBody,'No rival gained over 2 weeks.')}
-      ${panel('You lost leads · 2 weeks','var(--r)',lBody,'No rival lost over 2 weeks.')}
-      ${panel('The field','var(--muted2)',fieldBody,'No data yet.')}
+      ${panel('▲ You gained leads · 2 weeks','var(--g)',gBody,'No rival gained over 2 weeks.').replace('class="ci-panel"','class="ci-panel good"')}
+      ${panel('▼ You lost leads · 2 weeks','var(--r)',lBody,'No rival lost over 2 weeks.').replace('class="ci-panel"','class="ci-panel bad"')}
+      ${panel('The field','var(--b)',fieldBody,'No data yet.').replace('class="ci-panel"','class="ci-panel field"')}
     </div>`;
 }
 
