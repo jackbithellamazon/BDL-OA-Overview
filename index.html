@@ -300,12 +300,20 @@ window._shelfLoadRecent = async function(sinceDate){
 // One row per product, never deleted. last_seen is KEEPA'S OWN last-seen date for you on that
 // product (not the fetch date), so a line you sold out of keeps the day you actually stopped —
 // that is where the Sourcing audit's 45 days start. listed_on = the latest fetch that still had it.
+const MY_ON_NOW_DAYS = 2;   // "on it now" = Keepa spotted your offer within this many days of the fetch
+
+async function _myShelfHasOnCols(rows){
+  if (rows && rows.length) return Object.prototype.hasOwnProperty.call(rows[0], 'on_now');
+  const probe = await supabase.from('bdl_my_shelf').select('on_now').limit(1);
+  return !probe.error;
+}
+
 window._myShelfLoad = async function(){
   try {
     if (!supabase) return null;
-    const rows = await _shelfSelectAll(() => supabase.from('bdl_my_shelf')
-      .select('asin,first_seen,last_seen,listed_on').order('asin'));
+    const rows = await _shelfSelectAll(() => supabase.from('bdl_my_shelf').select('*').order('asin'));
     window._hasMyShelf = true;
+    window._myShelfHasOn = await _myShelfHasOnCols(rows);
     return rows;
   } catch(e) {
     window._hasMyShelf = false;
@@ -316,12 +324,12 @@ window._myShelfLoad = async function(){
 
 // `mine` = [{asin, seen:'YYYY-MM-DD'|null}] straight from the fetch's own storefront call.
 window._myShelfApply = async function(today, mine){
-  const res = { ok:false, listed:0, added:0, left:0, skipped:false };
+  const res = { ok:false, listed:0, added:0, left:0, onNow:0, skipped:false };
   try {
     if (!supabase) { res.error = 'not connected'; return res; }
     if (window._hasMyShelf === false) { res.error = 'your storefront table is not set up yet'; return res; }
-    const rows = await _shelfSelectAll(() => supabase.from('bdl_my_shelf')
-      .select('asin,first_seen,last_seen,listed_on').order('asin'));
+    const rows = await _shelfSelectAll(() => supabase.from('bdl_my_shelf').select('*').order('asin'));
+    const hasOn = window._myShelfHasOn = await _myShelfHasOnCols(rows);
     const by = new Map(rows.map(r => [r.asin, r]));
     const cur = new Map();
     (mine || []).forEach(x => {
@@ -342,16 +350,40 @@ window._myShelfApply = async function(today, mine){
 
     const prevFetch = Object.keys(recent).sort().pop() || null;
     const now = new Date().toISOString();
+    const onCut = _shiftDate(today, -MY_ON_NOW_DAYS);
+    // The first save with the on-now columns just records the state — nothing counts as a flip.
+    // Only true before anything has ever been marked on — a freshly added column is all-false.
+    // (Keying this on on_changed alone kept every later fetch a "first" one: caught in testing.)
+    const baseline = !hasOn || !rows.some(r => r.on_now || r.on_changed);
+    res.baseline = baseline;
     const payload = [];
     cur.forEach((seen, a) => {
       const prev = by.get(a);
-      if (!prev) res.added++;
-      payload.push({ asin:a, domain:2,
-        first_seen: prev ? prev.first_seen : today,
-        last_seen:  prev && prev.last_seen > seen ? prev.last_seen : seen,   // only ever moves forward
-        listed_on:  today, source:'keepa', updated_at: now });
+      const last = prev && prev.last_seen > seen ? prev.last_seen : seen;   // only ever moves forward
+      const row = { asin:a, domain:2, first_seen: prev ? prev.first_seen : today,
+        last_seen: last, listed_on: today, source:'keepa', updated_at: now };
+      if (hasOn) {
+        const on = last >= onCut;
+        const was = prev ? !!prev.on_now : false;
+        row.on_now = on;
+        row.on_changed = prev ? prev.on_changed || null : null;
+        if (!baseline && on !== was) { row.on_changed = today; if (on) res.added++; else res.left++; }
+        if (on) res.onNow++;
+      } else if (!prev) res.added++;
+      payload.push(row);
     });
-    if (prevFetch) rows.forEach(r => { if (r.listed_on === prevFetch && !cur.has(r.asin)) res.left++; });
+    // Products Keepa no longer lists at all: if they were on, they're off now.
+    rows.forEach(r => {
+      if (cur.has(r.asin)) return;
+      if (hasOn) {
+        if (r.on_now) {
+          const { asin, domain, first_seen, last_seen, listed_on, source } = r;
+          payload.push({ asin, domain: domain || 2, first_seen, last_seen, listed_on, source: source || 'keepa',
+            updated_at: now, on_now: false, on_changed: baseline ? (r.on_changed || null) : today });
+          if (!baseline) res.left++;
+        }
+      } else if (prevFetch && r.listed_on === prevFetch) res.left++;
+    });
     // Batched — row-by-row writes are what silently lost saves in this app before.
     for (let i = 0; i < payload.length; i += 500) {
       const { error } = await supabase.from('bdl_my_shelf').upsert(payload.slice(i, i + 500), { onConflict:'asin' });
@@ -7562,6 +7594,7 @@ const ldAgo = d => { const n = Math.round((_ldDay(new Date().toLocaleDateString(
 
 // A steady colour per rival so the eye can find them again — same name, same colour, every time.
 const ldHue = s => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
+const _ldShift = (d, n) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const ldAvatar = (name, fixed) => {
   const h = ldHue(name), letters = fixed || String(name).replace(/[^A-Za-z0-9 ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
   return `<span class="ld-av" style="background:hsla(${h},75%,55%,.16);color:hsl(${h},85%,72%);border-color:hsla(${h},75%,60%,.35)">${letters}</span>`;
@@ -7584,24 +7617,25 @@ function renderMyShelf(){
   }
   const dates = [...new Set(rows.map(r => r.listed_on))].sort();
   const L = dates[dates.length-1], P = dates.length > 1 ? dates[dates.length-2] : null;
-  const firstEver = rows.reduce((m, r) => r.first_seen < m ? r.first_seen : m, '9999');
-  const onNow = rows.filter(r => r.listed_on === L);
-  const fresh = L !== firstEver ? onNow.filter(r => r.first_seen === L) : [];
-  const left  = P ? rows.filter(r => r.listed_on === P) : [];
+  // Only one question per product: are you on it now? It flips as you go in and out of stock.
+  const hasOn = window._myShelfHasOn;
+  const onNow = hasOn ? rows.filter(r => r.on_now) : rows.filter(r => r.last_seen >= _ldShift(L, -2));
+  const fresh = hasOn ? rows.filter(r => r.on_now && r.on_changed === L) : [];
+  const left  = hasOn ? rows.filter(r => !r.on_now && r.on_changed === L) : [];
   const chip = (key, n, cls, label) => n
     ? `<button class="ms-chip ${cls}${MY_SHELF_OPEN===key?' on':''}" onclick="MY_SHELF_OPEN=MY_SHELF_OPEN==='${key}'?null:'${key}';renderMyShelf()">${label}</button>`
     : `<span class="ms-chip ${cls} none">${label}</span>`;
   const list = MY_SHELF_OPEN === 'new' ? fresh : MY_SHELF_OPEN === 'left' ? left : null;
   el.innerHTML = `<div class="ms-strip">
       ${ldAvatar('Lavarion','LV')}
-      <div class="ms-who"><b>Your storefront</b><span>Lavarion · saved ${fmt(L)}</span></div>
-      <div class="ms-big">${onNow.length.toLocaleString()}<small>products</small></div>
+      <div class="ms-who"><b>Your storefront</b><span>Lavarion · checked ${fmt(L)}</span></div>
+      <div class="ms-big">${onNow.length.toLocaleString()}<small>products you're on now</small></div>
       <div class="ms-chips">
-        ${chip('new', fresh.length, 'up', `▲ ${fresh.length} new`)}
-        ${chip('left', left.length, 'down', `▼ ${left.length} left`)}
+        ${hasOn ? chip('new', fresh.length, 'up', `▲ ${fresh.length} on`) + chip('left', left.length, 'down', `▼ ${left.length} off`)
+                : `<span class="ms-chip none">run the "on-now" SQL to see on / off</span>`}
       </div>
     </div>
-    ${list ? `<div class="ms-list"><div class="ms-list-hd">${MY_SHELF_OPEN === 'new' ? `New on your storefront since ${fmt(P)}` : `On your storefront on ${fmt(P)}, not on ${fmt(L)}`}</div>
+    ${list ? `<div class="ms-list"><div class="ms-list-hd">${MY_SHELF_OPEN === 'new' ? `You're on these now — you weren't at the fetch before ${fmt(L)}` : `You were on these before, not at the ${fmt(L)} fetch`}</div>
       <ul class="ld-list">${list.map(r => `<li><span class="ld-asin">${kfEsc(r.asin)}</span><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(r.asin)}" target="_blank" rel="noopener">Open on Amazon ↗</a><span class="ld-when">Keepa last saw you ${fmt(r.last_seen)}</span></li>`).join('')}</ul></div>` : ''}`;
 }
 window.renderMyShelf = renderMyShelf;
@@ -8566,9 +8600,9 @@ async function applyKeepaFetch(fetched){
   if (mine && mine.length && window._myShelfApply) {
     const mr = await window._myShelfApply(today, mine);
     if (mr.ok && mr.skipped) kfLog(`Your storefront: Keepa sent ${mr.now} products against ${mr.was} last time — left as it was.`, 'warn');
-    else if (mr.ok) kfLog(mr.firstTime
-        ? `Your storefront: ${mr.listed.toLocaleString()} products saved for the first time.`
-        : `Your storefront: ${mr.listed.toLocaleString()} products · ${mr.added} new · ${mr.left} left`, 'ok');
+    else if (mr.ok) kfLog(mr.firstTime || mr.baseline
+        ? `Your storefront: on ${mr.onNow ? mr.onNow.toLocaleString() : mr.listed.toLocaleString()} products now — saved. New and left start from the next fetch.`
+        : `Your storefront: on ${mr.onNow.toLocaleString()} products now · ▲ ${mr.added} on · ▼ ${mr.left} off`, 'ok');
     else kfLog(`Your storefront not saved: ${mr.error}. Your readings are saved.`, 'warn');
   }
 
