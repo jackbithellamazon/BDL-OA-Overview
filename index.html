@@ -296,6 +296,76 @@ window._shelfLoadRecent = async function(sinceDate){
 
 // How many DIFFERENT products are on rivals' shelves right now. Summing shelf sizes counts a
 // product five times if five rivals sell it; this counts it once.
+// ── Your own storefront ────────────────────────────────────────────────────────────────
+// One row per product, never deleted. last_seen is KEEPA'S OWN last-seen date for you on that
+// product (not the fetch date), so a line you sold out of keeps the day you actually stopped —
+// that is where the Sourcing audit's 45 days start. listed_on = the latest fetch that still had it.
+window._myShelfLoad = async function(){
+  try {
+    if (!supabase) return null;
+    const rows = await _shelfSelectAll(() => supabase.from('bdl_my_shelf')
+      .select('asin,first_seen,last_seen,listed_on').order('asin'));
+    window._hasMyShelf = true;
+    return rows;
+  } catch(e) {
+    window._hasMyShelf = false;
+    console.warn('bdl_my_shelf unavailable — run the SQL to start saving your storefront.', e.message || e);
+    return null;
+  }
+};
+
+// `mine` = [{asin, seen:'YYYY-MM-DD'|null}] straight from the fetch's own storefront call.
+window._myShelfApply = async function(today, mine){
+  const res = { ok:false, listed:0, added:0, left:0, skipped:false };
+  try {
+    if (!supabase) { res.error = 'not connected'; return res; }
+    if (window._hasMyShelf === false) { res.error = 'your storefront table is not set up yet'; return res; }
+    const rows = await _shelfSelectAll(() => supabase.from('bdl_my_shelf')
+      .select('asin,first_seen,last_seen,listed_on').order('asin'));
+    const by = new Map(rows.map(r => [r.asin, r]));
+    const cur = new Map();
+    (mine || []).forEach(x => {
+      const a = String(x && x.asin || '').trim().toUpperCase();
+      if (!/^[A-Z0-9]{10}$/.test(a)) return;
+      let d = x.seen && /^\d{4}-\d{2}-\d{2}$/.test(x.seen) ? x.seen : today;
+      if (d > today) d = today;
+      if (!cur.has(a) || d > cur.get(a)) cur.set(a, d);
+    });
+    if (!cur.size) { res.error = 'Keepa sent back no list for you'; return res; }
+
+    // One bad Keepa reply must not look like you dropped half your catalogue.
+    const cut7 = _shiftDate(today, -7);
+    const recent = {};
+    rows.forEach(r => { if (r.listed_on && r.listed_on >= cut7 && r.listed_on < today) recent[r.listed_on] = (recent[r.listed_on] || 0) + 1; });
+    const was = Math.max(0, ...Object.values(recent));
+    if (was >= 20 && cur.size < was * 0.5) { res.ok = true; res.skipped = true; res.was = was; res.now = cur.size; return res; }
+
+    const prevFetch = Object.keys(recent).sort().pop() || null;
+    const now = new Date().toISOString();
+    const payload = [];
+    cur.forEach((seen, a) => {
+      const prev = by.get(a);
+      if (!prev) res.added++;
+      payload.push({ asin:a, domain:2,
+        first_seen: prev ? prev.first_seen : today,
+        last_seen:  prev && prev.last_seen > seen ? prev.last_seen : seen,   // only ever moves forward
+        listed_on:  today, source:'keepa', updated_at: now });
+    });
+    if (prevFetch) rows.forEach(r => { if (r.listed_on === prevFetch && !cur.has(r.asin)) res.left++; });
+    // Batched — row-by-row writes are what silently lost saves in this app before.
+    for (let i = 0; i < payload.length; i += 500) {
+      const { error } = await supabase.from('bdl_my_shelf').upsert(payload.slice(i, i + 500), { onConflict:'asin' });
+      if (error) throw error;
+    }
+    res.ok = true; res.listed = cur.size; res.firstTime = rows.length === 0;
+    return res;
+  } catch(e) {
+    console.error('Your storefront save failed:', e);
+    res.error = e.message || String(e);
+    return res;
+  }
+};
+
 window._shelfUniqueOpen = async function(){
   try {
     if (!supabase || !window._shelfRowCount) return null;
@@ -1700,6 +1770,21 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .ci-mv-bar{height:5px;border-radius:99px;background:var(--s3);overflow:hidden;margin-top:5px}
 .ci-mv-bar i{display:block;height:100%;border-radius:99px}
 .ci-mover .ld-chg{font-size:12.5px;padding:3px 9px}
+.ms-strip{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 16px;margin-bottom:14px;border:1px solid rgba(61,158,255,.35);border-radius:12px;
+  background:linear-gradient(90deg,rgba(61,158,255,.10),var(--s1) 60%);font-family:var(--mono)}
+.ms-strip.muted{border-color:var(--border);background:var(--s1)}
+.ms-who b{display:block;color:var(--text);font-size:13.5px;font-weight:700}
+.ms-who span{display:block;color:var(--muted2);font-size:12px}
+.ms-who{min-width:150px}
+.ms-big{font-size:24px;font-weight:800;color:var(--b);letter-spacing:-.5px;display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums}
+.ms-big small{font-size:12.5px;font-weight:600;color:var(--muted2);letter-spacing:0}
+.ms-chips{display:flex;gap:8px;margin-left:auto}
+.ms-chip{font-family:var(--mono);font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:9px;border:1px solid transparent;cursor:pointer}
+.ms-chip.up{color:var(--g);background:var(--g2)} .ms-chip.down{color:var(--r);background:var(--r2)}
+.ms-chip.on{border-color:currentColor}
+.ms-chip.none{opacity:.45;cursor:default}
+.ms-list{margin:-6px 0 14px;padding:10px 16px 12px;border:1px solid var(--border);border-top:0;border-radius:0 0 12px 12px;background:var(--s1);font-family:var(--mono)}
+.ms-list-hd{font-size:12.5px;color:var(--muted2);font-weight:600}
 .ld-steps{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 16px;margin-bottom:14px;border:1px solid var(--border);border-radius:12px;background:var(--s1);font-family:var(--mono)}
 .ld-steps-l{display:flex;flex-direction:column;gap:1px;font-size:12.5px;color:var(--muted2)}
 .ld-steps-l b{color:var(--text);font-weight:700}
@@ -2115,6 +2200,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       </div>
     </div>
     <div id="sourcingScore"></div>
+    <div id="myShelf"></div>
     <div class="insight-box" id="compInsightBox" style="padding:0">
       <div id="compInsightInner" style="padding:20px">
         <div class="insight-hd"><span class="insight-badge">✦ Competitor Analysis</span></div>
@@ -7384,7 +7470,9 @@ function toggleUntracked(){ COMP_SHOW_UNTRACKED = !COMP_SHOW_UNTRACKED; renderCo
 // same 20% as 20 of 100, but it is one lead fewer, and that is the one that counts.
 let SHELF_NEW = {};            // sellerId -> [{asin, first_seen}] newest first: lines they added, still listed
 let SHELF_LOADED = false;
-let SHELF_UNIQUE_TOTAL = null;   // different products across all rivals' shelves (needs saved shelves)
+let SHELF_UNIQUE_TOTAL = null;
+let MY_SHELF = null;              // your own storefront rows (bdl_my_shelf)
+let MY_SHELF_OPEN = null;         // 'new' | 'left' | null — which list is expanded   // different products across all rivals' shelves (needs saved shelves)
 let LD_OPEN = null;            // sellerId of the row opened underneath
 const LD_LEAD_DAYS = 21;       // how far back the "new leads" list looks
 const _ldDay = d => Date.parse(d + 'T00:00:00Z');
@@ -7398,6 +7486,7 @@ async function loadShelfLeads(){
   Object.values(map).forEach(a => a.sort((x,y) => y.first_seen.localeCompare(x.first_seen)));
   SHELF_NEW = map;
   SHELF_UNIQUE_TOTAL = window._shelfUniqueOpen ? await window._shelfUniqueOpen() : null;
+  MY_SHELF = window._myShelfLoad ? await window._myShelfLoad() : null;
   SHELF_LOADED = true;
   try { if (document.getElementById('tab-competitors')) renderCompTab(); setKpiCompAvg(); } catch(e) { console.error(e); }
 }
@@ -7473,12 +7562,49 @@ const ldAgo = d => { const n = Math.round((_ldDay(new Date().toLocaleDateString(
 
 // A steady colour per rival so the eye can find them again — same name, same colour, every time.
 const ldHue = s => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
-const ldAvatar = name => {
-  const h = ldHue(name), letters = String(name).replace(/[^A-Za-z0-9 ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
+const ldAvatar = (name, fixed) => {
+  const h = ldHue(name), letters = fixed || String(name).replace(/[^A-Za-z0-9 ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('') || '?';
   return `<span class="ld-av" style="background:hsla(${h},75%,55%,.16);color:hsl(${h},85%,72%);border-color:hsla(${h},75%,60%,.35)">${letters}</span>`;
 };
 // How much of their shelf you're on: amber = barely started, blue = getting there, green = strong.
 const ldBand = pct => pct == null ? 'var(--muted)' : pct >= 20 ? 'var(--g)' : pct >= 12 ? '#2dd4bf' : pct >= 6 ? 'var(--b)' : 'var(--y)';
+
+// Your storefront, on its own strip — never a row in the rival table, where it would read as
+// a rival covering 100% of you and pull every average.
+function renderMyShelf(){
+  const el = document.getElementById('myShelf'); if (!el) return;
+  if (window._hasMyShelf === false) {
+    el.innerHTML = `<div class="ms-strip muted">${ldAvatar('Lavarion','LV')}<div class="ms-who"><b>Your storefront</b><span>Not being saved yet — run the "my storefront" SQL in Supabase, then fetch.</span></div></div>`;
+    return;
+  }
+  const rows = MY_SHELF || [];
+  if (!rows.length) {
+    el.innerHTML = MY_SHELF ? `<div class="ms-strip muted">${ldAvatar('Lavarion','LV')}<div class="ms-who"><b>Your storefront</b><span>Saved from your next Keepa fetch.</span></div></div>` : '';
+    return;
+  }
+  const dates = [...new Set(rows.map(r => r.listed_on))].sort();
+  const L = dates[dates.length-1], P = dates.length > 1 ? dates[dates.length-2] : null;
+  const firstEver = rows.reduce((m, r) => r.first_seen < m ? r.first_seen : m, '9999');
+  const onNow = rows.filter(r => r.listed_on === L);
+  const fresh = L !== firstEver ? onNow.filter(r => r.first_seen === L) : [];
+  const left  = P ? rows.filter(r => r.listed_on === P) : [];
+  const chip = (key, n, cls, label) => n
+    ? `<button class="ms-chip ${cls}${MY_SHELF_OPEN===key?' on':''}" onclick="MY_SHELF_OPEN=MY_SHELF_OPEN==='${key}'?null:'${key}';renderMyShelf()">${label}</button>`
+    : `<span class="ms-chip ${cls} none">${label}</span>`;
+  const list = MY_SHELF_OPEN === 'new' ? fresh : MY_SHELF_OPEN === 'left' ? left : null;
+  el.innerHTML = `<div class="ms-strip">
+      ${ldAvatar('Lavarion','LV')}
+      <div class="ms-who"><b>Your storefront</b><span>Lavarion · saved ${fmt(L)}</span></div>
+      <div class="ms-big">${onNow.length.toLocaleString()}<small>products</small></div>
+      <div class="ms-chips">
+        ${chip('new', fresh.length, 'up', `▲ ${fresh.length} new`)}
+        ${chip('left', left.length, 'down', `▼ ${left.length} left`)}
+      </div>
+    </div>
+    ${list ? `<div class="ms-list"><div class="ms-list-hd">${MY_SHELF_OPEN === 'new' ? `New on your storefront since ${fmt(P)}` : `On your storefront on ${fmt(P)}, not on ${fmt(L)}`}</div>
+      <ul class="ld-list">${list.map(r => `<li><span class="ld-asin">${kfEsc(r.asin)}</span><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(r.asin)}" target="_blank" rel="noopener">Open on Amazon ↗</a><span class="ld-when">Keepa last saw you ${fmt(r.last_seen)}</span></li>`).join('')}</ul></div>` : ''}`;
+}
+window.renderMyShelf = renderMyShelf;
 
 function toggleLeadRow(id){ LD_OPEN = LD_OPEN === id ? null : id; renderCompTab(); }
 window.toggleLeadRow = toggleLeadRow;
@@ -7576,6 +7702,7 @@ function renderCompTab() {
     window._hasShelfTable === false ? 'run the SQL to start' : !window._shelfRowCount ? 'starts after your next fetch' : "added by rivals · you're not on them");
 
   renderSourcingScore();
+  renderMyShelf();
   renderBadges();
 
   // ── Search, filter, sort ──
@@ -8435,6 +8562,16 @@ async function applyKeepaFetch(fetched){
     }
   }
 
+  const mine = window.__keepaMine; window.__keepaMine = null;
+  if (mine && mine.length && window._myShelfApply) {
+    const mr = await window._myShelfApply(today, mine);
+    if (mr.ok && mr.skipped) kfLog(`Your storefront: Keepa sent ${mr.now} products against ${mr.was} last time — left as it was.`, 'warn');
+    else if (mr.ok) kfLog(mr.firstTime
+        ? `Your storefront: ${mr.listed.toLocaleString()} products saved for the first time.`
+        : `Your storefront: ${mr.listed.toLocaleString()} products · ${mr.added} new · ${mr.left} left`, 'ok');
+    else kfLog(`Your storefront not saved: ${mr.error}. Your readings are saved.`, 'warn');
+  }
+
   try{
     const data = await window._supabaseLoad();
     if(data){
@@ -8452,6 +8589,7 @@ async function applyKeepaFetch(fetched){
 async function runKeepaFetch(){
   if(KEEPA_RUNNING) return;            // a second run would bill the whole thing again
   KEEPA_RUNNING = true; KEEPA_CANCELLED = false;
+  window.__keepaMine = null;           // never save a list left over from an earlier run
   let handedOff = false;
   const btn=document.getElementById('keepaRunBtn');
   btn.disabled=true; btn.textContent='Fetching…';
@@ -8495,6 +8633,9 @@ async function runKeepaFetch(){
       tokens += mine.tokensConsumed||0;
       const meRec=(mine.sellers||{})[KEEPA_ME];
       const list=meRec?.asinList||[], seen=meRec?.asinListLastSeen||[];
+      // Your own storefront, with Keepa's last-seen date per product. Saved after the readings.
+      window.__keepaMine = list.map((a,i) => ({ asin:a,
+        seen: seen[i]!=null ? new Date(keepaToMs(seen[i])).toISOString().slice(0,10) : null }));
       const cut = Date.now() - KEEPA_FRESH_DAYS*86400000;
       const fresh = new Set();
       list.forEach((a,i)=>{ if(seen[i]!=null && keepaToMs(seen[i])>=cut) fresh.add(a); });
