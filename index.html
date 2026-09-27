@@ -406,11 +406,81 @@ window._shelfUniqueOpen = async function(){
   } catch(e) { console.warn('Could not count unique rival products:', e.message || e); return null; }
 };
 
+// ── Product details for rivals' NEW lines, so the Sourcing audit shows them ready ─────────
+// Only the lines a rival added today. Skips anything src_products already holds (Sourcing owns
+// refreshes). Goes through the Sourcing Worker, which holds the Keepa key. Never takes the token
+// bank below 250 (keeps Suz and Mera's runs alive) and never spends more than 300 in one fetch.
+const SRC_WORKER = 'https://bdl-sourcing.jackbithellbusiness.workers.dev';
+const DETAIL_FLOOR = 250, DETAIL_CAP = 300;
+function _detailRow(p){
+  if (!p || !p.asin) return null;
+  const st = (p.stats && p.stats.current) || [];
+  const pos = v => v != null && v > 0;
+  // Keepa moved pictures from imagesCSV to an `images` list — read both, as Sourcing does.
+  const img = (p.imagesCSV || '').split(',')[0] || ((p.images && p.images[0] && (p.images[0].l || p.images[0].m)) || '');
+  const cents = pos(st[18]) ? st[18] : pos(st[0]) ? st[0] : pos(st[1]) ? st[1] : null;
+  return { asin: p.asin, domain: 2,
+    title: (p.title || '').slice(0, 300), brand: (p.brand || '').slice(0, 80),
+    image: img ? 'https://m.media-amazon.com/images/I/' + img : '',
+    price: cents == null ? null : Math.round(cents) / 100,
+    rank: pos(st[3]) ? st[3] : null,
+    root: (p.categoryTree && p.categoryTree[0] && p.categoryTree[0].name) || '',
+    mo: p.monthlySold || null,
+    fba: pos(st[11]) ? st[11] : null,
+    source: 'keepa', fetched_at: new Date().toISOString() };
+}
+window._detailsForNew = async function(asins){
+  const res = { ok:false, fetched:0, skipped:0, known:0, tokens:0 };
+  try {
+    if (!supabase) { res.error = 'not connected'; return res; }
+    const want = [...new Set((asins || []).filter(a => /^[A-Z0-9]{10}$/.test(a)))];
+    if (!want.length) { res.ok = true; return res; }
+    const have = new Set();
+    for (let i = 0; i < want.length; i += 150) {
+      const { data, error } = await supabase.from('src_products').select('asin').in('asin', want.slice(i, i + 150));
+      if (error) throw error;
+      (data || []).forEach(r => have.add(r.asin));
+    }
+    const need = want.filter(a => !have.has(a));
+    res.known = want.length - need.length;
+    if (!need.length) { res.ok = true; return res; }
+
+    const h = await (await fetch(SRC_WORKER + '/health', { cache:'no-store' })).json();
+    let left = Number(h && h.tokensLeft);
+    if (!Number.isFinite(left)) throw new Error('could not read the Keepa token balance');
+    const take = need.slice(0, Math.min(DETAIL_CAP, Math.max(0, left - DETAIL_FLOOR)));
+    res.skipped = need.length - take.length;
+
+    const rows = [];
+    for (let i = 0; i < take.length; i += 100) {
+      const batch = take.slice(i, i + 100);
+      if (left - batch.length < DETAIL_FLOOR) { res.skipped += take.length - i; break; }
+      const r = await fetch(`${SRC_WORKER}/keepa?path=product&domain=2&stats=30&asin=${batch.join(',')}`, { cache:'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error((j.error && (j.error.message || j.error)) || `Keepa replied ${r.status}`);
+      res.tokens += j.tokensConsumed || 0;
+      if (j.tokensLeft != null) left = j.tokensLeft;
+      (j.products || []).forEach(p => { const row = _detailRow(p); if (row) rows.push(row); });
+    }
+    // One batched write — row-by-row writes are what silently lost saves in this app before.
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from('src_products').upsert(rows.slice(i, i + 500));
+      if (error) throw error;
+    }
+    res.fetched = rows.length; res.ok = true;
+    return res;
+  } catch(e) {
+    console.error('Product details for new lines failed:', e);
+    res.error = e.message || String(e);
+    return res;
+  }
+};
+
 // Record what a fetch saw. `lists` = [{sellerId, asins:[every ASIN on their storefront]}].
 // Only rivals whose storefront actually came back are passed in, so a failed lookup can never
 // mark a whole shelf as gone.
 window._shelfApply = async function(today, lists){
-  const res = { ok:false, rivals:0, added:0, gone:0, back:0, baselined:0, skipped:[] };
+  const res = { ok:false, rivals:0, added:0, gone:0, back:0, baselined:0, skipped:[], newAsins:[] };
   try {
     if (!supabase) { res.error = 'not connected'; return res; }
     if (window._hasShelfTable === false) { res.error = 'the rival shelves table is not set up yet'; return res; }
@@ -443,6 +513,7 @@ window._shelfApply = async function(today, lists){
         // Back within 7 days = it never really left (Keepa's lists blink). Reopen, don't re-add.
         if (s.recent.has(a)) { reopenIds.push(s.recent.get(a)); res.back++; return; }
         inserts.push({ seller_id:sellerId, asin:a, first_seen:today, baseline });
+        if (!baseline) res.newAsins.push(a);
         if (baseline) res.baselined++; else res.added++;
       });
       s.open.forEach((id, a) => { if (!cur.has(a)) { closeIds.push(id); res.gone++; } });
@@ -2266,7 +2337,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
     <div class="cmp-head ld-grid" id="compHead">
       <span></span>
       <span onclick="setCompSort('name')" data-sort="name">Rival</span>
-      <span onclick="setCompSort('on')" data-sort="on" title="How many of their products you also sell">You're on</span>
+      <span onclick="setCompSort('pct')" data-sort="pct" title="Sorted by the share of their products you also sell">You're on</span>
       <span onclick="setCompSort('vslast')" data-sort="vslast" class="ld-r">vs last fetch</span>
       <span onclick="setCompSort('vs2w')" data-sort="vs2w" class="ld-r">vs 2 weeks</span>
       <span onclick="setCompSort('toget')" data-sort="toget" class="ld-r" title="Their products you don't sell yet">Still to get</span>
@@ -7268,7 +7339,7 @@ function compSessionsInRange(){
   return s;
 }
 // Sort and filter state for the competitor list. Both re-render in place.
-let compSort = 'vs2w', compSortDir = 1, compFilter = 'all';
+let compSort = 'pct', compSortDir = 1, compFilter = 'all';   // Jack 26 Sep: highest % you're on at the top
 function setCompSort(k){
   if (compSort === k) compSortDir = -compSortDir; else { compSort = k; compSortDir = 1; }
   renderCompTab();
@@ -7749,11 +7820,12 @@ function renderCompTab() {
   const key = {
     name:   r => r.name.toLowerCase(),
     on:     r => r.st ? r.st.on : -Infinity,
+    pct:    r => r.st && r.st.pct != null ? r.st.pct : -Infinity,
     vslast: r => r.st && r.st.vsLast != null ? r.st.vsLast : -Infinity,
     vs2w:   r => r.st && r.st.vs2w != null ? r.st.vs2w : -Infinity,
     toget:  r => r.st && r.st.toGet != null ? r.st.toGet : -Infinity,
     leads:  r => r.st ? r.st.leads.length : -Infinity
-  }[compSort] || (r => r.st && r.st.vs2w != null ? r.st.vs2w : -Infinity);
+  }[compSort] || (r => r.st && r.st.pct != null ? r.st.pct : -Infinity);
   rows.sort((a, b) => {
     // rivals with no shelf data yet always sit at the bottom
     if (!!a.st !== !!b.st) return a.st ? -1 : 1;
@@ -8591,6 +8663,12 @@ async function applyKeepaFetch(fetched){
         ? `Rival shelves: first look at ${sr.rivals} — ${sr.baselined.toLocaleString()} products recorded. New leads start from the next fetch.`
         : `Rival shelves: ${sr.added} new lines added by rivals · ${sr.gone} gone${sr.back ? ` · ${sr.back} back` : ''}`, 'ok');
       if (sr.skipped.length) kfLog(`${sr.skipped.length} shelf${sr.skipped.length!==1?'s':''} came back short and ${sr.skipped.length!==1?'were':'was'} left as it was.`, 'warn');
+      if (sr.newAsins && sr.newAsins.length && window._detailsForNew) {
+        kfLog(`Loading product details for ${[...new Set(sr.newAsins)].length} new rival lines…`);
+        const dr = await window._detailsForNew(sr.newAsins);
+        if (dr.ok) kfLog(`Product details: fetched ${dr.fetched} (${dr.tokens} tokens) · already had ${dr.known} · skipped for tokens ${dr.skipped}`, dr.skipped ? 'warn' : 'ok');
+        else kfLog(`Product details not saved: ${dr.error}. Everything else is saved — the Sourcing app loads them itself when you open a rival.`, 'warn');
+      }
     } else {
       kfLog(`Rival shelves not saved: ${sr.error}. Your readings are saved.`, 'warn');
     }
