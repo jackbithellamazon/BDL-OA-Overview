@@ -300,7 +300,8 @@ window._shelfLoadRecent = async function(sinceDate){
 // One row per product, never deleted. last_seen is KEEPA'S OWN last-seen date for you on that
 // product (not the fetch date), so a line you sold out of keeps the day you actually stopped —
 // that is where the Sourcing audit's 45 days start. listed_on = the latest fetch that still had it.
-const MY_ON_NOW_DAYS = 2;   // "on it now" = Keepa spotted your offer within this many days of the fetch
+const MY_ON_NOW_DAYS = 4;   // "on it now" = Keepa spotted your offer within this many days of the fetch.
+                            // Same 4 days as KEEPA_FRESH_DAYS, so the storefront strip and the leads count agree.
 
 async function _myShelfHasOnCols(rows){
   if (rows && rows.length) return Object.prototype.hasOwnProperty.call(rows[0], 'on_now');
@@ -404,6 +405,59 @@ window._shelfUniqueOpen = async function(){
     const rows = await _shelfSelectAll(() => supabase.from('bdl_competitor_shelf').select('asin').is('gone_on', null).order('id'));
     return new Set(rows.map(r => r.asin)).size;
   } catch(e) { console.warn('Could not count unique rival products:', e.message || e); return null; }
+};
+
+// ── Each SKU's age band per snapshot ───────────────────────────────────────────────────────
+// bdl_snapshots only keeps totals per age band, so on its own the page cannot tell a SKU that
+// sold out from one that aged into the next band. One row per snapshot date holds every SKU:
+// [sku, asin, band 0-6, £ value, units, oldest received (YYYY-MM-DD), title]. Kept in its own
+// table so the snapshot save and the page's start-up load stay as light as they are.
+window._snapSkusSave = async function(date, rows){
+  try {
+    if (!supabase) return { ok:false };
+    const { error } = await supabase.from('bdl_snapshot_skus').upsert({ date, rows, updated_at: new Date().toISOString() }, { onConflict:'date' });
+    if (error) throw error;
+    window._hasSnapSkus = true;
+    return { ok:true };
+  } catch(e) {
+    window._hasSnapSkus = false;
+    console.warn('SKU detail not saved — run the stock-health SQL in Supabase:', e.message || e);
+    return { ok:false, error: e.message || String(e) };
+  }
+};
+window._snapSkusLoad = async function(limit){
+  try {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('bdl_snapshot_skus').select('date,rows').order('date', { ascending:false }).limit(limit || 2);
+    if (error) throw error;
+    window._hasSnapSkus = true;
+    return data || [];
+  } catch(e) { window._hasSnapSkus = false; return null; }
+};
+
+// Every rival shelf row that was open at any point since `sinceDate`. From this one load the page
+// can rebuild who had what on any recent fetch day, and count today's shelves once per product.
+window._shelfLoadWindow = async function(sinceDate){
+  try {
+    if (!supabase || !window._shelfRowCount) return null;
+    return await _shelfSelectAll(() => supabase.from('bdl_competitor_shelf')
+      .select('seller_id,asin,first_seen,gone_on').or(`gone_on.is.null,gone_on.gt.${sinceDate}`).order('id'));
+  } catch(e) { console.warn('Could not load rival shelves:', e.message || e); return null; }
+};
+
+// Name, picture and price for ASINs already saved in src_products (by this fetch or the Sourcing
+// app). Read only — never costs a Keepa token.
+window._srcDetails = async function(asins){
+  const out = {};
+  try {
+    if (!supabase || !asins.length) return out;
+    for (let i = 0; i < asins.length; i += 150) {
+      const { data, error } = await supabase.from('src_products').select('asin,title,brand,image,price,rank,mo').in('asin', asins.slice(i, i + 150));
+      if (error) throw error;
+      (data || []).forEach(r => { out[r.asin] = r; });
+    }
+  } catch(e) { console.warn('Could not read product details:', e.message || e); }
+  return out;
 };
 
 // ── Product details for rivals' NEW lines, so the Sourcing audit shows them ready ─────────
@@ -608,6 +662,8 @@ window._supabaseDeleteSnapshot = async function(date) {
     if (!supabase) return false;
     const { error } = await supabase.from('bdl_snapshots').delete().eq('date', date);
     if (error) { console.error('Snapshot delete failed:', error.message); return false; }
+    // Its SKU detail goes with it (the database also does this itself where the link exists).
+    try { await supabase.from('bdl_snapshot_skus').delete().eq('date', date); } catch(e) {}
     return true;
   } catch(e) {
     console.error('Supabase snapshot delete error:', e);
@@ -895,6 +951,7 @@ window._startupLoad = async function() {
     PROVIDER_RULES = data.providerRules || [];
     COMPETITOR_ASINS = data.competitorAsins || {};
     loadShelfLeads();   // not awaited — the page must not wait on it
+    if (typeof loadSnapSkus === 'function') loadSnapSkus();   // same — Stock Health redraws when it lands
 
     // One-time seed: if no providers have ever been set up (fresh Supabase project),
     // load the 17 known defaults with their aliases/stems so the importer works out of
@@ -1777,7 +1834,7 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .cmp-chip.on.threat{background:var(--r);border-color:var(--r);color:#fff}
 .cmp-table-wrap{position:relative}
 /* ── Leads table ── numbers in Inter with tabular figures: plain zeros, columns line up */
-.ld-grid{display:grid;grid-template-columns:40px minmax(190px,1.35fr) minmax(210px,1.45fr) .85fr .85fr .75fr .8fr 26px;
+.ld-grid{display:grid;grid-template-columns:40px minmax(190px,1.35fr) minmax(210px,1.45fr) minmax(190px,1.35fr) .75fr .8fr 26px;
   align-items:center;column-gap:14px;min-width:980px}
 .cmp-head.ld-grid{padding:24px 16px 12px;font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:0;text-transform:none}
 .cmp-head.ld-grid > span:nth-child(n+3){text-align:left}
@@ -1787,6 +1844,105 @@ header{grid-column:2;background:var(--s1);border-bottom:1px solid var(--border);
 .ld-row.dir-up{box-shadow:inset 3px 0 0 var(--g)}
 .ld-row.dir-down{box-shadow:inset 3px 0 0 var(--r)}
 .ld-row.dir-same{box-shadow:inset 3px 0 0 var(--border2)}
+.ld-row.dir-mixed{box-shadow:inset 3px 0 0 var(--o)}
+.ld-chg.mixed{color:var(--o);background:var(--o2)}
+.ld-why{margin-top:4px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.ld-why.mixed{color:var(--o)}
+.ld-vcs{display:flex;flex-wrap:wrap;justify-content:center;gap:0 10px}
+#stockHealthContainer [style*="font-size:9px"]{font-size:11px!important}
+#stockHealthContainer [style*="font-size:10px"]{font-size:11.5px!important}
+#stockHealthContainer [style*="font-size:11px"]{font-size:12px!important}
+#stockHealthContainer [style*="font-size:10.5px"]{font-size:12px!important}
+.sh-btn{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:7px;border:1px solid rgba(0,245,160,.4);background:var(--g2);color:var(--g);cursor:pointer;white-space:nowrap}
+.sh-btn:hover{background:rgba(0,245,160,.2)}
+.sh-spark{display:block;width:100%;height:38px;margin-top:10px}
+.sh-legend{display:flex;gap:14px;align-items:center;font-size:11.5px;color:var(--muted2)}
+.sh-legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
+.shp-card{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px;font-family:var(--mono);overflow-x:auto}
+.shp-card > *{min-width:920px}
+.shp-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.shp-title{font-size:13px;font-weight:700;color:var(--text);letter-spacing:.02em}
+.shp-sub{font-size:12px;color:var(--muted2);margin-top:3px}
+.shp-as{font-size:11.5px;color:var(--muted)}
+.shp-empty{font-size:12.5px;color:var(--muted2);padding:6px 0 2px}
+.shp-grid,.shp-row{display:grid;grid-template-columns:minmax(170px,1.3fr) 60px minmax(150px,1.2fr) 90px 72px 92px 100px 86px 18px;gap:12px;align-items:center}
+.shp-colhd{font-size:11px;font-weight:600;color:var(--muted2);padding:0 12px 8px;border-bottom:1px solid var(--border)}
+.shp-colhd span:nth-child(n+4),.shp-colhd span:nth-child(2){text-align:right}
+.shp-row{padding:11px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;font-size:13px}
+.shp-row:hover{background:var(--s2)}
+.shp-row.open{background:var(--s2)}
+.shp-row.clean{opacity:.75}
+.shp-who{display:flex;align-items:center;gap:10px;min-width:0}
+.shp-who b{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shp-who .ld-av{width:28px;height:28px;border-radius:8px;font-size:11px}
+.shp-num{text-align:right;color:var(--muted2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.shp-num small{color:var(--muted);font-size:11px}
+.shp-num .ld-chg{font-size:12px;padding:3px 8px}
+.shp-share{display:flex;align-items:center;gap:10px}
+.shp-bar{flex:1;height:8px;border-radius:5px;background:var(--s3);overflow:hidden}
+.shp-bar i{display:block;height:100%;border-radius:5px}
+.shp-share b{min-width:38px;text-align:right;font-size:13px}
+.shp-dim{color:var(--muted)}
+.shp-caret{color:var(--muted);text-align:right}
+.shp-total{padding:11px 12px 2px;font-size:12px;font-weight:700;color:var(--text)}
+.shp-total span:nth-child(n+4),.shp-total span:nth-child(2){text-align:right}
+.shp-open{padding:12px 14px 14px 50px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)}
+.shp-open-hd{display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:12.5px;color:var(--text)}
+.shp-open-hd span{color:var(--muted);font-size:11.5px}
+.shp-open-hd .cmp-chip{margin-left:auto}
+.shp-list{max-height:340px;overflow-y:auto}
+.shp-item{display:grid;grid-template-columns:minmax(0,1fr) 78px 70px 66px 86px 74px;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted2)}
+.shp-item > span,.shp-item > b{text-align:right;white-space:nowrap}
+.shp-item > b{color:var(--text)}
+.shp-item-name{min-width:0;display:flex;flex-direction:column}
+.shp-item-name > span{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shp-item-name small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shp-item-name a{color:var(--b);text-decoration:none}
+.shp-band{font-size:10.5px;font-weight:700;padding:3px 7px;border-radius:6px;justify-self:end}
+.shp-band.b90{color:var(--y);background:var(--y2)}
+.shp-band.b180{color:var(--o);background:var(--o2)}
+.sh-lsts{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;margin-bottom:14px}
+.sh-lsts:empty{display:none}
+.sh-lst{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-family:var(--mono)}
+.sh-lst-hd{display:flex;align-items:baseline;gap:10px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+.sh-lst-hd b{font-size:15px;color:var(--text);letter-spacing:0}
+.sh-lst-hd em{font-style:normal;margin-left:auto;color:var(--muted2);letter-spacing:0;text-transform:none}
+.sh-lst-body{max-height:230px;overflow-y:auto}
+.sh-lst-row{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 64px;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted2)}
+.sh-lst-row > span{text-align:right;white-space:nowrap}
+.sh-lst-name{min-width:0;display:flex;flex-direction:column}
+.sh-lst-name > span{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-lst-name small{font-size:10.5px;color:var(--muted)}
+.sh-lst-name a{color:var(--b);text-decoration:none}
+.sh-lst-age{color:var(--muted)}
+.ld-vc{white-space:nowrap}
+.ld-tile-why{margin-top:5px;font-size:11.5px;color:var(--o)}
+.kpi-tile.ct-orange{border-color:#d9772a;box-shadow:0 0 16px rgba(217,119,42,.25)}
+.kpi-tile.ct-orange .kpi-label{color:var(--o)}
+.kpi-tile.ct-grey{border-color:#5a6268}
+.kpi-tile.ct-grey .kpi-label{color:var(--muted2)}
+.kpi-tile.mixed{border:4px solid #d9772a;box-shadow:0 0 16px rgba(217,119,42,.3)}
+.pill.mixed{background:var(--o2);color:var(--o)}
+.ld-list li.ld-li{grid-template-columns:40px minmax(0,1fr) auto auto;gap:12px}
+.ld-img{width:40px;height:40px;border-radius:8px;object-fit:contain;background:#fff;display:block}
+.ld-img.none{background:var(--s3)}
+.ld-li-mid{min-width:0}
+.ld-li-title{font-weight:600;color:var(--text);font-size:13px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ld-li-sub{margin-top:2px;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ld-li-sub .ld-asin{font-size:11.5px;color:var(--muted2)}
+.ld-li-sub .ld-asin.got{color:var(--g)}
+.ld-tag{font-size:10.5px;font-weight:800;letter-spacing:.5px;padding:3px 7px;border-radius:6px}
+.ld-tag.new{color:var(--g);background:var(--g2)}
+.ld-tag.back{color:var(--b);background:var(--b2)}
+/* the page's fade-in leaves a transform on each block, so lift the strip's whole block above the next */
+#sourcingScore{position:relative;z-index:20}
+.ld-step{position:relative;cursor:default}
+.ld-tip{display:none;position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:40;width:270px;padding:11px 13px;border-radius:10px;background:var(--s3);border:1px solid var(--border2);box-shadow:0 10px 28px rgba(0,0,0,.45);text-align:left;font-size:12px;line-height:1.7;color:var(--muted2)}
+.ld-step:hover .ld-tip{display:block}
+.ld-tip b{display:block;margin-bottom:4px;color:var(--text);font-size:12.5px}
+.ld-tip i{display:inline-block;min-width:34px;font-style:normal;font-weight:700;text-align:right;margin-right:8px}
+.ld-tip i.g{color:var(--g)} .ld-tip i.r{color:var(--r)}
+.ld-tip small{display:block;margin-top:5px;color:var(--muted);font-size:11px;line-height:1.45}
 .ld-who{display:flex;align-items:center;gap:12px;min-width:0}
 .ld-av{flex:0 0 auto;width:34px;height:34px;border-radius:10px;border:1px solid;display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.3px}
 .ld-chg.zero{color:var(--muted);font-size:12.5px;font-weight:500;padding:5px 0}
@@ -2325,8 +2481,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
     </div>
     <div class="cmp-filters" style="margin-bottom:12px">
       <button class="cmp-chip on" id="cf-all"      onclick="setCompFilter('all')">All</button>
-      <button class="cmp-chip" id="cf-closing" onclick="setCompFilter('closing')">▲ Up · 2 weeks</button>
-      <button class="cmp-chip" id="cf-backing"   onclick="setCompFilter('backing')">▼ Down · 2 weeks</button>
+      <button class="cmp-chip" id="cf-closing" onclick="setCompFilter('closing')">▲ Better</button>
+      <button class="cmp-chip" id="cf-mixed"   onclick="setCompFilter('mixed')">◆ Mixed</button>
+      <button class="cmp-chip" id="cf-backing"   onclick="setCompFilter('backing')">▼ Worse</button>
       <button class="cmp-chip" id="cf-threat"    onclick="setCompFilter('threat')">Has new leads</button>
       <button class="cmp-chip" id="cfUntracked" style="display:none" onclick="toggleUntracked()" title="Sellers with readings on record that are no longer on your list"></button>
     </div>
@@ -2338,8 +2495,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
       <span></span>
       <span onclick="setCompSort('name')" data-sort="name">Rival</span>
       <span onclick="setCompSort('pct')" data-sort="pct" title="Sorted by the share of their products you also sell">You're on</span>
-      <span onclick="setCompSort('vslast')" data-sort="vslast" class="ld-r">vs last fetch</span>
-      <span onclick="setCompSort('vs2w')" data-sort="vs2w" class="ld-r">vs 2 weeks</span>
+      <span onclick="setCompSort('vs2w')" data-sort="vs2w" class="ld-r" title="Last week's fetches averaged, against the week two weeks before">2-week trend</span>
       <span onclick="setCompSort('toget')" data-sort="toget" class="ld-r" title="Their products you don't sell yet">Still to get</span>
       <span onclick="setCompSort('leads')" data-sort="leads" class="ld-r" title="Products they've just added that you don't sell">New leads</span>
       <span></span>
@@ -3168,6 +3324,9 @@ function switchTab(id, el) {
   if (id === 'provider') renderProviderTab();
   if (id === 'settings') renderSettingsTab();
   if (id === 'stockhealth') renderStockHealth();
+  // Stock Health has its own range picker; the header one does nothing there, so hide it.
+  const rp = document.querySelector('.range-presets'); if (rp) rp.style.display = id === 'stockhealth' ? 'none' : '';
+  if (id === 'stockhealth') { const dw = document.getElementById('dateRangeWrap'); if (dw) dw.style.display = 'none'; }
   updateLastUpdated();
 }
 
@@ -3183,6 +3342,7 @@ function switchTabMobile(id) {
   if (id === 'comp-history') renderCompHistory();
   if (id === 'history') renderHistory();
   if (id === 'provider') renderProviderTab();
+  if (id === 'stockhealth') renderStockHealth();
 }
 
 function setDatePreset(p, e) {
@@ -3813,6 +3973,7 @@ function renderKpis(snaps) {
   setDualTileColor('kRepWinPct', parseFloat(repWinPct), prevWinForTile, 10);
   setDualTileColor('kRepMatchPct', parseFloat(repMatchPct), prevMatchForTile, 10);
   setDualTileColor('kAgedRisk', fresh90pctKpi, prevFresh90pctKpi, 80);
+  shOverviewTile();   // pill + border = the same 2-week verdict as the Stock Health page
   
   // Update popouts with rich click popup content
   updatePopouts(filteredSnaps());
@@ -3887,10 +4048,12 @@ function shSaveSettings(){
 function shSyncSettingsInputs(){ const gi=document.getElementById('shGoalInput'),fi=document.getElementById('shFloorInput'); if(gi) gi.value=SH_GOAL; if(fi) fi.value=SH_FLOOR; }
 
 // Colours
-const GOOD='#22c55e', BAD='#ef4444', AMBER='#ca8a04', NEUT='#a7b4c4', TXT='#dce6f0';
-const ZDOT={healthy:'#22c55e',caution:'#ca8a04',danger:'#ea580c',critical:'#991b1b'};
-const ZTINT={healthy:'rgba(34,197,94,.13)',caution:'rgba(202,138,4,.14)',danger:'rgba(234,88,12,.14)',critical:'rgba(153,27,27,.18)'};
-const ZBAR={healthy:'rgba(34,197,94,.52)',caution:'rgba(202,138,4,.58)',danger:'rgba(234,88,12,.62)',critical:'rgba(153,27,27,.78)'};
+// The app's own colours (same as the Competitors tab): green on track, yellow missed 90,
+// orange past 180, red past a year. One meaning per colour across the whole page.
+const GOOD='#00f5a0', BAD='#ff4d6d', AMBER='#ffd166', ORANGE='#ff8c42', NEUT='#a7b4c4', TXT='#dce6f0';
+const ZDOT={healthy:'#00f5a0',caution:'#ffd166',danger:'#ff8c42',critical:'#ff4d6d'};
+const ZTINT={healthy:'rgba(0,245,160,.08)',caution:'rgba(255,209,102,.09)',danger:'rgba(255,140,66,.10)',critical:'rgba(255,77,109,.12)'};
+const ZBAR={healthy:'rgba(0,245,160,.42)',caution:'rgba(255,209,102,.48)',danger:'rgba(255,140,66,.55)',critical:'rgba(255,77,109,.62)'};
 
 let shFrom=null, shTo=null, shInit=false;
 
@@ -3923,6 +4086,201 @@ function shFlowLastWeek(snaps){
   const ref=c.length?c[c.length-1]:snaps[0]; return ref===latest?null:shFlowPct(ref);
 }
 
+// ── Each SKU's band per snapshot (bdl_snapshot_skus) — exact movement instead of guesses ──
+let SNAP_SKUS = {};   // date -> [[sku, asin, band 0-6, £, units, oldest received, title], …]
+async function loadSnapSkus(){
+  if (!window._snapSkusLoad) return;
+  const rows = await window._snapSkusLoad(2);
+  if (rows) rows.forEach(r => { SNAP_SKUS[r.date] = r.rows || []; });
+  if (document.getElementById('tab-stockhealth')?.classList.contains('active')) renderStockHealth();
+}
+// What happened to every SKU between two snapshots. Null unless both have their SKU detail —
+// totals per band alone cannot tell "sold out" from "aged into the next band".
+function shExactMoves(prevDate, curDate){
+  const P = SNAP_SKUS[prevDate], L = SNAP_SKUS[curDate];
+  if (!P || !L) return null;
+  const mp = new Map(P.map(r => [r[0], r])), ml = new Map(L.map(r => [r[0], r]));
+  const band = AG_BUCKETS.map(() => ({ newIn:0, inYounger:0, inOlder:0, outOlder:0, outYounger:0, gone:0 }));
+  const o = { newIn:[], gone:[], agedOn:0, younger:0, past90:[], past180:[], band };
+  ml.forEach((r, sku) => {
+    const p = mp.get(sku), b = r[2];
+    if (!p) { band[b].newIn++; o.newIn.push(r); return; }
+    const pb = p[2];
+    if (b > pb) { band[b].inYounger++; band[pb].outOlder++; o.agedOn++; if (pb <= 2 && b >= 3) o.past90.push(r); if (pb <= 3 && b >= 4) o.past180.push(r); }
+    else if (b < pb) { band[b].inOlder++; band[pb].outYounger++; o.younger++; }   // its oldest units sold, newer ones left
+  });
+  mp.forEach((p, sku) => { if (!ml.has(sku)) { band[p[2]].gone++; o.gone.push(p); } });
+  return o;
+}
+// From the oldest-received date: what goes past 90 / 180 days in the next 14 days.
+function shUpcoming(date){
+  const rows = SNAP_SKUS[date]; if (!rows) return null;
+  const t = Date.parse(date + 'T00:00:00Z');
+  const age = r => r[5] ? Math.round((t - Date.parse(r[5] + 'T00:00:00Z')) / 864e5) : null;
+  const within = (r, lo, hi) => { const a = age(r); return a != null && a >= lo && a <= hi; };
+  return { age, soon90: rows.filter(r => r[2] <= 2 && within(r, 76, 90)), soon180: rows.filter(r => r[2] === 3 && within(r, 166, 180)) };
+}
+
+// ── Getting healthier or worse? ────────────────────────────────────────────────────────────
+// Same rule as the leads on the Competitors tab: the snapshots in the last 7 days averaged,
+// against the week that ended 14 days earlier — one delivery landing (5 Oct: +30 fresh SKUs)
+// must not swing the answer. Three signals:
+//   share under 90 days by SKUs (up = good) · by £ (up = good) · SKUs past 90 days (down = good)
+// All agree = better / worse. They disagree = mixed, said in words.
+function shVerdict(){
+  const all = shAllSnaps().filter(s => shBucketTotal(s) > 0);
+  if (all.length < 2 || typeof ldWindows !== 'function') return null;
+  const w = ldWindows(all.map(s => s.date));
+  if (!w || !w.then) return null;
+  const pick = ds => ds.map(d => all.find(s => s.date === d));
+  const N = pick(w.now), T = pick(w.then);
+  const avg = (list, f) => { const v = list.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const skuPct = s => shZones(s).healthy / shBucketTotal(s) * 100;
+  const valPct = s => { if (!shHasValuation(s)) return null; const v = shZoneValues(s), t = v.healthy + v.caution + v.action; return t ? v.healthy / t * 100 : null; };
+  const p90 = s => { const z = shZones(s); return z.caution + z.action; };
+  const p90v = s => { if (!shHasValuation(s)) return null; const v = shZoneValues(s); return v.caution + v.action; };
+  const m = f => ({ then: avg(T, f), now: avg(N, f) });
+  const V = { sku: m(skuPct), val: m(valPct), p90: m(p90), p90v: m(p90v), nowDates: w.now, thenDates: w.then };
+  const r1 = x => Math.round(x * 10) / 10;
+  const a = Math.sign(r1(V.sku.now) - r1(V.sku.then));
+  const b = V.val.then != null && V.val.now != null ? Math.sign(r1(V.val.now) - r1(V.val.then)) : 0;
+  const n90 = Math.round(V.p90.now) - Math.round(V.p90.then), c = -Math.sign(n90);
+  const pos = [a, b, c].some(x => x > 0), neg = [a, b, c].some(x => x < 0);
+  V.v = !pos && !neg ? 'same' : pos && !neg ? 'better' : neg && !pos ? 'worse' : 'mixed';
+  V.n90 = n90;
+  V.why = V.v !== 'mixed' ? ''
+    : c >= 0 && (a < 0 || b < 0) ? (c > 0 ? `the % dipped from fewer fresh SKUs — and ${Math.abs(n90)} fewer are past 90 days` : 'the % dipped from fewer fresh SKUs — nothing more went past 90 days')
+    : c < 0 && (a > 0 || b > 0) ? `new stock lifted the %, but ${Math.abs(n90)} more SKUs went past 90 days`
+    : a > 0 ? 'more of your SKUs are fresh, but less of your money is'
+    : 'fewer of your SKUs are fresh, but more of your money is';
+  return V;
+}
+function shVerdictTitle(V){
+  if (!V) return 'Needs two weeks of entries';
+  const f = d => fmtShort(d), span = l => l.length > 1 ? `${f(l[0])}–${f(l[l.length-1])}` : f(l[0]);
+  return `Average of entries ${span(V.nowDates)} vs ${span(V.thenDates)} · under 90 days ${V.sku.then.toFixed(1)}% → ${V.sku.now.toFixed(1)}% of SKUs`
+    + (V.val.then != null ? `, ${V.val.then.toFixed(1)}% → ${V.val.now.toFixed(1)}% of £` : '')
+    + ` · past 90 days ${Math.round(V.p90.then)} → ${Math.round(V.p90.now)} SKUs`;
+}
+const SH_VMAP = { better:['▲','GETTING HEALTHIER',GOOD], worse:['▼','GETTING WORSE',BAD], mixed:['◆','MIXED','#ff8c42'], same:['→','HOLDING STEADY',NEUT] };
+// The Overview tile: same verdict, same words.
+function shOverviewTile(){
+  const pill = document.getElementById('kAgedRiskPill'), tile = document.getElementById('kAgedRisk')?.closest('.kpi-tile');
+  const V = shVerdict(); if (!pill || !tile || !V) return;
+  const d = +(V.sku.now - V.sku.then).toFixed(1);
+  pill.innerHTML = `<span class="pill ${{better:'up',worse:'down',mixed:'mixed',same:'flat'}[V.v]}" title="${kfEsc(shVerdictTitle(V))}">${d > 0 ? '▲ +' : d < 0 ? '▼ −' : '→ '}${Math.abs(d)}pp vs 2 weeks</span>`;
+  tile.classList.remove('better','worse','same','mixed');
+  tile.classList.add(V.v);
+}
+function shOverviewRows(){
+  const latest = shAllSnaps().filter(s => shBucketTotal(s) > 0).pop(); if (!latest) return '';
+  const V = shVerdict(), z = shZones(latest), t = shBucketTotal(latest);
+  const in180 = (z.healthy + z.caution) / t * 100;
+  const row = (l, v, col, tip) => `<span class="kpi-cmp-row" title="${tip}"><span class="kpi-cmp-l">${l}</span><span class="kpi-cmp-v" style="color:${col}">${v}</span></span>`;
+  const n = V ? V.n90 : null;
+  return `<span class="kpi-cmp">`
+    + (V ? row('past 90 days', `${n > 0 ? '↑ +' : n < 0 ? '↓ −' : '→ '}${Math.abs(n)} SKUs`, n > 0 ? '#ff8c42' : n < 0 ? '#00f5a0' : 'var(--muted2)', 'SKUs past 90 days — last week averaged vs two weeks before') : '')
+    + row('within 180 days', in180.toFixed(1) + '%', in180 >= 99.5 ? '#00f5a0' : '#ff8c42', 'Your limit: everything sold within 180 days')
+    + (V && V.v === 'mixed' ? `<span style="font-size:10.5px;line-height:1.35;color:#ff8c42;margin-top:2px">${V.why}</span>` : '')
+    + `</span>`;
+}
+// A list of SKUs: name, SKU · ASIN, units, £, age.
+function shSkuList(title, rows, col, ageOf){
+  if (!rows || !rows.length) return '';
+  const list = rows.slice().sort((a, b) => (b[3] || 0) - (a[3] || 0));
+  const tot = list.reduce((t, r) => t + (r[3] || 0), 0);
+  return `<div class="sh-lst"><div class="sh-lst-hd"><span style="color:${col}">${title}</span><b>${list.length}</b><em>${fmtGBP(tot)}</em></div>
+    <div class="sh-lst-body">${list.map(r => { const a = ageOf ? ageOf(r) : null; return `<div class="sh-lst-row">
+      <div class="sh-lst-name"><span title="${kfEsc(r[6] || r[0])}">${kfEsc(r[6] || r[0])}</span><small>${kfEsc(r[0])}${r[1] ? ` · <a href="https://www.amazon.co.uk/dp/${encodeURIComponent(r[1])}" target="_blank" rel="noopener">${kfEsc(r[1])}</a>` : ''}</small></div>
+      <span>${(r[4] || 0).toLocaleString()} unit${r[4] === 1 ? '' : 's'}</span><span>${fmtGBP(r[3])}</span><span class="sh-lst-age">${a != null ? a + ' days' : ''}</span></div>`; }).join('')}</div></div>`;
+}
+
+// ── Stock health by provider ───────────────────────────────────────────────────────────────
+// Each SKU's provider comes from its name, by the same rules the inventory import uses (title
+// keywords as the fallback). Sorted by £ past 90 days — where the money is stuck. Open a provider
+// to get its stale SKUs, biggest £ first, with cost per unit, to reprice or clear.
+let SH_PROV_OPEN = null;
+function shProvGroups(rows, lk){
+  const g = new Map();
+  for (const r of rows) {
+    const res = impClassify(r[0], lk);
+    const name = res.provider || impMatchTitle(r[6], lk.titleRules) || 'Not matched';
+    let o = g.get(name);
+    if (!o) g.set(name, o = { name, n:0, p90:0, p180:0, val:0, val90:0, stale:[] });
+    o.n++; o.val += r[3] || 0;
+    if (r[2] >= 3) { o.p90++; o.val90 += r[3] || 0; o.stale.push(r); }
+    if (r[2] >= 4) o.p180++;
+  }
+  return g;
+}
+function shProvToggle(name){
+  SH_PROV_OPEN = SH_PROV_OPEN === name ? null : name;
+  const el = document.getElementById('shProvWrap');
+  if (el) el.outerHTML = shProviderHtml(shFilteredSnaps());
+}
+function shProvCopy(name){
+  const latest = shFilteredSnaps().slice(-1)[0], rows = latest && SNAP_SKUS[latest.date];
+  if (!rows) return;
+  const o = shProvGroups(rows, impBuildLookup()).get(name); if (!o) return;
+  const text = o.stale.slice().sort((a, b) => (b[3]||0) - (a[3]||0)).map(r => r[0]).join('\n');
+  const done = () => { if (typeof showToast === 'function') showToast(`✓ Copied ${o.stale.length} SKU${o.stale.length!==1?'s':''} from ${name}`); };
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => prompt('Copy these SKUs:', text)); else prompt('Copy these SKUs:', text);
+}
+function shProviderHtml(snaps){
+  const latest = snaps[snaps.length-1];
+  const rows = latest && SNAP_SKUS[latest.date];
+  const head = `<div class="shp-hd"><div><div class="shp-title">Stock health by provider</div>
+      <div class="shp-sub">Which sources' buys go stale · sorted by £ past 90 days · open one to see what to reprice or clear</div></div>
+      ${rows ? `<div class="shp-as">from Sarah's ${fmt(latest.date)} file</div>` : ''}</div>`;
+  if (!rows) return `<div id="shProvWrap" class="shp-card">${head}<div class="shp-empty">${window._hasSnapSkus===false
+      ? 'Starts once the stock-health SQL is run in Supabase and Sarah drops in her next ageing file.'
+      : "Starts with Sarah's next ageing file — each SKU is saved from then on."}</div></div>`;
+  const lk = impBuildLookup();
+  const groups = [...shProvGroups(rows, lk).values()].sort((a, b) => b.val90 - a.val90 || b.n - a.n);
+  const prevSnap = snaps.length > 1 ? snaps[snaps.length-2] : null;
+  const prevG = prevSnap && SNAP_SKUS[prevSnap.date] ? shProvGroups(SNAP_SKUS[prevSnap.date], lk) : null;
+  const age = shUpcoming(latest.date).age;
+  const share = o => o.n ? (o.n - o.p90) / o.n * 100 : 0;
+  const shareCol = v => v >= SH_GOAL ? 'var(--g)' : v >= SH_FLOOR ? 'var(--y)' : 'var(--r)';
+  const tot = groups.reduce((t, o) => ({ n:t.n+o.n, p90:t.p90+o.p90, p180:t.p180+o.p180, val:t.val+o.val, val90:t.val90+o.val90 }), { n:0, p90:0, p180:0, val:0, val90:0 });
+  const row = o => {
+    const sh = share(o), open = SH_PROV_OPEN === o.name, p = prevG && prevG.get(o.name);
+    const d = p ? o.p90 - p.p90 : null;
+    const chg = d == null ? '<span class="shp-dim">—</span>' : d === 0 ? '<span class="shp-dim">no change</span>'
+      : `<span class="ld-chg ${d > 0 ? 'down' : 'up'}" title="SKUs past 90 days vs ${fmt(prevSnap.date)}">${d > 0 ? '▲ +' : '▼ −'}${Math.abs(d)}</span>`;
+    const nameArg = o.name.replace(/\\/g,'\\\\').replace(/'/g, "\\'");
+    const list = !open ? '' : !o.stale.length
+      ? `<div class="shp-open"><p class="shp-dim">Nothing from ${kfEsc(o.name)} is past 90 days.</p></div>`
+      : `<div class="shp-open" onclick="event.stopPropagation()">
+          <div class="shp-open-hd"><b>${o.stale.length} SKU${o.stale.length!==1?'s':''} past 90 days · ${fmtGBP(o.val90)}</b><span>biggest £ first</span>
+            <button class="cmp-chip" onclick="shProvCopy('${nameArg}')">Copy SKUs</button></div>
+          <div class="shp-list">${o.stale.slice().sort((a, b) => (b[3]||0) - (a[3]||0)).map(r => { const a = age(r), u = r[4] || 0;
+            return `<div class="shp-item">
+              <div class="shp-item-name"><span title="${kfEsc(r[6] || r[0])}">${kfEsc(r[6] || r[0])}</span><small>${kfEsc(r[0])}${r[1] ? ` · <a href="https://www.amazon.co.uk/dp/${encodeURIComponent(r[1])}" target="_blank" rel="noopener">${kfEsc(r[1])} ↗</a>` : ''}</small></div>
+              <span class="shp-band ${r[2] >= 4 ? 'b180' : 'b90'}">${AG_BUCKETS[r[2]].label}</span>
+              <span>${a != null ? a + ' days' : ''}</span>
+              <span>${u.toLocaleString()} unit${u === 1 ? '' : 's'}</span>
+              <span title="Your cost per unit">${u ? '£' + ((r[3]||0) / u).toFixed(2) + '/unit' : ''}</span>
+              <b>${fmtGBP(r[3])}</b></div>`; }).join('')}</div></div>`;
+    return `<div class="shp-row${open ? ' open' : ''}${o.p90 ? '' : ' clean'}" onclick="shProvToggle('${nameArg}')">
+        <div class="shp-who">${typeof ldAvatar === 'function' ? ldAvatar(o.name) : ''}<b>${kfEsc(o.name)}</b></div>
+        <span class="shp-num">${o.n.toLocaleString()}</span>
+        <div class="shp-share"><div class="shp-bar"><i style="width:${Math.max(2, sh)}%;background:${shareCol(sh)}"></i></div><b style="color:${shareCol(sh)}">${sh.toFixed(0)}%</b></div>
+        <span class="shp-num">${o.p90 ? `<b style="color:var(--y)">${o.p90}</b> <small>${(o.p90 / o.n * 100).toFixed(0)}%</small>` : '<span class="shp-dim">0</span>'}</span>
+        <span class="shp-num">${o.p180 ? `<b style="color:var(--o)">${o.p180}</b>` : '<span class="shp-dim">0</span>'}</span>
+        <span class="shp-num">${fmtGBP(o.val)}</span>
+        <span class="shp-num"><b style="color:${o.val90 ? 'var(--o)' : 'var(--muted)'}">${fmtGBP(o.val90)}</b></span>
+        <span class="shp-num">${chg}</span>
+        <span class="shp-caret">${open ? '⌄' : '›'}</span>
+      </div>${list}`;
+  };
+  return `<div id="shProvWrap" class="shp-card">${head}
+    <div class="shp-grid shp-colhd"><span>Provider</span><span>SKUs</span><span>Under 90 days</span><span>Past 90</span><span>Past 180</span><span>Stock £</span><span>£ past 90</span><span>vs last</span><span></span></div>
+    ${groups.map(row).join('')}
+    <div class="shp-grid shp-total"><span>All providers</span><span>${tot.n.toLocaleString()}</span><span>${tot.n ? ((tot.n - tot.p90) / tot.n * 100).toFixed(0) : 0}% under 90 days</span><span>${tot.p90}</span><span>${tot.p180}</span><span>${fmtGBP(tot.val)}</span><span>${fmtGBP(tot.val90)}</span><span></span><span></span></div>
+  </div>`;
+}
+
 // presets
 function shComputePreset(p){ const s=shAllSnaps(); if(!s.length) return; const maxD=s[s.length-1].date;
   if(p==='all'){ shFrom=s[0].date; shTo=maxD; return; }
@@ -3953,13 +4311,12 @@ function renderStockHealth(){
     shControlsHtml() +
     shHeroHtml(snaps) +
     shZoneSummaryHtml(snaps) +
-    shGraphContainerHtml('shTrendChart') +
-    shZoneGraphsHtml('page', snaps) +
     shWhyContextHtml(snaps) +
+    shProviderHtml(snaps) +
     shPipelineHtml(snaps) +
+    shGraphContainerHtml('shTrendChart', snaps) +
     shRecentTableHtml(snaps);
   shDrawChart(snaps,'shTrendChart','shTrend');
-  setTimeout(()=>shDrawZoneCharts(snaps,'page'),60);
 }
 
 function shControlsHtml(){
@@ -3978,77 +4335,84 @@ function shControlsHtml(){
 
 // Hero: clearing fast enough?  +  healthier or worse?
 function shHeroHtml(snaps){
-  const latest=snaps[snaps.length-1], first=snaps[0];
-  const flowNow=shFlowPct(latest), flowFirst=shFlowPct(first);
-  const vsWindow=+(flowNow-flowFirst).toFixed(1);
-  const lw=shFlowLastWeek(snaps); const vsWeek=lw==null?null:+(flowNow-lw).toFixed(1);
-  const tr=shTrend(snaps); const perWeek=tr?+tr.perWeek.toFixed(2):null;
+  const latest=snaps[snaps.length-1];
+  const flowNow=shFlowPct(latest);
   const zCol=shZoneColor(flowNow);
   const clearWord=flowNow>=SH_GOAL?'Yes':flowNow>=SH_FLOOR?'Almost':'No';
   const clearSub=flowNow>=SH_GOAL?`At or above the ${SH_GOAL}% goal.`:flowNow>=SH_FLOOR?`Above the ${SH_FLOOR}% floor, under the ${SH_GOAL}% goal.`:`Below the ${SH_FLOOR}% floor — needs attention.`;
-  let word,col,glyph;
-  if(perWeek==null){word='NEED MORE DATA';col=NEUT;glyph='·';}
-  else if(perWeek>0.3){word='GETTING HEALTHIER';col=GOOD;glyph='▲';}
-  else if(perWeek<-0.3){word='GETTING WORSE';col=BAD;glyph='▼';}
-  else {word='HOLDING STEADY';col=NEUT;glyph='→';}
-  const vw=v=>v==null?'—':(v>0?'▲ +':v<0?'▼ ':'→ ')+Math.abs(v)+'pp';
-  const vc=v=>v==null?NEUT:v>0?GOOD:v<0?BAD:NEUT;
   const moneyFmt=v=>'£'+(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
-
-  // Valuation-aware additions — only shown when ageing valuation data exists
+  const z=shZones(latest), tot=shBucketTotal(latest)||1;
   const hasVal = shHasValuation(latest);
   const zv = hasVal ? shZoneValues(latest) : null;
   const totalVal = zv ? zv.healthy+zv.caution+zv.action : 0;
-  const actionVal = zv ? zv.action : 0;
-  const actionValPct = totalVal>0 ? ((actionVal/totalVal)*100).toFixed(1) : '0.0';
+  const valPct = zv && totalVal ? zv.healthy/totalVal*100 : null;
+  const in180 = (z.healthy+z.caution)/tot*100, in180v = zv && totalVal ? (zv.healthy+zv.caution)/totalVal*100 : null;
+  const in180Col = in180>=99.5 ? GOOD : '#ff8c42';
   const prevVal = snaps.length>1 && shHasValuation(snaps[snaps.length-2]) ? (()=>{ const pzv=shZoneValues(snaps[snaps.length-2]); return pzv.healthy+pzv.caution+pzv.action; })() : null;
   const valDiff = prevVal!=null ? totalVal-prevVal : null;
   const valDiffCol = valDiff==null?NEUT:valDiff>0?GOOD:valDiff<0?BAD:NEUT;
   const valDiffStr = valDiff==null?'':(valDiff>0?'▲ +':valDiff<0?'▼ ':'→ ')+moneyFmt(Math.abs(valDiff))+' vs last';
-
-  const valRow = hasVal ? `<div style="display:flex;gap:20px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">
-    <div><div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2)">Total stock value</div>
+  const lab='font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2)';
+  const valRow = hasVal ? `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+    <div><div style="${lab}">Total stock value</div>
       <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:#3d9eff;margin-top:3px">${moneyFmt(totalVal)}</div>
       <div style="font-family:var(--mono);font-size:10px;color:${valDiffCol};margin-top:1px">${valDiffStr}</div></div>
-    <div><div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2)">Tied up in aged stock</div>
-      <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:#ea580c;margin-top:3px">${moneyFmt(actionVal)}</div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:1px">${actionValPct}% of total value · 181d+ bucket</div></div>
+    <div><div style="${lab}">Past 90 days</div>
+      <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${AMBER};margin-top:3px">${moneyFmt(zv.caution+zv.action)}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:1px">${(z.caution+z.action).toLocaleString()} SKUs · missed your 90 days</div></div>
+    <div><div style="${lab}">Past 180 days · your limit</div>
+      <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${ORANGE};margin-top:3px">${moneyFmt(zv.action)}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:1px">${z.action.toLocaleString()} SKUs · ${totalVal?((zv.action/totalVal)*100).toFixed(1):'0.0'}% of value</div></div>
   </div>` : '';
+
+  const V=shVerdict();
+  const [glyph,word,col]=V?SH_VMAP[V.v]:['·','NEED 2 WEEKS OF ENTRIES',NEUT];
+  const mv=(label,a,b,fmtv,goodUp)=>{ if(a==null||b==null) return '';
+    const d=+(b-a).toFixed(1), c=Math.abs(d)<0.05?NEUT:((d>0)===goodUp?GOOD:BAD);
+    return `<div style="display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid var(--border)"><span style="color:var(--muted2)">${label}</span><b style="color:${c};white-space:nowrap">${fmtv(a)} → ${fmtv(b)}</b></div>`; };
+  const pc=v=>v.toFixed(1)+'%';
+  const vBody = V ? `
+      ${V.why?`<div style="font-family:var(--mono);font-size:12.5px;color:#ff8c42;margin-top:8px">${V.why}</div>`:''}
+      <div style="margin-top:14px;font-family:var(--mono);font-size:12px">
+        ${mv('Under 90 days · share of SKUs',V.sku.then,V.sku.now,pc,true)}
+        ${mv('Under 90 days · share of £',V.val.then,V.val.now,pc,true)}
+        ${mv('SKUs past 90 days',V.p90.then,V.p90.now,v=>Math.round(v).toLocaleString(),false)}
+        ${V.p90v.then!=null?mv('£ past 90 days',V.p90v.then,V.p90v.now,v=>moneyFmt(v),false):''}
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:10px">${kfEsc(shVerdictTitle(V).split(' · ')[0])} — averaged, so one delivery can't swing it</div>`
+    : `<div style="font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:12px">Needs an entry from about two weeks ago to compare with.</div>`;
 
   return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
     <div onclick="shOpenFlowDetail()" style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px 22px;cursor:pointer;transition:border-color .15s,background .15s" onmouseover="this.style.borderColor='var(--g)';this.style.background='var(--s2)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--s1)'">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2)">Clearing fast enough?</div>
-        <div style="font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--g);opacity:.8">Click for graph ↗</div>
+        <button class="sh-btn" onclick="event.stopPropagation();shOpenFlowDetail()">View graph ↗</button>
       </div>
       <div style="display:flex;align-items:baseline;gap:14px">
         <div style="font-size:46px;font-weight:700;line-height:1;color:${zCol}">${flowNow}%</div>
         <div><div style="font-size:17px;font-weight:600;color:${zCol}">${clearWord}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);max-width:210px;line-height:1.4">${clearSub}</div></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);max-width:230px;line-height:1.4">${clearSub}</div></div>
       </div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:8px">↑ higher is better — more stock selling within 90 days</div>
+      <div style="font-family:var(--mono);font-size:10.5px;color:var(--muted2);margin-top:8px">Under 90 days old: <b style="color:var(--text)">${flowNow}%</b> of SKUs${valPct!=null?` · <b style="color:var(--text)">${valPct.toFixed(1)}%</b> of £`:''} <span style="color:var(--muted)">— higher is better</span></div>
       <div style="position:relative;height:14px;background:var(--s3);border-radius:7px;margin-top:10px">
         <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(flowNow,100)}%;background:${zCol};border-radius:7px;transition:width .4s"></div>
         <div style="position:absolute;left:${SH_FLOOR}%;top:-5px;bottom:-5px;width:2px;background:${AMBER}"></div>
         <div style="position:absolute;left:${SH_GOAL}%;top:-5px;bottom:-5px;width:2px;background:${GOOD}"></div>
       </div>
       <div style="position:relative;height:14px;margin-top:3px;font-family:var(--mono);font-size:10px">
-        <span style="position:absolute;left:${SH_FLOOR}%;transform:translateX(-50%);color:${AMBER}">${SH_FLOOR}%</span>
-        <span style="position:absolute;left:${SH_GOAL}%;transform:translateX(-50%);color:${GOOD}">${SH_GOAL}%</span>
+        <span style="position:absolute;left:${SH_FLOOR}%;transform:translateX(calc(-100% - 4px));color:${AMBER};white-space:nowrap">floor ${SH_FLOOR}%</span>
+        <span style="position:absolute;left:${SH_GOAL}%;transform:translateX(4px);color:${GOOD};white-space:nowrap">goal ${SH_GOAL}%</span>
       </div>
+      <div style="font-family:var(--mono);font-size:10.5px;color:var(--muted2);margin-top:8px">Within 180 days (your limit): <b style="color:${in180Col}">${in180.toFixed(1)}%</b> of SKUs${in180v!=null?` · <b style="color:${in180Col}">${in180v.toFixed(1)}%</b> of £`:''} <span style="color:var(--muted)">— goal 100%</span></div>
       ${valRow}
     </div>
-    <div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px 22px">
-      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:8px">Getting healthier or worse?</div>
+    <div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px 22px" title="${kfEsc(shVerdictTitle(V))}">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:8px">Getting healthier or worse? · 2 weeks</div>
       <div style="display:flex;align-items:center;gap:12px">
         <div style="font-size:30px;line-height:1;color:${col}">${glyph}</div>
         <div style="font-size:25px;font-weight:700;line-height:1.05;color:${col}">${word}</div>
       </div>
-      <div style="display:flex;gap:24px;margin-top:18px;font-family:var(--mono);font-size:11px">
-        <div><span style="color:var(--muted2)">trend</span><br><span style="color:${col};font-weight:700;font-size:14px">${perWeek==null?'—':(perWeek>0?'+':'')+perWeek+'pp/wk'}</span></div>
-        <div><span style="color:var(--muted2)">vs last week</span><br><span style="color:${vc(vsWeek)};font-weight:700;font-size:14px">${vw(vsWeek)}</span></div>
-        <div><span style="color:var(--muted2)">vs window start</span><br><span style="color:${vc(vsWindow)};font-weight:700;font-size:14px">${vw(vsWindow)}</span></div>
-      </div>
+      ${vBody}
     </div></div>`;
 }
 
@@ -4196,7 +4560,7 @@ const _shZoneGetters={
   caution:s=>{const a=s.ageing||{};return a.a91||0;},
   action:s=>{const a=s.ageing||{};return (a.a181||0)+(a.a271||0)+(a.a365||0);}
 };
-const _shZoneCols={healthy:GOOD,caution:AMBER,action:'#ea580c'};
+const _shZoneCols={healthy:GOOD,caution:AMBER,action:ORANGE};
 const _shZoneLabels={healthy:'Healthy 0–90d',caution:'Caution 91–180d',action:'Action 181d+'};
 let _shZoneMetric='skus'; // 'skus' | 'asins' | 'pct' | 'value' — what the zone popup chart shows
 // % of total stock in this zone
@@ -4386,6 +4750,18 @@ function shOpenZonePopup(zone){
   modal.style.display='flex';
   shRenderZonePopup();
 }
+// A small trend line for a tile: area + line + last point, scaled to its own range.
+function shSpark(vals, col){
+  if (!vals || vals.length < 2) return '';
+  const W = 300, H = 38, lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+  const pts = vals.map((v, i) => [i / (vals.length - 1) * W, H - 4 - (v - lo) / span * (H - 8)]);
+  const line = pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const last = pts[pts.length - 1];
+  return `<svg class="sh-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <polygon points="0,${H} ${line} ${W},${H}" fill="${col}" fill-opacity=".12"/>
+    <polyline points="${line}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="${col}"/></svg>`;
+}
 function shZoneSummaryHtml(snaps){
   _shZoneSnaps=snaps;
   const latest=snaps[snaps.length-1], prev=snaps.length>1?snaps[snaps.length-2]:null;
@@ -4400,26 +4776,28 @@ function shZoneSummaryHtml(snaps){
     return `<div onclick="shOpenZonePopup('${zone}')" style="background:var(--s1);border:1px solid var(--border);border-top:3px solid ${zoneCol};border-radius:12px;padding:16px 18px;cursor:pointer;transition:transform .15s,border-color .15s" onmouseover="this.style.borderColor='${zoneCol}';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
         <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:${zoneCol}">${name}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">trend ↗</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">open ↗</div>
       </div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-bottom:10px">${sub}</div>
       <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--text);line-height:1">${val}</div>
       <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);margin-top:8px">${((val/total)*100).toFixed(1)}% of stock${valAmt!=null?` · <span style="color:${zoneCol}">${moneyFmt(valAmt)}</span>`:''}</div>
       <div style="font-family:var(--mono);font-size:11px;margin-top:4px">${dHtml||'<span style=\"color:var(--muted2)\">—</span>'}</div>
+      ${shSpark(snaps.map(x=>shZones(x)[zone]), zoneCol)}
     </div>`;
   };
   return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
-    ${card('Healthy','sells within 90 days',z.healthy,GOOD, pz?z.healthy-pz.healthy:null, true,'healthy', zv?zv.healthy:null)}
-    ${card('Caution','91–180 days · early warning',z.caution,AMBER, pz?z.caution-pz.caution:null, false,'caution', zv?zv.caution:null)}
-    ${card('Action','181+ days · clear these',z.action,'#ea580c', pz?z.action-pz.action:null, false,'action', zv?zv.action:null)}
+    ${card('Healthy','under 90 days old · on track',z.healthy,GOOD, pz?z.healthy-pz.healthy:null, true,'healthy', zv?zv.healthy:null)}
+    ${card('Caution','91–180 days · missed 90, inside your 180',z.caution,AMBER, pz?z.caution-pz.caution:null, false,'caution', zv?zv.caution:null)}
+    ${card('Action','181+ days · past your 180-day limit',z.action,ORANGE, pz?z.action-pz.action:null, false,'action', zv?zv.action:null)}
   </div>`;
 }
 
-function shGraphContainerHtml(canvasId){
+function shGraphContainerHtml(canvasId, snaps){
+  const hasVal=(snaps||[]).some(shHasValuation);
   return `<div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text)">0–90d flow over time</div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">hover a dot for that snapshot</div>
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text)">Under 90 days, over time</div>
+      <div class="sh-legend"><span><i style="border-color:${GOOD}"></i>share of SKUs</span>${hasVal?`<span><i style="border-color:#3d9eff;border-top-style:dashed"></i>share of £</span>`:''}<span style="color:var(--muted)">hover a point for that entry</span></div>
     </div>
     <div style="height:240px"><canvas id="${canvasId}"></canvas></div>
   </div>`;
@@ -4438,18 +4816,23 @@ function shToggleCompare(){
 function shPipelineHtml(snaps){
   const latest=snaps[snaps.length-1], prev=snaps.length>1?snaps[snaps.length-2]:null;
   const ag=latest.ageing||{}; const total=shBucketTotal(latest)||1;
-  const flows=prev?shComputeFlows(ag,prev.ageing||{}):null;
+  // Net change per band is exact (two totals). Where it came from is only shown when both entries
+  // carry each SKU — never guessed.
+  const ex=prev?shExactMoves(prev.date, latest.date):null;
+  const flows=prev?AG_BUCKETS.map((b,i)=>{ const x=ex?ex.band[i]:null;
+    return { net:(ag[b.key]||0)-((prev.ageing||{})[b.key]||0), exact:!!x,
+      agedIn:x?x.inYounger:0, younger:x?x.inOlder:0, newArrivals:x?x.newIn:0, agedOut:x?x.outOlder:0, refreshed:x?x.outYounger:0, sold:x?x.gone:0 }; }):null;
 
-  // Ghost: 7th from end of full history = 6 snapshots ago (~2 weeks back)
+  // Ghost: the entry nearest 14 days back (entries are every 2–3 days, so not "6 entries ago")
   const allSnaps=shAllSnaps();
-  const ghostSnap=allSnaps.length>=7?allSnaps[allSnaps.length-7]:allSnaps[0];
+  const ghostSnap=snapDaysBack(allSnaps, 14, 4) || (allSnaps.length>=7?allSnaps[allSnaps.length-7]:allSnaps[0]);
   const ghostAg=ghostSnap?ghostSnap.ageing||{}:{};
   const ghostDate=ghostSnap?fmt(ghostSnap.date):'';
   const showGhost=_shCompare&&ghostSnap&&ghostSnap.date!==latest.date;
 
   const ghostCnts=AG_BUCKETS.map(b=>ghostAg[b.key]||0);
   const maxCnt=Math.max(1,...AG_BUCKETS.map(b=>ag[b.key]||0),...(showGhost?ghostCnts:[0]));
-  const TAIL_COL='#e8a020';
+  const TAIL_COL='#3d9eff';   // blue = moved in — never a zone colour, so it reads on every bar
 
   // Valuation per bucket — only shown when latest snapshot has ageing value data
   const hasVal = shHasValuation(latest);
@@ -4472,7 +4855,7 @@ function shPipelineHtml(snaps){
     const ghostCnt=showGhost?(ghostAg[b.key]||0):0;
     const bucketVal = getBucketVal(b.key);
 
-    const movedIn=f&&idx>0?f.agedIn:0;
+    const movedIn=f&&f.exact?f.agedIn+f.newArrivals+f.younger:0;
     const prevCnt=Math.max(0,cnt-movedIn);
     const mainW=(prevCnt/maxCnt)*100;
     const tailRaw=movedIn>0?(movedIn/maxCnt)*100:0;
@@ -4490,20 +4873,24 @@ function shPipelineHtml(snaps){
       :'<div style="min-width:44px"></div>';
 
     let cap='';
-    if(f){
+    if(f&&f.exact){
       const bits=[];
-      if(idx===0){ if(f.newArrivals>0) bits.push(f.newArrivals+' new in'); if(f.agedOut>0) bits.push(f.agedOut+' aged on'); }
-      else { if(f.agedIn>0) bits.push(f.agedIn+' aged in from '+AG_BUCKETS[idx-1].label); if(f.agedOut>0) bits.push(f.agedOut+' aged on'); if(f.sold>0) bits.push(f.sold+' sold'); }
+      if(f.newArrivals>0) bits.push(f.newArrivals+' came in');
+      if(f.agedIn>0) bits.push(f.agedIn+' aged in');
+      if(f.younger>0) bits.push(f.younger+' got younger (oldest units sold)');
+      if(f.agedOut>0) bits.push(f.agedOut+' aged on');
+      if(f.refreshed>0) bits.push(f.refreshed+' moved younger');
+      if(f.sold>0) bits.push(f.sold+' sold out');
       cap=bits.join(' · ');
     }
-    if(tailW>0) cap+=(cap?' ':'')+'<span style="color:'+TAIL_COL+';font-weight:600">(+'+movedIn+' shown as amber tail)</span>';
+    if(tailW>0) cap+=(cap?' ':'')+'<span style="color:'+TAIL_COL+';font-weight:600">(+'+movedIn+' in blue)</span>';
     if(showGhost&&ghostDelta!==null&&ghostDelta!==0) cap+=(cap?'  ':'')+'<span style="color:'+gdCol+';font-weight:600">vs 2wk ago: '+(ghostDelta>0?'+':'')+ghostDelta+'</span>';
 
     const valBadge = (hasVal && bucketVal>0)
       ? `<div style="font-family:var(--mono);font-size:10px;color:#3d9eff;margin-top:2px">${moneyFmt(bucketVal)}</div>`
       : '';
 
-    rows+=`<div style="display:grid;grid-template-columns:158px 1fr;gap:16px;align-items:center;padding:13px 0;border-bottom:1px solid var(--border)">
+    rows+=`<div style="display:grid;grid-template-columns:158px 1fr;gap:16px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:9px">
         <span style="width:9px;height:9px;border-radius:50%;background:${ZDOT[b.zone]};flex-shrink:0"></span>
         <div>
@@ -4514,7 +4901,7 @@ function shPipelineHtml(snaps){
       </div>
       <div>
         <div style="display:flex;align-items:center;gap:8px">
-          <div style="flex:1;height:32px;background:${ZTINT[b.zone]};border-left:3px solid ${ZDOT[b.zone]};border-radius:0 6px 6px 0;position:relative;overflow:hidden">
+          <div style="flex:1;height:26px;background:${ZTINT[b.zone]};border-left:3px solid ${ZDOT[b.zone]};border-radius:0 6px 6px 0;position:relative;overflow:hidden">
             ${showGhost&&ghostW>0?`<div style="position:absolute;left:0;top:0;height:100%;width:${ghostW}%;background:${ZDOT[b.zone]};opacity:.2;z-index:0"></div>`:''}
             <div style="position:absolute;left:0;top:0;height:100%;width:${adjMain}%;background:${ZBAR[b.zone]};z-index:1"></div>
             ${tailW>0?`<div style="position:absolute;left:${adjMain}%;top:0;height:100%;width:${tailW}%;background:${TAIL_COL};border-left:2px solid rgba(0,0,0,.4);z-index:2">${movedIn>=3?`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:rgba(0,0,0,.75)">+${movedIn}</div>`:''}</div>`:''}
@@ -4537,7 +4924,7 @@ function shPipelineHtml(snaps){
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         ${showGhost?`<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">ghost = ${ghostDate}</span>`:''}
         <button onclick="shToggleCompare()" style="${ts}">${_shCompare?'◉':'○'} vs 2 weeks ago</button>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">bar = stock already here · <span style="color:${TAIL_COL};font-weight:600">■ amber</span> = moved in${showGhost?' · <span style="color:rgba(255,255,255,.45)">| ghost line</span> = 2wk ago':''}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${ex?`bar = stock already here · <span style="color:${TAIL_COL};font-weight:600">■ blue</span> = moved in since ${fmt(prev.date)}`:`change vs ${prev?fmt(prev.date):'last entry'} · where it came from shows once each SKU is saved`}${showGhost?' · <span style="color:rgba(255,255,255,.45)">| ghost line</span> = 2wk ago':''}</div>
       </div>
     </div>
     ${rows}
@@ -4550,17 +4937,18 @@ function shWhyContextHtml(snaps){
   if(snaps.length<2) return '';
   const latest=snaps[snaps.length-1], prev=snaps[snaps.length-2], first=snaps[0];
   const ag=latest.ageing||{};
-  const flows=shComputeFlows(ag, prev.ageing||{});
-  const newIn=flows[0].newArrivals;
-  const agedFwd=flows.slice(0,-1).reduce((s,x)=>s+(x.agedOut||0),0);
-  const sold=flows.slice(1).reduce((s,x)=>s+(x.sold||0),0);
+  // Exact, SKU by SKU — or nothing. The old version guessed these from the band totals and
+  // could not see anything sell from 0–30d (12 Oct: "0 new, 2 sold" while 15 SKUs had gone).
+  const ex=shExactMoves(prev.date, latest.date);
+  const newIn=ex?ex.newIn.length:0;
+  const newHealthy=ex?ex.newIn.filter(r=>r[2]<=2).length:0;
 
   const total=shBucketTotal(latest)||1;
   const flowNow=shFlowPct(latest), flowPrev=shFlowPct(prev), entryD=+(flowNow-flowPrev).toFixed(1);
 
   // What would flow be WITHOUT this entry's new purchases?
   const fresh=(ag.a0||0)+(ag.a31||0)+(ag.a61||0);
-  const denomEx=total-newIn, numEx=fresh-newIn;
+  const denomEx=total-newIn, numEx=fresh-newHealthy;
   const flowExNew = denomEx>0 ? +((numEx/denomEx)*100).toFixed(1) : flowNow;
   const inflation = +(flowNow-flowExNew).toFixed(1);   // pp lifted purely by new buying
 
@@ -4604,18 +4992,18 @@ function shWhyContextHtml(snaps){
     };
 
     const urgencyMsg = actionValNow>5000
-      ? `${moneyFmt(actionValNow)} (${actionValPct}% of total value) is sitting in 181d+ stock. That's real capital you can't reinvest until it moves.`
+      ? `${moneyFmt(actionValNow)} (${actionValPct}% of total value) is past your 180-day limit. That's real capital you can't reinvest until it moves.`
       : actionValNow>0
       ? `${moneyFmt(actionValNow)} in 181d+ stock — relatively small, but worth clearing to free up reinvestment cash.`
       : `No value sitting in 181d+ stock — everything is in healthy or caution buckets.`;
-    const urgencyCol = actionValNow>5000 ? '#ea580c' : actionValNow>0 ? AMBER : GOOD;
+    const urgencyCol = actionValNow>5000 ? ORANGE : actionValNow>0 ? AMBER : GOOD;
 
     valContextHtml = `<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:14px">
       <div style="font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);margin-bottom:12px">Capital movement this entry</div>
       <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px">
         ${valStat('Total value', totalNow, totalDiff, true)}
         ${valStat('Healthy value', healthyValNow, healthyValDiff, true)}
-        ${valStat('Aged 181d+ value', actionValNow, actionValDiff, false)}
+        ${valStat('Past 180 days value', actionValNow, actionValDiff, false)}
       </div>
       <div style="font-family:var(--mono);font-size:12px;color:${urgencyCol};line-height:1.6;padding-top:10px;border-top:1px solid var(--border)">
         ${urgencyMsg}
@@ -4623,18 +5011,35 @@ function shWhyContextHtml(snaps){
     </div>`;
   }
 
+  const sep='<div style="width:1px;background:var(--border)"></div>';
+  const zP=shZones(prev), zN=shZones(latest), tP=shBucketTotal(prev), tN=total;
+  const sgn=v=>v>0?'+'+v:v<0?'\u2212'+Math.abs(v):'0';
+  const up=shUpcoming(latest.date);
+  const statsHtml = ex ? `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+      ${stat('✦', 'came in · new stock', newIn, GOOD)}${sep}
+      ${stat('✓', 'sold out · gone', ex.gone.length, GOOD)}${sep}
+      ${stat('↓', 'aged into an older band', ex.agedOn, AMBER)}${sep}
+      ${stat('⚠', 'went past 90 days', ex.past90.length, ex.past90.length?ORANGE:GOOD)}${sep}
+      ${stat('⛔', 'went past 180 days', ex.past180.length, ex.past180.length?BAD:GOOD)}
+    </div>`
+    : `<div style="font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.7;margin-bottom:14px">
+      Since ${fmt(prev.date)}: <b>${tP} → ${tN}</b> SKUs (${sgn(tN-tP)}) · under 90 days ${zP.healthy} → ${zN.healthy} · 91–180 ${zP.caution} → ${zN.caution} · 181+ ${zP.action} → ${zN.action}
+      <div style="font-size:11px;color:var(--muted2);margin-top:4px">${window._hasSnapSkus===false
+        ? 'Exact movement — what sold out, what aged, what just went past 90 days — needs the stock-health SQL run in Supabase.'
+        : SNAP_SKUS[latest.date] ? 'Exact movement starts at the next upload: this is the first entry with each SKU saved.'
+        : 'Exact movement starts from the next two uploads Sarah makes (each SKU is saved from then on).'}</div></div>`;
+  const listsHtml = (ex || up) ? `<div class="sh-lsts">
+      ${ex ? shSkuList('Just went past 90 days', ex.past90, ORANGE, up && up.age) : ''}
+      ${ex ? shSkuList('Just went past 180 days', ex.past180, BAD, up && up.age) : ''}
+      ${up ? shSkuList('Goes past 90 days in the next 14 days', up.soon90, AMBER, up.age) : ''}
+      ${up ? shSkuList('Goes past 180 days in the next 14 days', up.soon180, ORANGE, up.age) : ''}
+    </div>` : '';
+
   return `<div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px">
-    <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text);margin-bottom:14px">What moved the score this entry</div>
-
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
-      ${stat('✦', 'new SKUs added', newIn, GOOD)}
-      <div style="width:1px;background:var(--border)"></div>
-      ${stat('↓', 'aged into older brackets', agedFwd, AMBER)}
-      <div style="width:1px;background:var(--border)"></div>
-      ${stat('✓', 'sold · left the system', sold, GOOD)}
-    </div>
-
-    <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+    <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text);margin-bottom:14px">What moved since the last entry</div>
+    ${statsHtml}
+    ${listsHtml}
+    ${ex ? `<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px 16px">` : `<div style="display:none">`}
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
         <span style="font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2)">New-buying check</span>
         <span style="font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 10px;border-radius:5px;background:${infCol}22;color:${infCol}">${infVerdict}</span>
@@ -4642,11 +5047,10 @@ function shWhyContextHtml(snaps){
       <div style="font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.7">
         Reported flow is <b style="color:${shZoneColor(flowNow)}">${flowNow}%</b>.
         ${newIn>0
-          ? `Strip out the <b style="color:${GOOD}">${newIn}</b> new SKU${newIn!==1?'s':''} bought this entry and it would be <b style="color:${shZoneColor(flowExNew)}">${flowExNew}%</b> — so roughly <b style="color:${infCol}">${inflation>0?'+':''}${inflation}pp</b> of the score is new inventory landing in 0–30d, not older stock clearing.`
-          : `No new SKUs were added this entry, so the score reflects genuine movement of existing stock.`}
+          ? `Strip out the <b style="color:${GOOD}">${newIn}</b> SKU${newIn!==1?'s':''} that came in this entry and it would be <b style="color:${shZoneColor(flowExNew)}">${flowExNew}%</b> — so roughly <b style="color:${infCol}">${inflation>0?'+':''}${inflation}pp</b> of the score is new inventory landing in 0–30d, not older stock clearing.`
+          : `No new SKUs came in this entry, so the score reflects genuine movement of existing stock.`}
       </div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:8px">Across the window: dead stock 181d+ ${oldF} → ${oldN} ${oldN<oldF?`<span style="color:${GOOD}">(clearing)</span>`:oldN>oldF?`<span style="color:${BAD}">(building up)</span>`:'(flat)'}.</div>
-    </div>
+      </div><div style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:10px">Across the window: past 180 days ${oldF} → ${oldN} ${oldN<oldF?`<span style="color:${GOOD}">(clearing)</span>`:oldN>oldF?`<span style="color:${BAD}">(building up)</span>`:'(flat)'}.</div>
     ${valContextHtml}
   </div>`;
 }
@@ -4685,8 +5089,8 @@ function shZoneGraphsInnerHtml(pageId, metric, toggle){
         <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:${AMBER};margin-bottom:8px">Caution 91–180d</div>
         <div style="height:90px"><canvas id="shZChart_caution_${pageId}"></canvas></div>
       </div>
-      <div style="background:var(--s2);border:1px solid var(--border);border-top:2px solid #ea580c;border-radius:10px;padding:12px 14px">
-        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#ea580c;margin-bottom:8px">Action 181d+</div>
+      <div style="background:var(--s2);border:1px solid var(--border);border-top:2px solid ${ORANGE};border-radius:10px;padding:12px 14px">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:${ORANGE};margin-bottom:8px">Action 181d+</div>
         <div style="height:90px"><canvas id="shZChart_action_${pageId}"></canvas></div>
       </div>
     </div>
@@ -4720,7 +5124,7 @@ function shDrawZoneCharts(snaps, pageId){
   const metric = hasVal ? shZoneMetric : 'skus';
   const labels=snaps.map(s=>fmtShort(s.date));
   const zones=['healthy','caution','action'];
-  const cols={healthy:GOOD, caution:AMBER, action:'#ea580c'};
+  const cols={healthy:GOOD, caution:AMBER, action:ORANGE};
   const skuGetters={
     healthy:s=>{ const a=s.ageing||{}; return (a.a0||0)+(a.a31||0)+(a.a61||0); },
     caution:s=>{ const a=s.ageing||{}; return a.a91||0; },
@@ -4784,23 +5188,23 @@ function shRecentTableHtml(snaps){
       const v=z[key], d=isBaseline?null:zD[key];
       const col=d==null?NEUT:(goodUp?(d>0?GOOD:BAD):(d>0?BAD:GOOD));
       const pct=((v/total)*100).toFixed(0);
-      return `<div style="text-align:center">
-        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)">${v}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${pct}%</div>
-        ${d!=null&&d!==0?`<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${col}">${d>0?'+':''}${d}</div>`:`<div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">—</div>`}
+      return `<div style="text-align:center;font-family:var(--mono);white-space:nowrap">
+        <b style="font-size:14px;color:var(--text)">${v}</b>
+        <span style="font-size:11px;color:var(--muted2);margin-left:6px">${pct}%</span>
+        <span style="font-size:11px;font-weight:700;margin-left:6px;color:${d!=null&&d!==0?col:'var(--muted)'}">${d!=null&&d!==0?(d>0?'+':'')+d:'—'}</span>
       </div>`;
     };
 
-    rows+=`<div style="display:grid;grid-template-columns:80px 70px 80px 1fr 1fr 1fr;gap:12px;align-items:center;padding:11px 14px;border-radius:8px;margin-bottom:4px;background:${isLatest?'rgba(0,245,160,.05)':isBaseline?'rgba(255,255,255,.02)':'transparent'};border-left:3px solid ${accent}">
+    const vz=shHasValuation(s)?shZoneValues(s):null, vt=vz?vz.healthy+vz.caution+vz.action:0;
+    rows+=`<div style="display:grid;grid-template-columns:110px 120px 1fr 1fr 1fr;gap:12px;align-items:center;padding:9px 14px;border-radius:8px;margin-bottom:3px;background:${isLatest?'rgba(0,245,160,.05)':isBaseline?'rgba(255,255,255,.02)':'transparent'};border-left:3px solid ${accent}">
       <div>
         <div style="font-family:var(--mono);font-size:12px;font-weight:${isLatest?700:500};color:${isLatest?'var(--g)':isBaseline?'var(--muted2)':'var(--text)'}">${fmt(s.date)}</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${isLatest?'latest':isBaseline?'baseline':''}</div>
       </div>
       <div>
         <div style="font-family:var(--mono);font-size:17px;font-weight:700;color:${shZoneColor(flow)}">${flow}%</div>
-        ${!isBaseline&&flowDelta!==0?`<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${flowDelta>0?GOOD:BAD}">${flowDelta>0?'+':''}${flowDelta}pp</div>`:`<div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">—</div>`}
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted2)">${!isBaseline&&flowDelta!==0?`<b style="color:${flowDelta>0?GOOD:BAD}">${flowDelta>0?'+':''}${flowDelta}pp</b>`:'—'}${vt?` · £ ${(vz.healthy/vt*100).toFixed(1)}%`:''}</div>
       </div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2);text-align:center">${isBaseline?'vs this':'vs baseline'}</div>
       ${zCell('healthy',true)}
       ${zCell('caution',false)}
       ${zCell('action',false)}
@@ -4819,20 +5223,19 @@ function shRecentTableHtml(snaps){
       <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text)">Last 6 entries</div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">Comparing each entry to <span style="color:var(--text);font-weight:600">${fmt(baseline.date)}</span> (baseline)</div>
     </div>
-    <div style="display:grid;grid-template-columns:80px 70px 80px 1fr 1fr 1fr;gap:12px;padding:0 14px 8px;border-bottom:1px solid var(--border);margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:110px 120px 1fr 1fr 1fr;gap:12px;padding:0 14px 8px;border-bottom:1px solid var(--border);margin-bottom:8px">
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">DATE</div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">FLOW</div>
-      <div></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted2)">UNDER 90 DAYS</div>
       <div style="font-family:var(--mono);font-size:10px;color:${GOOD};text-align:center">HEALTHY</div>
       <div style="font-family:var(--mono);font-size:10px;color:${AMBER};text-align:center">CAUTION</div>
-      <div style="font-family:var(--mono);font-size:10px;color:#ea580c;text-align:center">ACTION</div>
+      <div style="font-family:var(--mono);font-size:10px;color:${ORANGE};text-align:center">ACTION</div>
     </div>
     ${rows}
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:14px">
       <div style="font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);margin-bottom:10px">Net movement — latest vs baseline (${fmt(baseline.date)} → ${fmt(latest.date)})</div>
       <div style="display:flex;gap:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:80px">
-          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);margin-bottom:4px">0–90d flow</div>
+          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);margin-bottom:4px">Under 90 days</div>
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${dCol(flowD,true)}">${flowD>0?'+':''}${flowD}pp</div>
         </div>
         <div style="width:1px;background:var(--border)"></div>
@@ -4854,23 +5257,31 @@ function shDrawChart(snaps, canvasId, instKey){
   const labels=snaps.map(s=>fmtShort(s.date));
   const flow=snaps.map(s=>shFlowPct(s));
   const ptCol=flow.map(v=>shZoneColor(v));
-  const lo=Math.max(0,Math.floor(Math.min(...flow)-3)), hi=Math.min(100,Math.ceil(Math.max(...flow)+3));
+  // £ share beside the SKU share, where the entry carries valuation
+  const vflow=snaps.map(s=>{ if(!shHasValuation(s)) return null; const v=shZoneValues(s), t=v.healthy+v.caution+v.action; return t?+(v.healthy/t*100).toFixed(1):null; });
+  const all=[...flow, ...vflow.filter(v=>v!=null), SH_FLOOR, SH_GOAL];
+  // A fair scale: always shows the floor and goal with room around them, in steps of 5, so a
+  // one-point wobble looks like one point — not a cliff.
+  const lo=Math.max(0,Math.floor((Math.min(...all)-4)/5)*5), hi=Math.min(100,Math.ceil((Math.max(...all)+3)/5)*5);
   const zoneArr=snaps.map(s=>shZones(s));
   const bands={ id:'shBands'+instKey, beforeDraw(ch){ const {ctx,chartArea,scales}=ch; if(!chartArea||!scales.y) return; const y=scales.y,xL=chartArea.left,xR=chartArea.right;
     const band=(a,b,col)=>{ if(b<lo||a>hi) return; const t=y.getPixelForValue(Math.min(b,hi)),bt=y.getPixelForValue(Math.max(a,lo)); ctx.save(); ctx.fillStyle=col; ctx.fillRect(xL,t,xR-xL,bt-t); ctx.restore(); };
-    band(SH_GOAL,hi,'rgba(34,197,94,.06)'); band(SH_FLOOR,SH_GOAL,'rgba(202,138,4,.05)'); band(lo,SH_FLOOR,'rgba(239,68,68,.045)'); } };
+    band(SH_GOAL,hi,'rgba(0,245,160,.05)'); band(SH_FLOOR,SH_GOAL,'rgba(255,209,102,.045)'); band(lo,SH_FLOOR,'rgba(255,77,109,.045)');
+    const mark=(v,col,txt)=>{ if(v<lo||v>hi) return; const yy=y.getPixelForValue(v); ctx.save(); ctx.strokeStyle=col; ctx.globalAlpha=.7; ctx.setLineDash([5,4]); ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(xL,yy); ctx.lineTo(xR,yy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1; ctx.fillStyle=col; ctx.font='600 11px Inter, system-ui, sans-serif'; ctx.textAlign='right'; ctx.fillText(txt, xR-4, yy-5); ctx.restore(); };
+    mark(SH_GOAL,GOOD,`goal ${SH_GOAL}%`); mark(SH_FLOOR,AMBER,`floor ${SH_FLOOR}%`); } };
   chartInstances[instKey]=new Chart(cv.getContext('2d'),{
     type:'line',
-    data:{ labels, datasets:[{ label:'flow', data:flow, borderColor:'#00f5a0', borderWidth:1.6, tension:.25, fill:false, pointRadius:2.6, pointHoverRadius:5, pointBackgroundColor:ptCol, pointBorderColor:'#07090c', pointBorderWidth:1.5 }] },
+    data:{ labels, datasets:[{ label:'SKUs', data:flow, borderColor:GOOD, borderWidth:2.2, tension:.25, fill:false, pointRadius:3.5, pointHoverRadius:6, pointBackgroundColor:ptCol, pointBorderColor:'#07090c', pointBorderWidth:1.5 },
+      ...(vflow.some(v=>v!=null)?[{ label:'£', data:vflow, borderColor:'#3d9eff', borderWidth:1.8, borderDash:[6,4], tension:.25, fill:false, pointRadius:0, pointHoverRadius:5, spanGaps:true }]:[])] },
     options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{ legend:{display:false}, datalabels:{display:false},
         tooltip:{ callbacks:{
           title:items=>{ const i=items[0].dataIndex; return fmt(snaps[i].date); },
-          label:item=>`0–90d flow: ${item.parsed.y}%`,
+          label:item=>`Under 90 days · ${item.dataset.label==='£'?'share of £':'share of SKUs'}: ${item.parsed.y}%`,
           afterBody:items=>{ const z=zoneArr[items[0].dataIndex]; return [`Healthy: ${z.healthy}`,`Caution: ${z.caution}`,`Action: ${z.action}`]; }
         } } },
-      scales:{ y:{ min:lo, max:hi, grid:{color:'#1c2330'}, ticks:{color:'#a7b4c4',callback:v=>v+'%'} },
-        x:{ grid:{display:false}, ticks:{color:'#a7b4c4',maxRotation:0,autoSkip:true,maxTicksLimit:10} } } },
+      scales:{ y:{ min:lo, max:hi, grid:{color:'#1c2330'}, ticks:{color:'#a7b4c4',stepSize:5,font:{size:11.5},callback:v=>v+'%'} },
+        x:{ grid:{display:false}, ticks:{color:'#a7b4c4',font:{size:11.5},maxRotation:0,autoSkip:true,maxTicksLimit:10} } } },
     plugins:[bands]
   });
 }
@@ -5638,6 +6049,8 @@ function updateKpiMiniInsights(snaps) {
       return;
     }
     else if (elId === 'kAgedRiskInsight') {
+      el.innerHTML = shOverviewRows();
+      return;
       const agSnap = snaps[snaps.length-1];
       const agTot = AG_BUCKETS.reduce((s,b)=>s+(agSnap.ageing?.[b.key]||0),0)||1;
       const agFresh = (agSnap.ageing?.a0||0)+(agSnap.ageing?.a31||0)+(agSnap.ageing?.a61||0);
@@ -5782,18 +6195,19 @@ function setKpiCompAvg() {
   if(!el||!pill) return;
   const T = typeof leadTotals==='function' ? leadTotals() : null;
   const tile=el.closest('.kpi-tile');
-  if(tile) tile.classList.remove('better','worse','same');
+  if(tile) tile.classList.remove('better','worse','same','mixed');
   if(!T){ el.textContent='—'; pill.innerHTML=''; if(ins) ins.textContent='no fetch yet'; return; }
   el.textContent=T.uOn.toLocaleString();
   // Up or down is the number of their leads you're on — not the %, which moves when their
   // shelves shrink even if you have lost ground. Each product counted once, however many
   // rivals sell it (832 across rivals was really 298 products).
-  const d = T.uVs2w != null ? T.uVs2w : T.uVsLast;
-  const lbl = T.uVs2w != null ? 'vs 2 weeks' : 'vs last';
-  if(d!=null){
-    const cls=d===0?'flat':(d>0?'up':'down');
-    pill.innerHTML=`<span class="pill ${cls}">${d>0?'▲':d<0?'▼':'→'} ${Math.abs(d).toLocaleString()} ${Math.abs(d)===1?'lead':'leads'} ${lbl}</span>`;
-    if(tile) tile.classList.add(d>0?'better':d<0?'worse':'same');
+  // Same verdict as the Competitors tab: last week's fetches averaged against two weeks before.
+  const t = T.trend;
+  if(t){
+    const d=t.n, cls={better:'up',worse:'down',mixed:'mixed',same:'flat'}[t.v];
+    pill.innerHTML=`<span class="pill ${cls}" title="${kfEsc(ldTrendTitle(t))}">${d>0?'▲':d<0?'▼':'→'} ${Math.abs(d).toLocaleString()} ${Math.abs(d)===1?'lead':'leads'} vs 2 weeks</span>`
+      + (t.v==='mixed' ? `<div style="font-size:11px;color:var(--o);margin-top:4px">${t.why}</div>` : '');
+    if(tile) tile.classList.add({better:'better',worse:'worse',mixed:'mixed',same:'same'}[t.v]);
   } else pill.innerHTML='';
   if(ins) ins.innerHTML=(T.uTotal
       ? `products · of ${T.uTotal.toLocaleString()} your rivals sell`
@@ -7450,7 +7864,9 @@ function renderContested(){
 
   const byAsin=new Map();
   if(latest){
+    const trackedIds=new Set(SELLERS.map(x=>x.sellerId).filter(Boolean));
     Object.entries(COMPETITOR_ASINS[latest]||{}).forEach(([sellerId,rec])=>{
+      if(trackedIds.size && !trackedIds.has(sellerId)) return;   // a rival you removed isn't in the field
       const nm=nameById[sellerId] || sellerId;
       const pct=pctById[sellerId]||0;
       (rec.asins||[]).forEach(a=>{ if(!byAsin.has(a)) byAsin.set(a,[]); byAsin.get(a).push({name:nm,pct}); });
@@ -7532,16 +7948,31 @@ function renderSourcingScore(){
     const both=Object.keys(COMPETITOR_ASINS[dates[i]]||{}).filter(id=>COMPETITOR_ASINS[dates[i-1]]?.[id] && (!tracked.size||tracked.has(id)));
     // each product once, however many rivals sell it
     const on=d=>{ const s=new Set(); both.forEach(id=>((COMPETITOR_ASINS[d][id].asins)||[]).forEach(a=>s.add(a))); return s.size; };
-    steps.push({date:dates[i], d:on(dates[i])-on(dates[i-1])});
+    steps.push({date:dates[i], prev:dates[i-1], d:on(dates[i])-on(dates[i-1]), split:ldSplit(dates[i-1], dates[i])});
   }
   const net=steps.reduce((t,s)=>t+s.d,0);
   const col=v=>v>0?'var(--g)':v<0?'var(--r)':'var(--muted2)';
   const sg=v=>v>0?'▲ ':v<0?'▼ ':'→ ';
   box.innerHTML=`<div class="ld-steps">
-    <div class="ld-steps-l"><b>Products you're on, fetch by fetch</b><span>last ${steps.length} fetches · net <span class="ld-chg ${net>0?'up':net<0?'down':'zero'}" style="font-size:12px;padding:2px 8px">${sg(net)}${Math.abs(net)}</span></span></div>
-    <div class="ld-steps-chips">${steps.map(s=>`<span class="ld-step ${s.d>0?'up':s.d<0?'down':'flat'}" title="${fmt(s.date)}"><em>${fmtShort(s.date)}</em><b>${sg(s.d)}${Math.abs(s.d)}</b></span>`).join('')}</div>
+    <div class="ld-steps-l"><b>Products you're on, fetch by fetch</b><span>last ${steps.length} fetches · net <span class="ld-chg ${net>0?'up':net<0?'down':'zero'}" style="font-size:12px;padding:2px 8px">${sg(net)}${Math.abs(net)}</span> · hover one to see why</span></div>
+    <div class="ld-steps-chips">${steps.map(s=>`<span class="ld-step ${s.d>0?'up':s.d<0?'down':'flat'}"><em>${fmtShort(s.date)}</em><b>${sg(s.d)}${Math.abs(s.d)}</b>${ldStepTip(s)}</span>`).join('')}</div>
     <button class="cmp-chip" onclick="openAvgOverlapModal()" title="Keepa's own average % over time">Keepa % history ›</button>
   </div>`;
+}
+
+// The hover card on a fetch chip: the move split into what you did and what they did.
+function ldStepTip(s){
+  const x = s.split;
+  const head = `<b>${fmt(s.date)} vs ${fmt(s.prev)} · ${s.d > 0 ? '▲' : s.d < 0 ? '▼' : '→'}${Math.abs(s.d)}</b>`;
+  if (!x) return `<span class="ld-tip">${head}The split shows once the rivals' shelves have loaded.</span>`;
+  const line = (n, cls, sign, txt) => n ? `<div><i class="${cls}">${sign}${n}</i>${txt}</div>` : '';
+  const body = line(x.newToYou, 'g', '+', 'new to you — first time')
+    + line(x.back, 'g', '+', 'you came back in stock')
+    + line(x.gotOn, 'g', '+', 'you got on (new or restock)')
+    + line(x.rivalsAdded, 'g', '+', 'rivals started one you sell')
+    + line(x.soldOut, 'r', '−', 'you sold out / went off')
+    + line(x.rivalsDropped, 'r', '−', 'rivals dropped one you sell');
+  return `<span class="ld-tip">${head}${body || '<div>Nothing moved.</div>'}${x.gotOn ? '<small>Before 26 Sep your storefront wasn\'t saved, so new and restocked can\'t be told apart.</small>' : ''}</span>`;
 }
 
 function compAsinPrevFor(sellerId){
@@ -7577,7 +8008,14 @@ let SHELF_UNIQUE_TOTAL = null;
 let MY_SHELF = null;              // your own storefront rows (bdl_my_shelf)
 let MY_SHELF_OPEN = null;         // 'new' | 'left' | null — which list is expanded   // different products across all rivals' shelves (needs saved shelves)
 let LD_OPEN = null;            // sellerId of the row opened underneath
+let SHELF_ROWS = null;         // rival shelf rows open at any point in the last few weeks
+let SHELF_BY_ASIN = null;      // asin -> those rows
+let SHELF_START = {};          // sellerId -> first day their shelf was saved
+const SRC_DETAILS = {};        // asin -> {title, image, price, ...} from src_products
+const _srcAsked = new Set();
 const LD_LEAD_DAYS = 21;       // how far back the "new leads" list looks
+const LD_NOW_DAYS = 7;         // "now" = the fetches in the last 7 days…
+const LD_BACK_DAYS = 14;       // …against the fetches in the week that ended 14 days before
 const _ldDay = d => Date.parse(d + 'T00:00:00Z');
 
 async function loadShelfLeads(){
@@ -7588,10 +8026,23 @@ async function loadShelfLeads(){
   (rows||[]).forEach(r => { (map[r.seller_id] = map[r.seller_id] || []).push({ asin:r.asin, first_seen:r.first_seen }); });
   Object.values(map).forEach(a => a.sort((x,y) => y.first_seen.localeCompare(x.first_seen)));
   SHELF_NEW = map;
-  SHELF_UNIQUE_TOTAL = window._shelfUniqueOpen ? await window._shelfUniqueOpen() : null;
+  // Far enough back to rebuild the fetch-by-fetch strip and both trend weeks.
+  const fd = Object.keys(COMPETITOR_ASINS||{}).sort();
+  const back = fd.length ? [fd[Math.max(0, fd.length-9)], _ldShift(fd[fd.length-1], -(LD_BACK_DAYS + LD_NOW_DAYS + 3))].sort()[0] : since;
+  SHELF_ROWS = window._shelfLoadWindow ? await window._shelfLoadWindow(_ldShift(back, -1)) : null;
+  ldIndexShelf();
+  // Today's shelves, each product once — tracked rivals only (a rival you removed is not "theirs").
+  const trackedNow = new Set((SELLERS||[]).map(s => s.sellerId).filter(Boolean));
+  SHELF_UNIQUE_TOTAL = SHELF_ROWS
+    ? new Set(SHELF_ROWS.filter(r => !r.gone_on && (!trackedNow.size || trackedNow.has(r.seller_id))).map(r => r.asin)).size
+    : null;
   MY_SHELF = window._myShelfLoad ? await window._myShelfLoad() : null;
   SHELF_LOADED = true;
-  try { if (document.getElementById('tab-competitors')) renderCompTab(); setKpiCompAvg(); } catch(e) { console.error(e); }
+  try {
+    if (document.getElementById('tab-competitors')) renderCompTab();
+    setKpiCompAvg();
+    if (typeof filteredSnaps === 'function') renderCompInsights(filteredSnaps());
+  } catch(e) { console.error(e); }
 }
 
 // The fetch nearest to N days before `from`, within ±3 days — fetches land Mon/Wed/Fri, never
@@ -7601,6 +8052,95 @@ function ldNearest(dates, from, daysBack){
   let best = null, gap = Infinity;
   dates.forEach(d => { if (d >= from) return; const g = Math.abs(_ldDay(d) - target); if (g <= 3*864e5 && g < gap) { gap = g; best = d; } });
   return best;
+}
+
+// ── Better or worse? ─────────────────────────────────────────────────────────────────────────
+// Every fetch is counted exactly as it is — sold out = off, back in stock = on again. What the
+// arrow compares is averages: the fetches in the last 7 days against the fetches in the week that
+// ended 14 days earlier. Both of you sell out and restock all the time, so one fetch that happens
+// to land on a sell-out day must not flip the answer (8 Oct alone read ▼14; averaged it is ▲14).
+//   better = on more of their leads, and your share of their shelf held or rose
+//   worse  = on fewer, and your share did not rise
+//   mixed  = the two disagree — e.g. more leads, but their shelf grew faster — said in words
+function ldWindows(dates){
+  if (!dates.length) return null;
+  const L = dates[dates.length-1], l = _ldDay(L);
+  const now = dates.filter(d => _ldDay(d) > l - LD_NOW_DAYS*864e5);
+  const tEnd = l - LD_BACK_DAYS*864e5, tStart = tEnd - LD_NOW_DAYS*864e5;
+  let then = dates.filter(d => _ldDay(d) > tStart && _ldDay(d) <= tEnd);
+  if (!then.length) { const n = ldNearest(dates, L, LD_BACK_DAYS); if (n) then = [n]; }
+  return { now, then: then.length ? then : null };
+}
+const _ldAvg = (list, f) => list.reduce((t, d) => t + f(d), 0) / list.length;
+function ldVerdict(onThen, onNow, totThen, totNow, plural){
+  const n = Math.round(onNow - onThen);
+  const r1 = v => Math.round(v * 10) / 10;
+  const pThen = totThen ? onThen / totThen * 100 : null, pNow = totNow ? onNow / totNow * 100 : null;
+  const dp = pThen != null && pNow != null ? r1(r1(pNow) - r1(pThen)) : 0;
+  // With leads unchanged, only a clear move in share (a whole point) counts as mixed.
+  const pUp = n !== 0 ? dp > 0 : dp >= 1, pDown = n !== 0 ? dp < 0 : dp <= -1;
+  const v = n > 0 ? (pDown ? 'mixed' : 'better') : n < 0 ? (pUp ? 'mixed' : 'worse') : (pUp || pDown ? 'mixed' : 'same');
+  const shelf = plural ? 'their shelves' : 'their shelf';
+  const why = v !== 'mixed' ? ''
+    : n > 0 ? `but ${shelf} grew faster`
+    : n < 0 ? `but you hold more of ${shelf}`
+    : pDown ? `no new leads while ${shelf} grew` : `same leads, ${shelf} shrank`;
+  return { n, onThen, onNow, totThen, totNow, pThen, pNow, dp, v, why };
+}
+function ldTrendTitle(t){
+  if (!t) return 'Needs two weeks of fetches';
+  const f = d => fmtShort(d);
+  const span = l => l.length > 1 ? `${f(l[0])}–${f(l[l.length-1])}` : f(l[0]);
+  return `Average of fetches ${span(t.nowDates)} vs ${span(t.thenDates)}: on ${t.onThen.toFixed(1)} → ${t.onNow.toFixed(1)} leads`
+    + (t.totThen ? ` · shelf ${Math.round(t.totThen).toLocaleString()} → ${Math.round(t.totNow).toLocaleString()}` : '')
+    + (t.pThen != null ? ` · share ${t.pThen.toFixed(1)}% → ${t.pNow.toFixed(1)}%` : '');
+}
+
+// Rival shelves by product, so any recent fetch day can be rebuilt: who had what, when.
+function ldIndexShelf(){
+  SHELF_BY_ASIN = null; SHELF_START = {};
+  if (!SHELF_ROWS) return;
+  SHELF_BY_ASIN = new Map();
+  for (const r of SHELF_ROWS) {
+    let a = SHELF_BY_ASIN.get(r.asin); if (!a) SHELF_BY_ASIN.set(r.asin, a = []); a.push(r);
+    if (!SHELF_START[r.seller_id] || r.first_seen < SHELF_START[r.seller_id]) SHELF_START[r.seller_id] = r.first_seen;
+  }
+}
+const _ldOpenOn = (r, d) => r.first_seen <= d && (!r.gone_on || r.gone_on > d);
+const ldRivalHas = (asin, d, idSet) => { const rs = SHELF_BY_ASIN && SHELF_BY_ASIN.get(asin); return !!rs && rs.some(r => idSet.has(r.seller_id) && _ldOpenOn(r, d)); };
+// Different products on these rivals' shelves on day d — null before their shelves were saved.
+function ldShelfUnique(d, idSet){
+  if (!SHELF_ROWS) return null;
+  for (const id of idSet) if (SHELF_START[id] && SHELF_START[id] > d) return null;
+  const s = new Set(); for (const r of SHELF_ROWS) if (idSet.has(r.seller_id) && _ldOpenOn(r, d)) s.add(r.asin);
+  return s.size;
+}
+// Your storefront's first-seen dates. Before the first save (26 Sep) a restock and a first-time
+// product look the same, so those fetches are not split.
+function ldMyFirst(){
+  const first = {}; let base = null;
+  (MY_SHELF||[]).forEach(r => { first[r.asin] = r.first_seen; if (!base || r.first_seen < base) base = r.first_seen; });
+  return { first, base };
+}
+const ldIsNew = (asin, since, mf) => mf.base && since >= mf.base ? (mf.first[asin] && mf.first[asin] > since ? 'new' : 'back') : null;
+
+// What moved between two fetches, split into what you did and what they did. Each product once,
+// however many rivals sell it; only rivals read on both fetches count.
+function ldSplit(P, L){
+  if (!SHELF_BY_ASIN || !P || !L) return null;
+  const tracked = new Set((SELLERS||[]).map(s => s.sellerId).filter(Boolean));
+  const ids = Object.keys(COMPETITOR_ASINS[L]||{}).filter(id => COMPETITOR_ASINS[P]?.[id] && (!tracked.size || tracked.has(id)));
+  const idSet = new Set(ids);
+  const u = d => { const s = new Set(); ids.forEach(id => (COMPETITOR_ASINS[d][id].asins||[]).forEach(a => s.add(a))); return s; };
+  const UP = u(P), UL = u(L), mf = ldMyFirst();
+  const o = { newToYou:0, back:0, gotOn:0, rivalsAdded:0, soldOut:0, rivalsDropped:0, net: UL.size - UP.size };
+  UL.forEach(a => {
+    if (UP.has(a)) return;
+    if (!ldRivalHas(a, P, idSet)) { o.rivalsAdded++; return; }
+    const k = ldIsNew(a, P, mf); if (k === 'new') o.newToYou++; else if (k === 'back') o.back++; else o.gotOn++;
+  });
+  UP.forEach(a => { if (!UL.has(a)) { if (ldRivalHas(a, L, idSet)) o.soldOut++; else o.rivalsDropped++; } });
+  return o;
 }
 
 function leadStats(sellerId){
@@ -7618,10 +8158,17 @@ function leadStats(sellerId){
   const prevSet = P ? new Set(COMPETITOR_ASINS[P][sellerId].asins || []) : null;
   const latestFetch = all[all.length-1];
   const leads = (SHELF_NEW[sellerId] || []).filter(x => !onSet.has(x.asin));
+  const win = ldWindows(mine);
+  let trend = null;
+  if (win && win.then) {
+    const tot = d => COMPETITOR_ASINS[d][sellerId].size || 0;
+    trend = ldVerdict(_ldAvg(win.then, count), _ldAvg(win.now, count), _ldAvg(win.then, tot), _ldAvg(win.now, tot), false);
+    trend.nowDates = win.now; trend.thenDates = win.then;
+  }
   return {
     date:L, on, total, pct: total ? on/total*100 : null,
     prevDate:P, vsLast: P ? on - count(P) : null,
-    w2Date:W, vs2w: W ? on - count(W) : null,
+    w2Date:W, vs2w: trend ? trend.n : null, trend,
     toGet: total != null ? Math.max(0, total - on) : null,
     gotOn: prevSet ? onList.filter(a => !prevSet.has(a)) : [],
     leads, newSinceLast: leads.filter(x => x.first_seen === latestFetch).length,
@@ -7646,10 +8193,26 @@ function leadTotals(){
   const uChange = d => { if (!d) return null; const both = ids.filter(id => COMPETITOR_ASINS[d]?.[id]); return both.length ? uni(L, both) - uni(d, both) : null; };
   const snap = [...(DB||[])].filter(x => x.asins).sort((a,b) => a.date.localeCompare(b.date)).pop();
   const uOn = uni(L, ids);
+  // The trend: only rivals read on every fetch in both weeks, so adding or removing a rival never
+  // looks like leads won or lost. Their side counted once per product, from the saved shelves.
+  const win = ldWindows(all);
+  let trend = null;
+  if (win && win.then) {
+    const span = [...win.then, ...win.now];
+    const lfl = ids.filter(id => span.every(d => COMPETITOR_ASINS[d]?.[id]));
+    if (lfl.length) {
+      const idSet = new Set(lfl);
+      const shelfAvg = list => { const v = list.map(d => ldShelfUnique(d, idSet)).filter(x => x != null); return v.length ? v.reduce((a,b) => a+b, 0) / v.length : null; };
+      let tThen = shelfAvg(win.then), tNow = shelfAvg(win.now);
+      if (tThen == null || tNow == null) { const sz = d => lfl.reduce((t, id) => t + (COMPETITOR_ASINS[d][id].size || 0), 0); tThen = _ldAvg(win.then, sz); tNow = _ldAvg(win.now, sz); }
+      trend = ldVerdict(_ldAvg(win.then, d => uni(d, lfl)), _ldAvg(win.now, d => uni(d, lfl)), tThen, tNow, true);
+      trend.nowDates = win.now; trend.thenDates = win.then; trend.rivals = lfl.length;
+    }
+  }
   return { date:L, rivals:ids.length, on:cur.on, total:cur.total, pct: cur.total ? cur.on/cur.total*100 : null,
            prevDate:P, vsLast:change(P), w2Date:W, vs2w:change(W),
-           uOn, uVsLast:uChange(P), uVs2w:uChange(W),
-           uTotal: SHELF_UNIQUE_TOTAL, myAsins: snap ? snap.asins : null };
+           uOn, uVsLast:uChange(P), uVs2w: trend ? trend.n : null, trend,
+           uTotal: SHELF_UNIQUE_TOTAL, myAsins: ldMyCount() || (snap ? snap.asins : null) };
 }
 
 const ldChange = (v, unit=true) => {
@@ -7660,6 +8223,39 @@ const ldChange = (v, unit=true) => {
   const n = Math.abs(v);
   return `<span class="ld-chg ${cls}">${arrow} ${n.toLocaleString()}${unit ? ` <small>${n === 1 ? 'lead' : 'leads'}</small>` : ''}</span>`;
 };
+// The verdict as a chip: arrow + leads, coloured by better / worse / mixed / same.
+const LD_VCLS = { better:'up', worse:'down', mixed:'mixed', same:'same' };
+const ldTrendChip = t => {
+  if (!t) return '<span class="ld-chg na" title="Needs two weeks of fetches">—</span>';
+  const a = Math.abs(t.n), arrow = t.n > 0 ? '▲' : t.n < 0 ? '▼' : '→';
+  return `<span class="ld-chg ${LD_VCLS[t.v]}" title="${kfEsc(ldTrendTitle(t))}">${t.n === 0 ? 'no change' : `${arrow} ${a.toLocaleString()} <small>${a === 1 ? 'lead' : 'leads'}</small>`}</span>`;
+};
+// One short line under the chip: why it's mixed, or how your share moved.
+const ldTrendWhy = t => !t ? '' : t.v === 'mixed' ? t.why
+  : t.pThen != null ? `share ${t.pThen.toFixed(1)}% → ${t.pNow.toFixed(1)}%` : '';
+// Products on your storefront now (the Keepa list), before falling back to Sarah's inventory count.
+function ldMyCount(){
+  if (!MY_SHELF || !MY_SHELF.length) return null;
+  return window._myShelfHasOn ? MY_SHELF.filter(r => r.on_now).length : null;
+}
+function ldEnsureDetails(asins){
+  const need = asins.filter(a => !_srcAsked.has(a));
+  if (!need.length || !window._srcDetails) return;
+  need.forEach(a => _srcAsked.add(a));
+  window._srcDetails(need).then(got => { Object.assign(SRC_DETAILS, got); if (LD_OPEN) renderCompTab(); });
+}
+// A product line: picture, name, facts — falls back to the bare ASIN until details exist.
+const ldItem = (asin, right, cls) => {
+  const p = SRC_DETAILS[asin];
+  const img = p && p.image ? `<img class="ld-img" src="${kfEsc(p.image)}" alt="" loading="lazy">` : '<span class="ld-img none"></span>';
+  const facts = p ? [p.price != null ? '£' + Number(p.price).toFixed(2) : '', p.rank ? 'rank ' + Number(p.rank).toLocaleString() : '', p.mo ? Number(p.mo).toLocaleString() + '+ sold/mo' : ''].filter(Boolean) : [];
+  const asinTag = `<span class="ld-asin${cls ? ' ' + cls : ''}">${kfEsc(asin)}</span>`;
+  return `<li class="ld-li">${img}<div class="ld-li-mid">
+      <div class="ld-li-title">${p && p.title ? kfEsc(p.title) : asinTag}</div>
+      <div class="ld-li-sub">${p && p.title ? asinTag : 'no details saved yet'}${p && p.brand ? ` · ${kfEsc(p.brand)}` : ''}${facts.length ? ` · ${facts.join(' · ')}` : ''}</div></div>
+    <a href="https://www.amazon.co.uk/dp/${encodeURIComponent(asin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Amazon ↗</a>${right}</li>`;
+};
+
 // Calendar days, not hours — a line from yesterday afternoon is "yesterday", not "2 days ago".
 const ldAgo = d => { const n = Math.round((_ldDay(new Date().toLocaleDateString('en-CA')) - _ldDay(d)) / 864e5); return n <= 0 ? 'added today' : n === 1 ? 'added yesterday' : `added ${n} days ago`; };
 
@@ -7690,7 +8286,7 @@ function renderMyShelf(){
   const L = dates[dates.length-1], P = dates.length > 1 ? dates[dates.length-2] : null;
   // Only one question per product: are you on it now? It flips as you go in and out of stock.
   const hasOn = window._myShelfHasOn;
-  const onNow = hasOn ? rows.filter(r => r.on_now) : rows.filter(r => r.last_seen >= _ldShift(L, -2));
+  const onNow = hasOn ? rows.filter(r => r.on_now) : rows.filter(r => r.last_seen >= _ldShift(L, -4));
   const fresh = hasOn ? rows.filter(r => r.on_now && r.on_changed === L) : [];
   const left  = hasOn ? rows.filter(r => !r.on_now && r.on_changed === L) : [];
   const chip = (key, n, cls, label) => n
@@ -7768,7 +8364,8 @@ function renderCompTab() {
   // ── Summary tiles ──
   const T = leadTotals();
   const withSt = rows.filter(r => r.st && trackedSet.has(r.id));
-  const up2 = withSt.filter(r => r.st.vs2w > 0), down2 = withSt.filter(r => r.st.vs2w < 0), same2 = withSt.filter(r => r.st.vs2w === 0);
+  const byV = v => withSt.filter(r => r.st.trend && r.st.trend.v === v);
+  const better2 = byV('better'), worse2 = byV('worse'), mixed2 = byV('mixed'), same2 = byV('same');
   const card = (key, label, valueHtml, subHtml) => {
     const v = document.getElementById('compKpi'+key), p = document.getElementById('compKpi'+key+'Pill'), s = document.getElementById('compKpi'+key+'Sub');
     const l = document.getElementById('compKpi'+key+'Label');
@@ -7780,17 +8377,21 @@ function renderCompTab() {
   if (T) {
     const ofTxt = T.uTotal ? `of ${T.uTotal.toLocaleString()} different products they sell · ${(T.uOn/T.uTotal*100).toFixed(1)}%`
       : T.myAsins ? `${Math.round(T.uOn/T.myAsins*100)}% of your ${T.myAsins.toLocaleString()} ASINs` : `across ${T.rivals} rivals`;
+    const tr = T.trend;
     card('Highest', "Their leads you're on", `${T.uOn.toLocaleString()}<span class="ld-tile-unit">products</span>`,
-      `${ofTxt}<div class="ld-tile-rows"><span>vs last ${ldChange(T.uVsLast,false)}</span><span>vs 2 weeks ${ldChange(T.uVs2w,false)}</span></div>`);
-    card('Avg', 'Over 2 weeks you are', withSt.some(r => r.st.vs2w != null)
-      ? `<span style="color:var(--g)">${up2.length}</span><span class="ld-tile-unit">up</span> <span style="color:var(--r)">${down2.length}</span><span class="ld-tile-unit">down</span>`
-      : '—', withSt.some(r => r.st.vs2w != null) ? `${same2.length} unchanged · counted in leads` : 'needs 2 weeks of fetches');
+      `${ofTxt}<div class="ld-tile-rows"><span>2 weeks ${ldTrendChip(tr)}</span></div>${tr && tr.v === 'mixed' ? `<div class="ld-tile-why">${tr.why}</div>` : ''}`);
+    const hiTile = document.getElementById('compKpiHighest')?.closest('.kpi-tile');
+    if (hiTile) { hiTile.classList.remove('ct-green','ct-red','ct-orange','ct-grey'); hiTile.classList.add(!tr ? 'ct-green' : { better:'ct-green', worse:'ct-red', mixed:'ct-orange', same:'ct-grey' }[tr.v]); hiTile.title = ldTrendTitle(tr); }
+    const anyT = withSt.some(r => r.st.trend);
+    card('Avg', 'Over 2 weeks you are', anyT
+      ? `<span class="ld-vcs"><span class="ld-vc"><span style="color:var(--g)">${better2.length}</span><span class="ld-tile-unit">better</span></span><span class="ld-vc"><span style="color:var(--o)">${mixed2.length}</span><span class="ld-tile-unit">mixed</span></span><span class="ld-vc"><span style="color:var(--r)">${worse2.length}</span><span class="ld-tile-unit">worse</span></span></span>`
+      : '—', anyT ? `${same2.length} no change · rivals, averaged so one fetch can't flip it` : 'needs 2 weeks of fetches');
     const byGain = [...withSt].filter(r => r.st.vs2w != null).sort((a,b) => b.st.vs2w - a.st.vs2w);
     const g = byGain[0], d = byGain[byGain.length-1];
     card('Riser', 'Biggest gain · 2 weeks', g && g.st.vs2w > 0 ? `<span class="ld-tile-name">${kfEsc(g.name)}</span>` : '<span style="color:var(--muted)">nobody</span>',
-      g && g.st.vs2w > 0 ? ldChange(g.st.vs2w) : 'no rival gained');
+      g && g.st.vs2w > 0 ? ldTrendChip(g.st.trend) : 'no rival gained');
     card('Dropper', 'Biggest drop · 2 weeks', d && d.st.vs2w < 0 ? `<span class="ld-tile-name">${kfEsc(d.name)}</span>` : '<span style="color:var(--muted)">nobody</span>',
-      d && d.st.vs2w < 0 ? ldChange(d.st.vs2w) : 'no rival dropped');
+      d && d.st.vs2w < 0 ? ldTrendChip(d.st.trend) : 'no rival dropped');
     const riserTile = document.getElementById('compKpiRiser')?.closest('.kpi-tile');
     if (riserTile) riserTile.onclick = g && g.st.vs2w > 0 ? () => { LD_OPEN = g.id; renderCompTab(); } : null;
     const dropTile = document.getElementById('compKpiDropper')?.closest('.kpi-tile');
@@ -7801,7 +8402,9 @@ function renderCompTab() {
     card('Riser', 'Biggest gain · 2 weeks', '—', '');
     card('Dropper', 'Biggest drop · 2 weeks', '—', '');
   }
-  const newLeadsTotal = withSt.reduce((t, r) => t + r.st.newSinceLast, 0);
+  // Each product once — two rivals adding the same line is one lead, not two.
+  const latestF = Object.keys(COMPETITOR_ASINS||{}).sort().pop();
+  const newLeadsTotal = new Set(withSt.flatMap(r => r.st.leads.filter(x => x.first_seen === latestF).map(x => x.asin))).size;
   card('Momentum', 'New leads · last fetch',
     window._hasShelfTable === false ? '—' : `<span style="color:var(--p)">${newLeadsTotal.toLocaleString()}</span>`,
     window._hasShelfTable === false ? 'run the SQL to start' : !window._shelfRowCount ? 'starts after your next fetch' : "added by rivals · you're not on them");
@@ -7812,16 +8415,16 @@ function renderCompTab() {
 
   // ── Search, filter, sort ──
   if (search) rows = rows.filter(r => r.name.toLowerCase().includes(search) || r.id.toLowerCase().includes(search));
-  if (compFilter === 'closing')      rows = rows.filter(r => r.st && r.st.vs2w > 0);
-  else if (compFilter === 'backing') rows = rows.filter(r => r.st && r.st.vs2w < 0);
+  if (compFilter === 'closing')      rows = rows.filter(r => r.st && r.st.trend && r.st.trend.v === 'better');
+  else if (compFilter === 'mixed')   rows = rows.filter(r => r.st && r.st.trend && r.st.trend.v === 'mixed');
+  else if (compFilter === 'backing') rows = rows.filter(r => r.st && r.st.trend && r.st.trend.v === 'worse');
   else if (compFilter === 'threat')  rows = rows.filter(r => r.st && r.st.leads.length);
-  ['all','closing','backing','threat'].forEach(f => document.getElementById('cf-'+f)?.classList.toggle('on', compFilter === f));
+  ['all','closing','mixed','backing','threat'].forEach(f => document.getElementById('cf-'+f)?.classList.toggle('on', compFilter === f));
 
   const key = {
     name:   r => r.name.toLowerCase(),
     on:     r => r.st ? r.st.on : -Infinity,
     pct:    r => r.st && r.st.pct != null ? r.st.pct : -Infinity,
-    vslast: r => r.st && r.st.vsLast != null ? r.st.vsLast : -Infinity,
     vs2w:   r => r.st && r.st.vs2w != null ? r.st.vs2w : -Infinity,
     toget:  r => r.st && r.st.toGet != null ? r.st.toGet : -Infinity,
     leads:  r => r.st ? r.st.leads.length : -Infinity
@@ -7847,7 +8450,7 @@ function renderCompTab() {
   const keyEl = document.getElementById('ldKey');
   if (keyEl) keyEl.innerHTML = `
     <span class="ld-key"><i style="background:var(--b)"></i><b>You're on</b> how many of their products you also sell</span>
-    <span class="ld-key"><i style="background:var(--g)"></i><b>▲ / ▼ leads</b> more or fewer of their products than before</span>
+    <span class="ld-key"><i style="background:var(--g)"></i><b>2-week trend</b> <span style="color:var(--g)">better</span> · <span style="color:var(--o)">mixed</span> · <span style="color:var(--r)">worse</span> — last week's fetches vs two weeks before</span>
     <span class="ld-key"><i style="background:var(--y)"></i><b>Still to get</b> their products you don't sell yet</span>
     <span class="ld-key"><i style="background:var(--p)"></i><b>New leads</b> products they've just added that you don't sell${shelfLive ? '' : ' <em>— starts after your next fetch</em>'}</span>`;
   if (!rows.length) {
@@ -7887,14 +8490,18 @@ function renderCompTab() {
            </div>`
         : !s || !s.leads.length
         ? `<p class="ld-empty">Nothing new from them in the last ${LD_LEAD_DAYS} days that you're not already on.</p>`
-        : `<ul class="ld-list">${s.leads.map(x => `<li><span class="ld-asin">${kfEsc(x.asin)}</span><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(x.asin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open on Amazon ↗</a><span class="ld-when${x.first_seen === latestFetch ? ' fresh' : ''}">${ldAgo(x.first_seen)}</span></li>`).join('')}</ul>
+        : `<ul class="ld-list">${s.leads.map(x => ldItem(x.asin, `<span class="ld-when${x.first_seen === latestFetch ? ' fresh' : ''}">${ldAgo(x.first_seen)}</span>`)).join('')}</ul>
            <div class="ld-warn">⚠ Keepa can't see stock you've bought that isn't live yet — check it isn't already on its way in.</div>`;
       const got = s ? s.gotOn : [];
+      if (s) ldEnsureDetails([...s.leads.map(x => x.asin), ...got]);
+      const mf = ldMyFirst();
+      const tag = a => { const k = s && s.prevDate ? ldIsNew(a, s.prevDate, mf) : null;
+        return k === 'new' ? '<span class="ld-tag new" title="First time on your storefront">NEW</span>' : k === 'back' ? '<span class="ld-tag back" title="You had it before — back in stock">BACK</span>' : `<span class="ld-when">${fmtShort(s.date)}</span>`; };
       const gotBody = !s || !s.prevDate
         ? `<p class="ld-empty">Needs two fetches to compare.</p>`
         : !got.length
         ? `<p class="ld-empty">None of their leads went live on your storefront since ${fmt(s.prevDate)}.</p>`
-        : `<ul class="ld-list tight">${got.map(a => `<li><span class="ld-asin got">${kfEsc(a)}</span><a href="https://www.amazon.co.uk/dp/${encodeURIComponent(a)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open on Amazon ↗</a><span class="ld-when">${fmtShort(s.date)}</span></li>`).join('')}</ul>`;
+        : `<ul class="ld-list tight">${got.map(a => ldItem(a, tag(a), 'got')).join('')}</ul>`;
       detail = `<div class="ld-detail" onclick="event.stopPropagation()">
         <div class="ld-box leads">
           <div class="ld-box-hd"><div><h3>New ${kfEsc(r.name)} leads you're not on</h3><p>Added to their shelf in the last ${LD_LEAD_DAYS} days. Newest first.</p></div>
@@ -7911,13 +8518,12 @@ function renderCompTab() {
       </div>`;
     }
 
-    const dir = !s || s.vs2w == null ? 'none' : s.vs2w > 0 ? 'up' : s.vs2w < 0 ? 'down' : 'same';
+    const dir = !s || !s.trend ? 'none' : LD_VCLS[s.trend.v];
     return `<div class="ld-row ld-grid dir-${dir}${open ? ' open' : ''}" onclick="toggleLeadRow('${idArg}')">
       <div class="ld-rank">${i+1}</div>
       <div class="ld-who">${ldAvatar(r.name)}<div style="min-width:0"><div class="ld-name">${kfEsc(r.name)}</div><div class="ld-sub">${subLine}</div></div></div>
       <div class="ld-oncell">${onCell}</div>
-      <div class="ld-r">${s ? ldChange(s.vsLast) : '<span class="ld-dim">—</span>'}</div>
-      <div class="ld-r">${s ? ldChange(s.vs2w) : '<span class="ld-dim">—</span>'}</div>
+      <div class="ld-r">${s ? `${ldTrendChip(s.trend)}${s.trend ? `<div class="ld-why ${s.trend.v}">${ldTrendWhy(s.trend)}</div>` : ''}` : '<span class="ld-dim">—</span>'}</div>
       <div class="ld-r"><span class="ld-num togo">${s && s.toGet != null ? s.toGet.toLocaleString() : '—'}</span></div>
       <div class="ld-r">${leadsCell}</div>
       <div class="ld-caret">${open ? '⌄' : '›'}</div>
@@ -8146,10 +8752,11 @@ function renderCompInsights(snaps) {
   COMPETITOR_SESSIONS.forEach(s => (s.competitors||[]).forEach(c => { if (c.sellerId) nameById[c.sellerId] = c.name.trim(); }));
   (SELLERS||[]).forEach(s => { if (s.sellerId) nameById[s.sellerId] = s.name; });
   const rows = (SELLERS||[]).filter(s => s.sellerId).map(s => ({ id:s.sellerId, name:nameById[s.sellerId]||s.sellerId, st:leadStats(s.sellerId) })).filter(r => r.st);
-  const with2 = rows.filter(r => r.st.vs2w != null);
+  const with2 = rows.filter(r => r.st.trend);
   const gained = with2.filter(r => r.st.vs2w > 0).sort((a,b) => b.st.vs2w - a.st.vs2w);
   const lost   = with2.filter(r => r.st.vs2w < 0).sort((a,b) => a.st.vs2w - b.st.vs2w);
-  const still  = with2.filter(r => r.st.vs2w === 0);
+  const still  = with2.filter(r => r.st.trend.v === 'same');
+  const nV = v => with2.filter(r => r.st.trend.v === v).length;
 
   const row = (name, right, tone, id) => {
     const c = tone==='bad' ? 'var(--r)' : tone==='good' ? 'var(--g)' : 'var(--muted2)';
@@ -8162,11 +8769,12 @@ function renderCompInsights(snaps) {
       ${bodyHtml || `<div class="ci-empty">${emptyMsg}</div>`}
     </div>`;
 
-  const net = T.uVs2w;
-  const netTxt = net == null ? '' : net > 0 ? `<b style="color:var(--g)">▲ ${net}</b>` : net < 0 ? `<b style="color:var(--r)">▼ ${Math.abs(net)}</b>` : '<b>no change</b>';
+  const tr = T.trend, vCol = { better:'var(--g)', worse:'var(--r)', mixed:'var(--o)', same:'var(--muted2)' };
+  const netTxt = !tr ? '' : `<b style="color:${vCol[tr.v]}">${tr.n > 0 ? '▲ ' + tr.n : tr.n < 0 ? '▼ ' + Math.abs(tr.n) : 'no change in'} lead${Math.abs(tr.n) === 1 ? '' : 's'}</b>`
+    + (tr.v === 'mixed' ? `, <span style="color:var(--o)">${tr.why}</span>` : tr.pThen != null ? ` (share ${tr.pThen.toFixed(1)}% → ${tr.pNow.toFixed(1)}%)` : '');
   const headline = `<div class="ci-head">
-      You're on <b style="color:var(--b)">${T.uOn.toLocaleString()}</b> different products your ${T.rivals} rivals sell${T.uTotal ? ` — out of <b>${T.uTotal.toLocaleString()}</b> on their shelves` : T.myAsins ? ` — <b>${Math.round(T.uOn/T.myAsins*100)}%</b> of your ${T.myAsins.toLocaleString()} ASINs` : ''}.
-      ${with2.length ? `Over 2 weeks you gained leads on <b style="color:var(--g)">${gained.length}</b> rivals and lost them on <b style="color:var(--r)">${lost.length}</b>${net != null ? ` — ${netTxt} products overall` : ''}.` : 'Two weeks of fetches are needed to show movement.'}
+      You're on <b style="color:var(--b)">${T.uOn.toLocaleString()}</b> different products your ${T.rivals} rivals sell${T.uTotal ? ` — out of <b>${T.uTotal.toLocaleString()}</b> on their shelves (${(T.uOn/T.uTotal*100).toFixed(1)}%)` : T.myAsins ? ` — <b>${Math.round(T.uOn/T.myAsins*100)}%</b> of the ${T.myAsins.toLocaleString()} on your storefront` : ''}.
+      ${with2.length ? `Over 2 weeks: <b style="color:var(--g)">${nV('better')}</b> rivals better, <b style="color:var(--o)">${nV('mixed')}</b> mixed, <b style="color:var(--r)">${nV('worse')}</b> worse${tr ? ` — overall ${netTxt}` : ''}.` : 'Two weeks of fetches are needed to show movement.'}
       ${gained.length ? ` Biggest gain: <b style="color:var(--g)">${kfEsc(gained[0].name)}</b> (▲ ${gained[0].st.vs2w}).` : ''}
     </div>`;
 
@@ -8176,20 +8784,21 @@ function renderCompInsights(snaps) {
       ${ldAvatar(r.name)}
       <div class="ci-mv-mid"><div class="ci-mv-top"><span class="ci-name">${kfEsc(r.name)}</span><span class="ci-mv-of">${r.st.on} of ${r.st.total}</span></div>
         <div class="ci-mv-bar"><i style="width:${Math.max(2,Math.min(100,r.st.pct||0))}%;background:${band}"></i></div></div>
-      <span class="ld-chg ${tone}">${tone==='up'?'▲':'▼'} ${Math.abs(r.st.vs2w)}</span>
+      <span class="ld-chg ${LD_VCLS[r.st.trend.v]}" title="${kfEsc(r.st.trend.why || ldTrendTitle(r.st.trend))}">${tone==='up'?'▲':'▼'} ${Math.abs(r.st.vs2w)}</span>
     </div>`;
   };
   const gBody = gained.slice(0,7).map(r => mover(r,'up')).join('');
   const lBody = lost.slice(0,7).map(r => mover(r,'down')).join('');
   const closest = [...rows].filter(r => r.st.pct != null).sort((a,b) => b.st.pct - a.st.pct)[0];
   const mostToGet = [...rows].filter(r => r.st.toGet != null).sort((a,b) => b.st.toGet - a.st.toGet)[0];
-  const upBoth = rows.filter(r => r.st.vsLast > 0 && r.st.vs2w > 0);
-  const leadsTotal = rows.reduce((t, r) => t + r.st.leads.length, 0);
+  // Pulling away = their shelf grew faster than your leads on it, so your share of it fell.
+  const pulling = with2.filter(r => r.st.trend.pThen != null && r.st.trend.dp < 0).sort((a,b) => a.st.trend.dp - b.st.trend.dp);
+  const leadsTotal = new Set(rows.flatMap(r => r.st.leads.map(x => x.asin))).size;
   const fieldBody = `
     ${row('Rivals tracked', `${rows.length}`, 'neutral')}
     ${closest ? row('Closest to all their leads', `${kfEsc(closest.name)} · ${closest.st.pct.toFixed(1)}%`, 'neutral', closest.id) : ''}
     ${mostToGet ? row('Most still to get', `${kfEsc(mostToGet.name)} · ${mostToGet.st.toGet.toLocaleString()}`, 'neutral', mostToGet.id) : ''}
-    ${upBoth.length ? row('Up last fetch and 2 weeks', `${upBoth.length} rival${upBoth.length!==1?'s':''}`, 'good') : ''}
+    ${with2.length ? row('Pulling away from you', pulling.length ? `${pulling.length} rival${pulling.length!==1?'s':''}` : 'nobody', pulling.length ? 'bad' : 'good', pulling[0] && pulling[0].id) : ''}
     ${window._shelfRowCount ? row('New leads to look at', `${leadsTotal}`, 'neutral') : ''}
     ${still.length ? row('Not moving', still.slice(0,3).map(r => kfEsc(r.name)).join(', '), 'neutral') : ''}`;
 
@@ -9923,6 +10532,9 @@ const ASIN_HEADERS = ['asin','asin1','product asin','child asin','asin (child)',
 let ageHasAsins = false;
 let ageAsinCounts = {};   // per bucket, distinct ASINs — computed on import, not yet stored
 let ageAsinValues = {};
+let ageSkuRows = [];      // [sku, asin, band, £, units, oldest received, title] — saved to bdl_snapshot_skus
+// SellerToolKit writes dates as dd/mm/yyyy.
+const ageIsoDate = v => { const m = String(v||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : ''; };
 
 function ageIngest(text, fname){
   const recs = impParseTable(text);
@@ -9935,6 +10547,8 @@ function ageIngest(text, fname){
   // an ASIN column we can group by it as well — an ASIN inherits the age of its OLDEST SKU,
   // the same rule a SKU follows across its own buckets.
   const asinIdx = ASIN_HEADERS.map(h=>header.indexOf(h)).find(i=>i>=0) ?? -1;
+  const titleIdx = header.indexOf('title'), oldestIdxCol = header.indexOf('oldest received');
+  ageSkuRows = [];
 
   if (skuIdx===-1 || AGE_BUCKET_COLS.every(b=>colIdx[b.field+'_age']===-1)){
     showToast("That doesn't look like an Inventory Ageing export — couldn't find the age bucket columns");
@@ -9958,10 +10572,11 @@ function ageIngest(text, fname){
 
     // Which buckets does this SKU have units in, and what's its full valuation across all of them?
     let bucketsWithUnits = [];
-    let skuTotalValue = 0;
+    let skuTotalValue = 0, skuUnits = 0;
     AGE_BUCKET_COLS.forEach((b,idx)=>{
       const ai = colIdx[b.field+'_age'];
       const units = ai>=0 ? (parseFloat(r[ai])||0) : 0;
+      skuUnits += units;
       const vi = colIdx[b.field+'_val'];
       const val = vi>=0 ? impParseMoney(r[vi]) : 0;
       if (val>0) anyValuation = true;
@@ -9977,6 +10592,8 @@ function ageIngest(text, fname){
     const targetField = AGE_BUCKET_COLS[oldestIdx].field;
     skuCounts[targetField]++;
     valSums[targetField] += skuTotalValue;
+    ageSkuRows.push([sku, asinIdx>=0 ? (r[asinIdx]||'').trim().toUpperCase() : '', oldestIdx, Math.round(skuTotalValue*100)/100, skuUnits,
+      oldestIdxCol>=0 ? ageIsoDate(r[oldestIdxCol]) : '', titleIdx>=0 ? (r[titleIdx]||'').trim().replace(/^"|"$/g,'').slice(0,90) : '']);
 
     if (asinIdx>=0){
       const asin=(r[asinIdx]||'').trim().toUpperCase();
@@ -10050,7 +10667,7 @@ function ageReset(){
   document.getElementById('ageFile').value = '';
   ageValuation = { a0:0, a31:0, a61:0, a91:0, a181:0, a271:0, a365:0 };
   ageHasValuation = false;
-  ageHasAsins = false; ageAsinCounts = {}; ageAsinValues = {};
+  ageHasAsins = false; ageAsinCounts = {}; ageAsinValues = {}; ageSkuRows = [];
   const asinEl=document.getElementById('ageAsinSpan'); if (asinEl) asinEl.innerHTML='';
   AGE_BUCKET_COLS.forEach(b=>{ const el=document.getElementById('ageVal'+b.field.replace('f','')); if (el) el.textContent=''; });
   const errEl=document.getElementById('ageErrSpan'); if (errEl){ errEl.textContent=''; errEl.style.color=''; }
@@ -10723,6 +11340,12 @@ async function saveSnap() {
     renderAll(); renderHistory();
     svFailure(LAST_SAVE_ERRORS);
     return;
+  }
+  // Each SKU's band for this date — only from a file dropped this time, never from typed numbers.
+  // A failure here leaves the snapshot itself saved; Stock Health just can't show exact movement.
+  if (ageSkuRows.length && window._snapSkusSave) {
+    const sk = await window._snapSkusSave(date, ageSkuRows);
+    if (sk.ok) SNAP_SKUS[date] = ageSkuRows.slice();
   }
   // remove provider rows the user deleted for this date
   for (const r of removedProviders) {
