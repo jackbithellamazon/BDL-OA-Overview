@@ -1,5 +1,20 @@
 BDL OA Overview v67 — how to put it live (it is a FOLDER now, not one file)
 
+UPDATED 14 Nov (v67ag) — includes v67af and v67ae. NO SQL — just upload index.html, css and js (same way) and commit.
+  New: Stock age chips (on a provider) / provider chips (on a stock age) — pick one or more and the list AND the Check
+  button follow, so you only check what you want. Checks go oldest first. Press Check on another provider while one
+  is running and it queues. The button says how long it'll take; the run line shows tokens spent.
+
+UPDATED 14 Nov (v67af) — includes v67ae. NO SQL — just upload index.html, css and js again (same way) and commit.
+  New: "Everything" at the top of the left list (one press checks every provider), a Black Friday strip at the top,
+  "1,000+" where Keepa can't see a seller's full stock, graph labels that never sit on each other, names on 2 lines.
+
+UPDATED 13 Nov (v67ae) — v67ad IS LIVE; this is a small update on top. NO SQL this time — just upload
+  index.html, css and js again (same way) and commit:
+  Checks never take the Keepa bank under half (630) — they drip at the refill speed after that.
+  Re-checks within 14 days start with a 1-token quick look and only do the full check if something moved.
+  The not-checked list shows every product, in sections by day 90, with Check / Leave out when you hover a line.
+
 UPDATED 11 Nov (v67ad) — PUSH AS SOON AS YOU CAN (the token audit week started at midnight, and until this is
   live OA still uses the old bdl-sourcing address, so its calls are invisible in the audit):
   Repricer checks also feed the shared Keepa cache, so other apps get your own ASINs free (needs the Keepa chat's

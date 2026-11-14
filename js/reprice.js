@@ -21,8 +21,15 @@
    ═══════════════════════════════════════════════════════════════════════════════════════════════ */
 
 const RP_WORKER = 'https://keepa.jackbithellbusiness.workers.dev/src';   // 9 Nov: bdl-sourcing merged into the keepa Worker (old address gets deleted)
-const RP_TOK = 11;                       // Keepa tokens per ASIN for the full check — measured 10 Nov: 7 when Keepa's offers are fresh, 8 when it fetches (≤10 sellers), 14 with >10 sellers; 28 Oct average 10.6
-const RP_TOK_MAX = 14;                   // the worst case, used to keep the bank above the 250 floor
+const RP_TOK0 = 11;                       // Keepa tokens per ASIN for the full check — measured 10 Nov: 7 when Keepa's offers are fresh, 8 when it fetches (≤10 sellers), 14 with >10 sellers; 28 Oct average 10.6
+const rpTok = () => { try { const m = JSON.parse(localStorage.getItem('oaRepTok') || 'null'); if (m && m.n >= 20) return Math.max(5, Math.min(14, Math.round(m.t / m.n))); } catch(e) {} return RP_TOK0; };
+function rpTokSave(t, n){ if (!(t > 0) || !(n > 0)) return; try { const m = JSON.parse(localStorage.getItem('oaRepTok') || '{"t":0,"n":0}'); m.t += t; m.n += n;
+  if (m.n > 300) { m.t = m.t * 300 / m.n; m.n = 300; } localStorage.setItem('oaRepTok', JSON.stringify(m)); } catch(e) {} }   // the last ~300 full checks
+const RP_TOK_MAX = 14;                   // the worst case, used to keep the bank above RP_KEEP
+const RP_KEEP = 630;                     // Jack, 13 Nov: "over 1,200 tokens would empty my bucket — drip feed it". A check never takes the bank
+                                         // under HALF (630): it spends down to here, then goes at the refill speed (21 a minute ≈ 2 products a minute)
+const RP_LOOK_D = 14;                    // Jack, 13 Nov: "anything we can cache to save tokens". A re-check within 14 days of the last FULL check starts with a
+                                         // 1-token look (Amazon, lowest price, seller counts); nothing moved = the full check is kept, something moved = full check
 const RP_FLOOR = 250;                    // never take the shared token bank below this — the VAs and the Discord trackers need it (agreed with the Keepa Discord chat, 6 Nov)
 const RP_UNLOCK = 'oaRepricerUnlocked';
 const RP_FRESH_H = 24;   // Jack, 10 Nov: "we might already have looked at that ASIN a day ago" — a check younger than this is reused, not paid for again
@@ -41,10 +48,12 @@ function rpSellingFine(h){
 const RP_YOUNG_D = 30;
 const rpYoung = h => h.age != null && h.age < RP_YOUNG_D;
 const rpFresh = a => { const x = RP.data[a]; return !!(x && x.checked_at && Date.now() - Date.parse(x.checked_at) < RP_FRESH_H * 36e5); };
+const rpLookable = a => { const x = RP.data[a]; return !!(x && x.data && x.data.sig && x.data.checked && Date.now() - Date.parse(x.data.checked) < RP_LOOK_D * 864e5); };
+const rpFullAt = rec => Date.parse((rec.data && rec.data.checked) || rec.checked_at);   // the last FULL check — a quick look that found nothing new doesn't reset Jack's decisions
 const RP_WORD = 'lavarion';
 function rpPref(k, d){ try { return localStorage.getItem(k) || d; } catch(e) { return d; } }
 function rpPrefSet(k, v){ try { localStorage.setItem(k, v); } catch(e) {} }
-const RP = { data:{}, settings:{}, decisions:[], hist:null, loaded:false, loading:false, prov:null, band:null, mode:'prov', filter:rpPref('oaRepFilter', 'all'), sort:rpPref('oaRepSort', 'new'), run:null, zoom:{}, noTables:false, mem:false, open:null, lim:10, openDone:{}, order:[] };
+const RP = { queue:[], nb:new Set(), np:new Set(), data:{}, settings:{}, decisions:[], hist:null, loaded:false, loading:false, prov:null, band:null, mode:'prov', filter:rpPref('oaRepFilter', 'all'), sort:rpPref('oaRepSort', 'new'), run:null, zoom:{}, noTables:false, mem:false, open:null, lim:10, openDone:{}, order:[] };
 const rpCanAct = () => { try { return localStorage.getItem(RP_UNLOCK) === '1'; } catch(e) { return false; } };
 const RP_DAY = 864e5;
 const rpDay = ms => new Date(ms).toISOString().slice(0, 10);
@@ -60,6 +69,47 @@ const RP_EVENTS = [
   ['Prime Big Deal Days', '2026-10-06', '2026-10-09'], ['Black Friday', '2026-11-20', '2026-12-01'], ['Boxing Day / January sales', '2026-12-26', '2027-01-10'] ];
 const RP_BF = { start:'2026-11-20', end:'2026-12-01', lastStart:'2025-11-20', lastEnd:'2025-12-01' };
 const RP_BF_PREV = { from:'2025-10-20', n:104 };   // 20 Oct 2025 → 31 Jan 2026: the run-up, Black Friday, December, January
+
+// ── The few numbers a 1-token look also returns, kept with every full check so next week's look can say "nothing moved" ──
+function rpSig(p){
+  const c = (p.stats && p.stats.current) || [], e = p.buyBoxEligibleOfferCounts || [], o = {};
+  if (c.length > 0) o.amz = c[0] > 0 ? c[0] : -1;            // Amazon's own price (-1 = Amazon not selling)
+  if (c.length > 1) o.nw = c[1] > 0 ? c[1] : -1;             // lowest new price
+  if (c.length > 11 && c[11] >= 0) o.oc = c[11];             // how many new offers
+  if (e.length) o.fba = e[0];                                // FBA sellers
+  return o;
+}
+// null = nothing moved; otherwise what moved (or why we can't tell) — a full check follows
+function rpMoved(a, b){
+  if (!a || !b) return 'no earlier figures';
+  const ks = ['amz', 'nw', 'oc', 'fba'].filter(k => a[k] != null && b[k] != null);
+  if (ks.length < 2) return 'not enough to compare';
+  const pc = (x, y) => x > 0 && y > 0 ? Math.abs(y - x) / x > 0.02 : (x > 0) !== (y > 0);
+  const out = [];
+  if (ks.includes('amz') && pc(a.amz, b.amz)) out.push('Amazon');
+  if (ks.includes('nw') && pc(a.nw, b.nw)) out.push('lowest price');
+  if (ks.includes('oc') && Math.abs(a.oc - b.oc) >= 2) out.push('sellers');
+  if (ks.includes('fba') && Math.abs(a.fba - b.fba) >= 2) out.push('FBA sellers');
+  return out.length ? out.join(', ') : null;
+}
+async function rpWaitBank(need){   // drip: spend down to half the bank, then wait for the refill
+  let blind = 0;
+  for (;;) {
+    if (RP.run.stop) break;
+    let left = null, rate = 21;
+    const hl = await fetch(`${RP_WORKER}/health`, { cache:'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (hl && hl.tokensLeft != null) { left = hl.tokensLeft; rate = hl.refillRate || 21; }
+    else { const row = window._bankLogRead ? await window._bankLogRead().catch(() => null) : null;   // the free 5-minute log, less a safety margin
+      if (row && row.tokens_left != null && Date.now() - Date.parse(row.at) < 10 * 60000) left = row.tokens_left - 150; }
+    if (left == null) { if (++blind > 10) { RP.run.stop = true; RP.run.why = "couldn't read the Keepa bank — stopped so nothing is spent blind"; break; }
+      RP.run.wait = 1; renderRepRun(); await new Promise(r => setTimeout(r, 30000)); continue; }
+    if (left - need >= RP_KEEP) break;
+    RP.run.wait = Math.ceil((need + RP_KEEP - left) / rate);
+    renderRepRun();
+    await new Promise(r => setTimeout(r, 30000));
+  }
+  RP.run.wait = 0;
+}
 
 // ── Keepa product → the compact record saved per ASIN ─────────────────────────────────────────
 function rpCompact(p){
@@ -90,7 +140,10 @@ function rpCompact(p){
   const bfFrom = rpMs(RP_BF_PREV.from);
   const cnt = csv[11] || [];
   const cntAt = t => { let v = null; for (let i = 0; i < cnt.length; i += 2) { if (rpKt(cnt[i]) <= t) v = cnt[i + 1]; else break; } return v; };
-  const offers = (p.liveOffersOrder || []).map(i => p.offers[i]).filter(o => o && o.condition === 1).map(o => {
+  const LO = p.liveOffersOrder || [], OF = p.offers || [];
+  const loOK = LO.length === OF.length && LO.every(i => Number.isInteger(i) && i >= 0 && i < OF.length);
+  const live = p._onlyLive ? (loOK ? LO.map(i => OF[i]) : OF) : LO.map(i => OF[i]);   // only-live-offers=1 → every offer is live
+  const offers = live.filter(o => o && o.condition === 1).map(o => {
     const c = o.offerCSV || [], st = o.stockCSV || [];
     return { p: c.length >= 3 ? (c[c.length - 2] + Math.max(0, c[c.length - 1])) / 100 : null, s: st.length ? st[st.length - 1] : null,
       fba: !!o.isFBA, amz: !!o.isAmazon, me: o.sellerId === KEEPA_ME, prime: !!o.isPrime };
@@ -100,7 +153,7 @@ function rpCompact(p){
   const cur = (p.stats && p.stats.current) || [];
   const img = p.images && p.images[0] ? (p.images[0].m || p.images[0].l) : (p.imagesCSV ? p.imagesCSV.split(',')[0] : null);
   const amzOffer = offers.find(o => o.amz);
-  return { v:2, asin:p.asin, title:p.title || '', image: img ? 'https://m.media-amazon.com/images/I/' + img : null, checked:new Date().toISOString(),
+  return { v:2, sig:rpSig(p), asin:p.asin, title:p.title || '', image: img ? 'https://m.media-amazon.com/images/I/' + img : null, checked:new Date().toISOString(),
     ref:(p.referralFeePercent || p.referralFeePercentage || 15) / 100, pp:((p.fbaFees || {}).pickAndPackFee || 0) / 100,
     bbNow: cur[18] > 0 ? cur[18] / 100 : null, amzNow: cur[0] > 0 ? cur[0] / 100 : null, amzStock: amzOffer ? amzOffer.s : null,
     monthlySold: p.monthlySold > 0 ? p.monthlySold : null, rank: cur[3] > 0 ? cur[3] : null,
@@ -303,17 +356,20 @@ function rpOwnSales(){
 }
 
 // ── The queue: FBA units by price, Amazon on its own, FBM not counted (Jack: "FBA only") ───────
+const RP_STOCK_CAP = 1000;   // Keepa can't see past 1,000 units in one seller's stock — 1000 means "1,000 or more"
 function rpQueue(d){
   const others = d.offers.filter(o => !o.me && !o.amz && o.fba);
   const fbm = d.offers.filter(o => !o.me && !o.amz && !o.fba).length;
   const levels = [];
   others.forEach(o => { const L = levels[levels.length - 1];
-    if (L && o.p <= L.p * 1.006) { L.units += o.s ?? 1; L.sellers++; L.unknown = L.unknown || o.s == null; }
-    else levels.push({ p:o.p, units:o.s ?? 1, sellers:1, unknown:o.s == null }); });
+    const cap = o.s == null || o.s >= RP_STOCK_CAP;
+    if (L && o.p <= L.p * 1.006) { L.units += o.s ?? 1; L.sellers++; L.unknown = L.unknown || cap; }
+    else levels.push({ p:o.p, units:o.s ?? 1, sellers:1, unknown:cap }); });
   const amz = d.offers.find(o => o.amz) || null, me = d.offers.find(o => o.me) || null;
   const ahead = P => others.filter(o => o.p < P - 0.005).reduce((t, o) => t + (o.s ?? 1), 0);
+  const aheadTxt = P => { const u = ahead(P), more = others.some(o => o.p < P - 0.005 && (o.s == null || o.s >= RP_STOCK_CAP)); return (more ? 'at least ' : '') + u.toLocaleString(); };
   const fbaLow = others.length ? others[0].p : null;
-  return { levels, amz, me, ahead, fbaLow, others, fbm };
+  return { levels, amz, me, ahead, aheadTxt, fbaLow, others, fbm };
 }
 
 // ── The call ──────────────────────────────────────────────────────────────────────────────────
@@ -393,11 +449,11 @@ function rpDecide(h, d){
       // a cluster ABOVE you is money left on the table (GoPro → £195); one below only when your price won't sell soon
       const up = myPrice != null && cluster.p > myPrice + 0.01;
       call = { kind: up ? 'raise' : 'drop', price:cluster.p, label: `${up ? 'Raise to' : 'Drop to'} ${rpGBP(cluster.p)}` };
-      why.push(`Only ${q.ahead(cluster.p)} unit${q.ahead(cluster.p) !== 1 ? 's' : ''} sit under ${rpGBP(cluster.p)}, then ${cluster.units} at ${rpGBP(cluster.p)}. At about ${Math.round(S * 30)} a month the cheaper ones go in about ${Math.max(1, Math.round(q.ahead(cluster.p) / S))} day${Math.max(1, Math.round(q.ahead(cluster.p) / S)) === 1 ? '' : 's'} and the Buy Box moves up to ${rpGBP(cluster.p)} — sit there, don't undercut to the bottom.`);
+      why.push(`Only ${q.aheadTxt(cluster.p)} unit${q.ahead(cluster.p) !== 1 ? 's' : ''} sit under ${rpGBP(cluster.p)}, then ${cluster.units.toLocaleString()}${cluster.unknown ? '+' : ''} at ${rpGBP(cluster.p)}. At about ${Math.round(S * 30).toLocaleString()} a month the cheaper ones go in about ${Math.max(1, Math.round(q.ahead(cluster.p) / S))} day${Math.max(1, Math.round(q.ahead(cluster.p) / S)) === 1 ? '' : 's'} and the Buy Box moves up to ${rpGBP(cluster.p)} — sit there, don't undercut to the bottom.`);
       if (offerFall) why.push(`Sellers falling: ${d.offerCnt.d30} → ${d.offerCnt.now} over 30 days.`);
     } else if (sellsSoon) {
       call = { kind:'wait', price:myPrice, label:`Wait at ${rpGBP(myPrice)}` };
-      why.push(`${q.ahead(myPrice)} unit${q.ahead(myPrice) !== 1 ? 's' : ''} ahead of you; at about ${Math.round(S * 30)} a month they clear in about ${Math.max(1, Math.round(q.ahead(myPrice) / S))} day${Math.max(1, Math.round(q.ahead(myPrice) / S)) === 1 ? '' : 's'}, then it's you.`);
+      why.push(`${q.aheadTxt(myPrice)} unit${q.ahead(myPrice) !== 1 ? 's' : ''} ahead of you; at about ${Math.round(S * 30).toLocaleString()} a month they clear in about ${Math.max(1, Math.round(q.ahead(myPrice) / S))} day${Math.max(1, Math.round(q.ahead(myPrice) / S)) === 1 ? '' : 's'}, then it's you.`);
       if (offerFall) why.push(`Sellers falling: ${d.offerCnt.d30} → ${d.offerCnt.now} over 30 days.`);
     } else if (ref != null && (pat.share90 ?? 0) >= 20) {
       call = { kind:'wait', price:ref, label:`Wait at ${rpGBP(ref)}` };
@@ -408,7 +464,7 @@ function rpDecide(h, d){
       const P = cand.length ? Math.max(...cand) : null;
       if (P != null) {
         call = { kind:'drop', price:P, label:`Drop to ${rpGBP(P)}` };
-        why.push(`At ${rpGBP(ref)} you're behind ${q.ahead(ref ?? 0)} units and the Buy Box reached your price on only ${Math.round(pat.share90 ?? 0)}% of the last 90 days.`);
+        why.push(`At ${rpGBP(ref)} you're behind ${q.aheadTxt(ref ?? 0)} units and the Buy Box reached your price on only ${Math.round(pat.share90 ?? 0)}% of the last 90 days.`);
         why.push(`${rpGBP(P)} is the highest price with a short queue that still pays (${rpGBP(pr(P))} each).`);
       } else if (be != null && (pat.shareAt(365, be) ?? 0) >= 25) {
         call = { kind:'hold', price:be, label:`Hold at break-even ${rpGBP(be)}` };
@@ -522,7 +578,8 @@ function rpChanges(rec, r){
 }
 
 // What each provider is (Jack, 28 Oct)
-const RP_PROV = { JACK:'you', JAC:'you', TFTJ:'sourcing method', REPLEN:'replenishables', VAA:'Mera · VA', VAS:'Suz · VA', FFB:'lead group', PS:'lead group', THC:'lead group',
+const RP_ALL = 'Everything';   // Jack, 14 Nov: one list across every provider, and one press to check it all
+const RP_PROV = { EVERYTHING:'all providers', JACK:'you', JAC:'you', TFTJ:'sourcing method', REPLEN:'replenishables', VAA:'Mera · VA', VAS:'Suz · VA', FFB:'lead group', PS:'lead group', THC:'lead group',
   ARBI:'sourcing software', RB:'sourcing software', PP:'n/a · stopping', LAVARION:'own brand' };
 const rpProvInfo = n => RP_PROV[String(n || '').trim().toUpperCase()] || '';
 
@@ -599,58 +656,98 @@ const RP_BANDS = [['0–30 days',0,30],['31–60 days',31,60],['61–90 days',61
 const rpInBand = (h, b) => { const B = RP_BANDS.find(x => x[0] === b); return !!B && h.age != null && h.age >= B[1] && h.age <= B[2]; };
 async function rpCheckOne(asin){ const H = rpHoldings(), h = H && H.by[asin]; if (!h) return; await rpCheckProvider([...h.providers][0], true, [asin]); }
 window.rpCheckOne = rpCheckOne;
-async function rpCheckProvider(prov, all, only){
+// The Check button checks exactly what's on screen (the provider or band, narrowed by the chips), never more
+window.rpCheckView = function(all){ const v = RP.view; if (v) rpCheckProvider(v.label, all, null, v.asins, v.youngOK, all ? v.asins.length : v.n); };
+window.rpUnqueue = i => { RP.queue.splice(i, 1); renderRepRun(); };
+async function rpCheckProvider(prov, all, only, asins, youngOK0, nHint){
   if (!rpCanAct()) { rpUnlockAsk(); return; }
-  if (RP.run) return;
+  if (RP.run) {   // one at a time: the next waits its turn instead of being ignored
+    const H0 = only ? rpHoldings() : null, lab = only && H0 && H0.by[only[0]] ? (H0.by[only[0]].title || only[0]).slice(0, 30) : prov;
+    RP.queue.push({ prov: lab, all, only, asins, youngOK0, n: only ? only.length : nHint ?? (asins ? asins.length : null) });
+    if (typeof showToast === 'function') showToast(`Queued: ${prov} — starts when this one finishes`);
+    renderRepRun(); return;
+  }
   const H = rpHoldings(); if (!H) return;
-  const pick = RP.mode === 'age' && RP_BANDS.some(x => x[0] === prov) ? (a => rpInBand(a, prov)) : (a => a.providers.has(prov));
-  const every = Object.values(H.by).filter(pick).sort((a, b) => b.value - a.value).map(a => a.asin);
-  const youngOK = all || (RP.mode === 'age' && prov === RP_BANDS[0][0]);   // picking the 0–30 band means you want them
+  if (only && !prov) { const h = H.by[only[0]]; prov = h ? [...h.providers][0] : ''; }
+  const pick = prov === RP_ALL ? (() => true) : RP.mode === 'age' && RP_BANDS.some(x => x[0] === prov) ? (a => rpInBand(a, prov)) : (a => a.providers.has(prov));
+  // oldest first (past day 90 first), so stopping halfway leaves the urgent ones done
+  const every = (asins ? asins.map(a => H.by[a]).filter(Boolean) : Object.values(H.by).filter(pick)).sort((a, b) => (b.age ?? -1) - (a.age ?? -1) || b.value - a.value).map(a => a.asin);
+  const youngOK = all || youngOK0 || (RP.mode === 'age' && prov === RP_BANDS[0][0]);   // picking the 0–30 band means you want them
   // Jack, 10 Nov: selling-fine products are checked like every other one ("if I want to audit it, it does it like every other product")
   const skip = a => rpFresh(a) || (!youngOK && rpYoung(H.by[a]));
   const fine = 0;
   const young = youngOK ? 0 : every.filter(a => !rpFresh(a) && rpYoung(H.by[a])).length;
   const list = only ? only : all ? every : every.filter(a => !skip(a));   // checked in the last day or under 30 days = costs nothing
-  if (!list.length) { if (typeof showToast === 'function') showToast(`Nothing to pull in ${prov} — everything was checked in the last ${RP_FRESH_H} hours or is under 30 days`); return; }
-  RP.run = only ? { prov: H.by[only[0]] ? (H.by[only[0]].title || only[0]).slice(0, 40) : only[0], done:0, total:list.length, kept:0, fine:0, young:0, wait:0, err:0, stop:false }
-    : { prov, done:0, total:list.length, kept:every.length - list.length - fine - young, fine, young, wait:0, err:0, stop:false };
+  if (!list.length) { if (typeof showToast === 'function') showToast(`Nothing to pull in ${prov} — everything was checked in the last ${RP_FRESH_H} hours or is under 30 days`); rpNextQueued(); return; }
+  // a full check in the last 14 days → a 1-token look first; "Check this one" and "Re-check all" always do the full check
+  const look = only || all ? [] : list.filter(rpLookable), full = list.filter(a => !look.includes(a));
+  RP.run = only ? { prov: H.by[only[0]] ? (H.by[only[0]].title || only[0]).slice(0, 40) : only[0], done:0, total:list.length, kept:0, fine:0, young:0, wait:0, err:0, stop:false, look:0, same:0, moved:0, spent:0, fullTok:0, fullN:0 }
+    : { prov, done:0, total:list.length, kept:every.length - list.length - fine - young, fine, young, wait:0, err:0, stop:false, look:look.length, same:0, moved:0, spent:0, fullTok:0, fullN:0 };
   renderRepTool();
-  for (let i = 0; i < list.length && !RP.run.stop; i += 5) {
-    const batch = list.slice(i, i + 5);
+  const fromFixtures = batch => Promise.all(batch.map(a => fetch(`fixtures/keepa/${a}.json`).then(r => r.ok ? r.json() : null).catch(() => null))).then(x => x.filter(Boolean));
+  const save = async (asin, rec) => {
+    RP.data[asin] = rec;
+    if (window.OA_TEST || RP.noTables) RP_MEM.data[asin] = rec;
+    else if (window._repSave) await window._repSave(asin, rec.data);
+  };
+  // 1. quick looks, up to 100 an ask, 1 token each (free when another app pulled it today — cache=read)
+  for (let i = 0; i < look.length && !RP.run.stop; i += 100) {
+    const batch = look.slice(i, i + 100);
     try {
       let prods;
-      if (window.OA_TEST) {   // test mode: Keepa is never called — saved copies of real responses only
-        prods = (await Promise.all(batch.map(a => fetch(`fixtures/keepa/${a}.json`).then(r => r.ok ? r.json() : null).catch(() => null)))).filter(Boolean);
-      } else {
-        for (;;) {   // wait for the bank: up to 14 tokens an ASIN, refills 21 a minute, and 250 always left for everyone else
-          const hl = await fetch(`${RP_WORKER}/health`, { cache:'no-store' }).then(r => r.json()).catch(() => null);
-          if (!hl || hl.tokensLeft - batch.length * RP_TOK_MAX >= RP_FLOOR || RP.run.stop) break;
-          RP.run.wait = Math.ceil((batch.length * RP_TOK_MAX + RP_FLOOR - hl.tokensLeft) / (hl.refillRate || 21));
-          renderRepRun();
-          await new Promise(r => setTimeout(r, 30000));
-        }
-        RP.run.wait = 0;
-        const j = await fetch(`${RP_WORKER}/keepa?path=product&domain=2&asin=${batch.join(',')}&offers=20&stock=1&history=1&days=420&stats=90&buybox=1&app=oa-reprice&cache=write`, { cache:'no-store' }).then(r => r.json());   // cache=write: the Worker saves a slim copy to the shared keepa_cache so other apps get Jack's ASINs free (reply untouched)
+      if (window.OA_TEST) prods = await fromFixtures(batch);   // test mode: Keepa is never called
+      else {
+        await rpWaitBank(batch.length);
+        if (RP.run.stop) break;
+        const j = await fetch(`${RP_WORKER}/keepa?path=product&domain=2&asin=${batch.join(',')}&stats=90&history=0&app=oa-reprice-look&cache=read&maxHours=24`, { cache:'no-store' }).then(r => r.json());
         if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+        RP.run.spent += j.tokensConsumed || 0;
         prods = j.products || [];
+      }
+      const got = new Map(prods.map(p => [p.asin, p]));
+      for (const a of batch) {
+        const old = RP.data[a], p = got.get(a), moved = p ? rpMoved(old.data.sig, rpSig(p)) : 'no answer';
+        if (moved) { full.push(a); RP.run.moved++; continue; }
+        const at = new Date().toISOString();
+        await save(a, { checked_at:at, data:{ ...old.data, look:{ at, n:((old.data.look && old.data.look.n) || 0) + 1 } } });
+        RP.run.same++; RP.run.done++;
+      }
+    } catch(e) { RP.run.err++; RP.run.done += batch.length; console.warn('Repricer quick look failed for', batch, e); }
+    renderRepTool();
+  }
+  // 2. full checks, 5 at a time — never takes the bank under half
+  for (let i = 0; i < full.length && !RP.run.stop; i += 5) {
+    const batch = full.slice(i, i + 5);
+    try {
+      let prods;
+      if (window.OA_TEST) prods = await fromFixtures(batch);   // test mode: saved copies of real responses only
+      else {
+        await rpWaitBank(batch.length * RP_TOK_MAX);
+        if (RP.run.stop) break;
+        const j = await fetch(`${RP_WORKER}/keepa?path=product&domain=2&asin=${batch.join(',')}&offers=20&stock=1&history=1&days=420&stats=90&buybox=1&only-live-offers=1&app=oa-reprice&cache=write`, { cache:'no-store' }).then(r => r.json());   // cache=write: the Worker saves a slim copy to the shared keepa_cache so other apps get Jack's ASINs free (reply untouched)
+        if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
+        prods = (j.products || []).map(p => (p._onlyLive = true, p));
+        RP.run.spent += j.tokensConsumed || 0; if (j.tokensConsumed > 0 && prods.length) { RP.run.fullTok += j.tokensConsumed; RP.run.fullN += prods.length; }
       }
       for (const p of prods) {
         const d = rpCompact(p), old = RP.data[p.asin];
         // what the last check said — a re-check the same day keeps the older one, so the comparison is day on day
-        if (old && old.data) d.prev = Date.now() - Date.parse(old.checked_at) < 12 * 36e5 && old.data.prev ? old.data.prev : rpPrevOf(H.by[p.asin], old);
-        RP.data[p.asin] = { checked_at: d.checked, data: d };
-        if (window.OA_TEST || RP.noTables) RP_MEM.data[p.asin] = RP.data[p.asin];
-        else if (window._repSave) await window._repSave(p.asin, d);
+        if (old && old.data) d.prev = Date.now() - rpFullAt(old) < 12 * 36e5 && old.data.prev ? old.data.prev : rpPrevOf(H.by[p.asin], old);
+        await save(p.asin, { checked_at: d.checked, data: d });
       }
     } catch(e) { RP.run.err++; console.warn('Repricer check failed for', batch, e); }
-    RP.run.done = Math.min(list.length, i + batch.length);
+    RP.run.done = Math.min(RP.run.total, RP.run.done + batch.length);
     renderRepTool();
   }
+  const r0 = RP.run;
+  rpTokSave(r0.fullTok, r0.fullN);
   RP.run = null;
   renderRepTool();
   rpBankRead();
-  if (typeof showToast === 'function') showToast(`✓ ${prov} checked`);
+  if (typeof showToast === 'function') showToast(r0.why ? `Stopped: ${r0.why}` : `${r0.stop ? 'Stopped' : '✓'} ${prov}${r0.stop ? ` after ${r0.done} of ${r0.total}` : ' checked'}${r0.spent ? ` · ${r0.spent.toLocaleString()} tokens` : ''}${r0.look ? ` — ${r0.same} unchanged since the last full check (1 token each)` : ''}`);
+  if (r0.stop) RP.queue = []; else rpNextQueued();
 }
+function rpNextQueued(){ const nx = RP.queue.shift(); if (nx) setTimeout(() => rpCheckProvider(nx.only ? null : nx.prov, nx.all, nx.only, nx.asins, nx.youngOK0), 300); }
 
 // ── Decisions: what Jack did, and whether it sold since ───────────────────────────────────────
 async function rpDecide2(asin, action, sku){
@@ -771,15 +868,17 @@ function rpChart(h, d, r, days){
   g += area(az) + seg(az, '#f08c00', 1.6, .9) + (fb.length ? seg(fb, '#0a9396', 1.8, .95) : '') + seg(bb, '#e91e8c', 2.8);
   if (kLand > 0) { const xw = Math.max(0, Math.min(X(kLand), W - PR) - PL); g += `<rect x="${PL}" y="${PT}" width="${xw.toFixed(1)}" height="${bot - PT}" fill="#f4f6f9" opacity=".62"/>${xw > 150 ? `<text x="${PL + 8}" y="${PT + 14}" class="rpc-note">before you had it</text>` : ''}`; }
   // when it landed and its day 90 — the clock everything else runs on
-  const vmark = (date, col, lab) => { const k = dayK(date); if (k < 0 || k >= n) return ''; const x = X(k); return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${PT}" y2="${bot}" stroke="${col}" stroke-width="1.8" stroke-dasharray="6 4"/><text x="${(x + 6).toFixed(1)}" y="${PT + 13}" class="rpc-lab" fill="${col}" paint-order="stroke" stroke="#fff" stroke-width="4">${lab}</text>`; };
+  const vmark = (date, col, lab) => { const k = dayK(date); if (k < 0 || k >= n) return ''; const x = X(k), end = x + 6 + lab.length * 7.2 > W - PR; return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${PT}" y2="${bot}" stroke="${col}" stroke-width="1.8" stroke-dasharray="6 4"/><text x="${(end ? x - 6 : x + 6).toFixed(1)}" y="${PT + 13}"${end ? ' text-anchor="end"' : ''} class="rpc-lab" fill="${col}" paint-order="stroke" stroke="#fff" stroke-width="4">${lab}</text>`; };
   if (h.landed) g += vmark(h.landed, '#334155', `landed ${dm(h.landed)} · ${h.age} days ago`);
   if (h.day90) g += vmark(h.day90, '#e8590c', 'day 90');
   // your lines — labels on two sides, spaced so they never sit on each other
   const labs = { L:[], R:[] };
   const hl = (v, col, dash, lab, side, w) => { if (v == null) return ''; labs[side].push({ y: Y(v) - 5, col, t: `${lab} ${rpGBP(v)}` });
     return `<line x1="${PL}" x2="${W - PR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="${col}" stroke-width="${w || 2}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`; };
-  const labDraw = side => { const L = labs[side].sort((a, b) => a.y - b.y); for (let i = 1; i < L.length; i++) if (L[i].y - L[i - 1].y < 16) L[i].y = L[i - 1].y + 16;
-    return L.map(l => `<text x="${side === 'R' ? W - PR - 6 : PL + 6}" y="${Math.max(PT + 30, Math.min(bot - 4, l.y)).toFixed(1)}" text-anchor="${side === 'R' ? 'end' : 'start'}" class="rpc-lab" fill="${l.col}" paint-order="stroke" stroke="#fff" stroke-width="4">${l.t}</text>`).join(''); };
+  const labDraw = side => { const G = 18, top = PT + 32, low = bot - 4, L = labs[side].map(l => ({ ...l, y:Math.max(top, Math.min(low, l.y)) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < L.length; i++) if (L[i].y - L[i - 1].y < G) L[i].y = L[i - 1].y + G;
+    if (L.length && L[L.length - 1].y > low) { L[L.length - 1].y = low; for (let i = L.length - 2; i >= 0; i--) if (L[i + 1].y - L[i].y < G) L[i].y = L[i + 1].y - G; }
+    return L.map(l => `<text x="${side === 'R' ? W - PR - 6 : PL + 6}" y="${l.y.toFixed(1)}" text-anchor="${side === 'R' ? 'end' : 'start'}" class="rpc-lab" fill="${l.col}" paint-order="stroke" stroke="#fff" stroke-width="4">${l.t}</text>`).join(''); };
   const sameMin = r.myMin != null && r.myPrice != null && Math.abs(r.myMin - r.myPrice) < 0.5;
   if (sa) g += hl(sa.low, '#7a8699', '1 4', 'usual sale', 'L', 1.6);
   if (nb) labs.L.push({ y: Y(nb.hi) - 5, col:'#00875a', t:`normal ${rpGBP(nb.lo)}–${rpGBP(nb.hi).replace('£', '')}` });
@@ -829,13 +928,13 @@ function rpQueueHtml(h, r){
   if (amz) items.push({ p:amz.p, units:amz.s, kind:'amz' });
   if (me) items.push({ p:me.p, units:me.s, kind:'me' });
   items.sort((a, b) => a.p - b.p || (a.kind === 'me' ? 1 : -1));
-  let shown = 0, passedMe = false;
+  let shown = 0, passedMe = false, runPlus = false;
   for (const it of items) {
     if (passedMe && shown > 3) break;
-    if (it.kind === 'l') run += it.units;
+    if (it.kind === 'l') { run += it.units; runPlus = runPlus || it.unknown; }
     const lab = it.kind === 'amz' ? `<b class="rp-amz">Amazon</b>` : it.kind === 'me' ? `<b class="rp-me">You</b>` : `${it.sellers} FBA seller${it.sellers > 1 ? 's' : ''}`;
-    const u = it.kind === 'amz' ? (it.units == null ? '?' : it.units >= 99999 ? 'plenty' : it.units) : it.units == null ? '?' : `${it.units}${it.unknown ? '+' : ''}`;
-    rows.push(`<tr class="${it.kind}"><td>${rpGBP(it.p)}</td><td>${lab}</td><td class="n">${u}</td><td class="n">${it.kind === 'l' ? run : it.kind === 'me' ? `<b>${run}</b> ahead` : '<em>not counted</em>'}</td></tr>`);
+    const u = it.kind === 'amz' ? (it.units == null ? '?' : it.units >= 99999 ? 'plenty' : it.units >= RP_STOCK_CAP ? '1,000+' : it.units.toLocaleString()) : it.units == null ? '?' : `${it.units.toLocaleString()}${it.unknown ? '+' : ''}`;
+    rows.push(`<tr class="${it.kind}"><td>${rpGBP(it.p)}</td><td>${lab}</td><td class="n">${u}</td><td class="n">${it.kind === 'l' ? run.toLocaleString() + (runPlus ? '+' : '') : it.kind === 'me' ? `<b>${run.toLocaleString()}${runPlus ? '+' : ''}</b> ahead` : '<em>not counted</em>'}</td></tr>`);
     if (it.kind === 'me') passedMe = true;
     shown++;
   }
@@ -945,7 +1044,7 @@ function rpCard(h, rec){
   const dec = RP.decisions.find(x => x.asin === h.asin && !x.sku && x.action === 'wait') || null;
   const sugs = [...new Set(r.skus.filter(x => x.sug != null).map(x => x.sug.toFixed(2)))].map(Number).sort((a, b) => a - b);
   const priceTxt = c.price == null ? '' : sugs.length > 1 ? `${rpGBP(sugs[0])}–${rpGBP(sugs[sugs.length - 1]).replace('£', '')}` : rpGBP(sugs[0] ?? c.price);
-  const done = r.skus.filter(x => { const dd = rpLastDecision(h.asin, x.sku); return dd && rpMs(String(dd.decided_at).slice(0, 10)) >= Date.parse(rec.checked_at) - 864e5; }).length;
+  const done = r.skus.filter(x => { const dd = rpLastDecision(h.asin, x.sku); return dd && rpMs(String(dd.decided_at).slice(0, 10)) >= rpFullAt(rec) - 864e5; }).length;
   const ageTxt = h.landed ? (late ? `${h.age} days at Amazon · missed day 90 (${fmtShort(h.day90)})` : `${h.age} days at Amazon · sell by ${fmtShort(h.day90)}`) : 'landed date unknown';
   const target = h.skus.map(s => s.target).find(v => v != null) ?? null;
   const kL = h.landed ? Math.max(0, Math.round((rpMs(h.landed) - rpMs(d.start)) / RP_DAY)) : 0;
@@ -957,7 +1056,7 @@ function rpCard(h, rec){
     <div class="rpk-head">
       <div class="rpk-img">${d.image ? `<img src="${rpEsc(d.image)}" alt="" loading="lazy">` : ''}</div>
       <div style="min-width:0">
-        <div class="rpk-name">${rpEsc(d.title || h.title || h.asin)}</div>
+        <div class="rpk-name" title="${rpEsc(d.title || h.title || h.asin)}">${rpEsc(d.title || h.title || h.asin)}</div>
         <div class="rpk-meta"><span class="rpk-asin">${h.asin}</span>${[...h.providers].map(p => `<span class="rpk-prov" title="${rpEsc(rpProvInfo(p))}">${rpEsc(p)}</span>`).join('')}
           <span class="rpk-age ${late ? 'late' : 'ok'}">${ageTxt}</span>${(sfC => sfC ? `<span class="rpk-fine" title="At your own pace from Sarah's uploads">selling fine · ${sfC.sold} sold in ${sfC.days} days, gone in ~${sfC.clears}d</span>` : '')(rpSellingFine(h))}
           <span><b style="color:var(--text)">${rpGBP0(h.value)}</b> tied up · ${h.units} unit${h.units !== 1 ? 's' : ''}${h.skus.length > 1 ? ` · ${h.skus.length} SKUs` : ''}</span></div>
@@ -971,6 +1070,7 @@ function rpCard(h, rec){
       </div>
     </div>
     ${rpPlanHtml(rpPlan(h, d, r))}
+    ${d.look ? `<div class="rpk-look rpk-pad"><b>Quick look ${fmtShort(String(d.look.at).slice(0, 10))} · 1 token:</b> Amazon, the lowest price and the sellers haven't moved since the full check on ${fmtShort(String(d.checked).slice(0, 10))}, so that check is kept — the graph and the queue are from then. The next check after ${fmtShort(rpDay(Date.parse(d.checked) + RP_LOOK_D * RP_DAY))} is a full one anyway, or sooner if something moves.</div>` : ''}
     ${ch ? `<div class="rp-chg rpk-pad"><b>⚡ Since the check on ${fmtShort(String(ch.since).slice(0, 10))}:</b> ${ch.items.join(' · ')}</div>` : ''}
     ${r.why.length || r.warn.length ? `<div class="rpk-reasons">${r.why.length ? `<ul>${r.why.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}${r.warn.length ? `<ul class="w">${r.warn.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}</div>` : ''}
     <div class="rpk-graph">
@@ -1025,7 +1125,7 @@ function rpCard(h, rec){
 // Done on this pass = since the last Keepa check, every SKU was set in STK, or he chose "leave it all — waiting"
 function rpDoneInfo(h, rec){
   if (!rec) return null;
-  const since = Date.parse(rec.checked_at) - 864e5, after = x => Date.parse(x.decided_at) >= since;
+  const since = rpFullAt(rec) - 864e5, after = x => Date.parse(x.decided_at) >= since;
   const w = RP.decisions.find(x => x.asin === h.asin && !x.sku && x.action === 'wait' && after(x));
   if (w) return { how:'Left it — waiting', at:w.decided_at };
   const sets = h.skus.map(s => RP.decisions.find(x => x.asin === h.asin && x.sku === s.sku && x.action === 'set' && after(x)));
@@ -1059,11 +1159,20 @@ if (!window._rpKeyOn) { window._rpKeyOn = true; document.addEventListener('keydo
 // Products not checked yet: one short line each, not a full row each
 function rpTodoHtml(list, P, can){
   if (!list.length) return '';
-  const v = list.reduce((t, h) => t + h.value, 0);
-  return `<div class="rpk-todo"><div class="rpk-todoh"><b>${list.length} not checked yet</b> · ${rpGBP0(v)} tied up${can ? ` — press <b>Check ${rpEsc(P.name)}</b> at the top to see their graphs and calls` : ''}</div>
-    <div class="rpk-todol">${list.slice(0, 90).map(h => { const late = h.day90 && rpMs(h.day90) < Date.now();
-      const sf = rpSellingFine(h);
-      return `<div class="rpk-ti" title="${rpEsc(h.title || '')}${sf ? ` — you sold ${sf.sold} in ${sf.days} days, so ${h.units} go in about ${sf.clears} days` : ''}"><span class="n">${rpEsc(h.title || h.asin)}</span>${rpYoung(h) ? `<span class="a young">${h.age} day${h.age !== 1 ? 's' : ''} in</span>` : sf ? `<span class="a fine">selling fine · ~${sf.clears}d</span>` : rpYoung(h) ? `<span class="a young">${h.age} day${h.age !== 1 ? 's' : ''} in</span>` : `<span class="a ${late ? 'late' : 'ok'}">${h.landed ? (late ? `${h.age} days` : `by ${fmtShort(h.day90)}`) : ''}</span>`}<span class="v">${rpGBP0(h.value)}</span>${can ? `${rpYoung(h) && !RP.run ? `<button class="rpk-back rpk-one" title="Check just this one in Keepa — about ${RP_TOK} tokens" onclick="rpCheckOne('${h.asin}')">Check · ~${RP_TOK}</button>` : ''}<button class="rpk-back" title="Your own brand or bundle — take it out of the Repricer" onclick="rpSkip('${h.asin}',true)">Leave out</button>` : ''}</div>`; }).join('')}${list.length > 90 ? `<div class="rpk-ti"><span class="n rp-dim">+${list.length - 90} more</span></div>` : ''}</div></div>`;
+  const v = list.reduce((t, h) => t + h.value, 0), today = rpToday(), in30 = rpDay(rpMs(today) + 30 * RP_DAY);
+  const band = h => rpYoung(h) ? 'young' : !h.day90 ? 'later' : h.day90 < today ? 'late' : h.day90 <= in30 ? 'soon' : 'later';
+  const SEC = { late:['Past day 90', 'var(--o)'], soon:['Day 90 in the next 30 days', 'var(--y)'], later:['Day 90 later', 'var(--g)'],
+    young:['Under 30 days at Amazon — not checked unless you press Check', '#c4b5fd'] };
+  // Jack, 10 Nov: like STK — oldest at the bottom (or the top, with Oldest → newest). Under 30 days always last.
+  const order = RP.sort === 'old' ? ['late', 'soon', 'later', 'young'] : RP.sort === 'new' ? ['later', 'soon', 'late', 'young'] : null;
+  const row = h => { const late = h.day90 && rpMs(h.day90) < Date.now(), sf = rpSellingFine(h);
+    const chip = rpYoung(h) ? `<span class="a young">${h.age} day${h.age !== 1 ? 's' : ''} in</span>` : sf ? `<span class="a fine">selling fine · ~${sf.clears}d</span>`
+      : `<span class="a ${late ? 'late' : 'ok'}">${h.landed ? (late ? `${h.age} days` : `by ${fmtShort(h.day90)}`) : ''}</span>`;
+    const acts = can ? `<span class="rpk-acts"><button class="rpk-back rpk-one" title="Check just this one in Keepa — about ${rpTok()} tokens" onclick="rpCheckOne('${h.asin}')">Check · ~${rpTok()}</button><button class="rpk-back" title="Your own brand or bundle — take it out of the Repricer" onclick="rpSkip('${h.asin}',true)">Leave out</button></span>` : '';
+    return `<div class="rpk-ti" title="${rpEsc(h.title || '')} · ${h.units} unit${h.units !== 1 ? 's' : ''}${sf ? ` — you sold ${sf.sold} in ${sf.days} days, so ${h.units} go in about ${sf.clears} days` : ''}"><span class="n">${rpEsc(h.title || h.asin)}</span>${chip}<span class="v">${rpGBP0(h.value)}</span>${acts}</div>`; };
+  const secs = order ? order.map(k => [k, list.filter(h => band(h) === k)]).filter(x => x[1].length) : [[null, list]];
+  return `<div class="rpk-todo"><div class="rpk-todoh"><b>${list.length} not checked yet</b> · ${rpGBP0(v)} tied up${can ? ` — press <b>${P.name === RP_ALL ? 'Check everything' : `Check ${rpEsc(P.name)}`}</b> at the top for all of them, or hover a line to check just that one` : ''}</div>
+    ${secs.map(([k, xs]) => `${k ? `<div class="rpk-tsec" style="--c:${SEC[k][1]}">${SEC[k][0]} <b>${xs.length}</b> · ${rpGBP0(xs.reduce((t, h) => t + h.value, 0))}</div>` : ''}<div class="rpk-todol">${xs.map(row).join('')}</div>`).join('')}</div>`;
 }
 // The listing's shape in one line — what Jack reads off the graph first
 function rpShape(r){
@@ -1084,7 +1193,7 @@ function rpShape(r){
 }
 const rpAgo = iso => { if (!iso) return '—'; const n = Math.round((Date.now() - Date.parse(iso)) / 36e5); return n < 1 ? 'just now' : n < 24 ? `${n}h ago` : `${Math.round(n / 24)} days ago`; };
 function renderRepRun(){ const el = document.getElementById('rpRunLine'); if (el && RP.run) el.innerHTML = rpRunText(); }
-const rpRunText = () => `Checking ${RP.run.prov}: <b>${RP.run.done} of ${RP.run.total}</b>${RP.run.kept ? ` · ${RP.run.kept} kept from the last day` : ''}${RP.run.fine ? ` · ${RP.run.fine} selling fine, skipped` : ''}${RP.run.young ? ` · ${RP.run.young} under 30 days, skipped` : ''}${RP.run.wait ? ` · waiting for Keepa tokens (always leaves 250 for the VAs), about ${RP.run.wait} min` : ''}${RP.run.err ? ` · ${RP.run.err} batch${RP.run.err > 1 ? 'es' : ''} failed` : ''} <button class="cmp-chip" onclick="RP.run.stop=true">Stop</button>`;
+const rpRunText = () => `Checking ${RP.run.prov}: <b>${RP.run.done} of ${RP.run.total}</b>${RP.run.kept ? ` · ${RP.run.kept} kept from the last day` : ''}${RP.run.fine ? ` · ${RP.run.fine} selling fine, skipped` : ''}${RP.run.young ? ` · ${RP.run.young} under 30 days, skipped` : ''}${RP.run.look ? ` · quick look at ${RP.run.look} (1 token each): ${RP.run.same} unchanged${RP.run.moved ? `, ${RP.run.moved} moved → full check` : ''}` : ''}${RP.run.wait ? ` · pausing so half the bank stays free for everyone else — about ${RP.run.wait} min` : ''}${RP.run.err ? ` · ${RP.run.err} batch${RP.run.err > 1 ? 'es' : ''} failed` : ''}${RP.run.spent ? ` · ${RP.run.spent.toLocaleString()} tokens so far` : ''} <button class="cmp-chip" title="Everything checked so far is kept — press Check again later to carry on" onclick="RP.run.stop=true">Stop${RP.queue.length ? ' all' : ''}</button>${RP.queue.length ? `<div class="rp-qnext">Next: ${RP.queue.map((q, i) => `<span>${rpEsc(q.prov)}${q.n != null ? ` (${q.n})` : ''} <a title="Take it out of the queue" onclick="rpUnqueue(${i})">×</a></span>`).join('')}</div>` : ''}`;
 
 // ── How fresh is everything, and how many Keepa tokens are in the bank right now ───────────────
 // The bank comes from the keepa Worker's own 5-minute log (bdl_keepa.bank_log — a Supabase read, never a
@@ -1116,7 +1225,35 @@ function rpBankHtml(){
   const left = Math.min(b.max, b.left + Math.floor((Date.now() - b.at) / 60000) * b.rate), pc = Math.round(left / b.max * 100);
   const full = left >= b.max ? 'full' : `full in ${Math.ceil((b.max - left) / b.rate)} min`;
   const col = left < 300 ? 'var(--r)' : left < 700 ? 'var(--o)' : 'var(--g)';
-  return `<div class="rps-i" id="rpBank" title="Keepa's own count${b.src === 'log' ? ' from the keepa Worker\'s 5-minute log (free — no Keepa call)' : ' (free check)'}. One bank for everything — the VAs, the 9pm competitor run, the Discord trackers and this page. Refills ${b.rate} a minute, holds ${b.max.toLocaleString()}; unused tokens expire after an hour. A check here never takes it under 250."><span>Keepa tokens now</span><b style="color:${col}">${left.toLocaleString()} <small>of ${b.max.toLocaleString()}</small></b><i class="rps-bar"><i style="width:${pc}%;background:${col}"></i></i><em>+${b.rate}/min · ${full} · ${b.src === 'log' ? 'logged' : 'read'} ${rpAgo(new Date(b.at).toISOString())} · <a onclick="rpBankRead()">refresh</a></em></div>`;
+  return `<div class="rps-i" id="rpBank" title="Keepa's own count${b.src === 'log' ? ' from the keepa Worker\'s 5-minute log (free — no Keepa call)' : ' (free check)'}. One bank for everything — the VAs, the 9pm competitor run, the Discord trackers and this page. Refills ${b.rate} a minute, holds ${b.max.toLocaleString()}; unused tokens expire after an hour. A check here never takes it under half (630): it spends down to there, then goes at the refill speed."><span>Keepa tokens now</span><b style="color:${col}">${left.toLocaleString()} <small>of ${b.max.toLocaleString()}</small></b><i class="rps-bar"><i style="width:${pc}%;background:${col}"></i></i><em>+${b.rate}/min · ${full} · ${b.src === 'log' ? 'logged' : 'read'} ${rpAgo(new Date(b.at).toISOString())} · <a onclick="rpBankRead()">refresh</a></em></div>`;
+}
+// The season, across everything held: days to Black Friday (then to the Christmas cut-off), what's past day 90, what's waiting
+window.rpNarrow = k => { const set = RP.mode === 'prov' ? RP.nb : RP.np; if (k == null) set.clear(); else if (set.has(k)) set.delete(k); else set.add(k); RP.open = null; RP.lim = 10; renderRepTool(); };
+// How long a check takes: what's above half the bank goes now, the rest at the refill speed
+function rpBankNow(){ const b = RP.bank; if (!b || b.err || b.left == null) return null; return Math.min(b.max, b.left + Math.floor((Date.now() - b.at) / 60000) * b.rate); }
+function rpEtaTxt(tok){
+  const now = rpBankNow(), rate = (RP.bank && RP.bank.rate) || 21, avail = now == null ? 0 : Math.max(0, now - RP_KEEP);
+  const m = Math.ceil(Math.max(0, tok - avail) / rate);
+  if (m < 2) return 'goes straight through · half the bank stays free for everyone else';
+  return `about ${m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`} at the refill speed · half the bank stays free · keep this page open`;
+}
+function rpBFHtml(all, NEED, K_, key){
+  const today = rpToday(), dTo = d => Math.round((rpMs(d) - rpMs(today)) / RP_DAY);
+  let head, tone;
+  if (today < RP_BF.start) { const n = dTo(RP_BF.start); head = `<b>${n} day${n !== 1 ? 's' : ''}</b> to Black Friday <span>20 Nov – 1 Dec</span>`; tone = n <= 7 ? 'hot' : ''; }
+  else if (today <= RP_BF.end) { const n = dTo(RP_BF.end); head = `<b>Black Friday now</b> <span>ends 1 Dec${n ? ` · ${n} day${n !== 1 ? 's' : ''} left` : ''}</span>`; tone = 'hot'; }
+  else if (today <= RP_XMAS) { const n = dTo(RP_XMAS); head = `<b>${n} day${n !== 1 ? 's' : ''}</b> to the Christmas cut-off <span>20 Dec</span>`; tone = ''; }
+  else return '';
+  const late = all.filter(h => h.day90 && h.day90 < today), lateV = late.reduce((t, h) => t + h.value, 0);
+  const wait = all.filter(h => NEED.includes(K_(h)) && !rpDoneInfo(h, RP.data[h.asin])), waitV = wait.reduce((t, h) => t + h.value, 0);
+  const todo = all.filter(h => !RP.data[h.asin] && !rpYoung(h)).length;
+  const go = `RP['${key}']='${RP_ALL}';RP.nb.clear();RP.np.clear();RP.showLeft=false;RP.open=null;RP.lim=10;`;
+  return `<div class="rp-bf ${tone}">
+    <div class="rp-bfh">${head}</div>
+    <div class="rp-bfi"><b style="color:#ff8c42">${late.length}</b> past day 90 <span>${rpGBP0(lateV)}</span></div>
+    <button class="rp-bfi" onclick="${go}RP.filter='need';rpPrefSet('oaRepFilter','need');renderRepTool()" title="Every provider's price changes you haven't done yet"><b style="color:#ff4d6d">${wait.length}</b> price change${wait.length !== 1 ? 's' : ''} waiting <span>${rpGBP0(waitV)}</span></button>
+    <button class="rp-bfi" onclick="${go}RP.filter='all';rpPrefSet('oaRepFilter','all');renderRepTool()" title="Products over 30 days that Keepa hasn't checked yet"><b style="color:${todo ? '#ffd166' : '#00f5a0'}">${todo}</b> over 30 days not checked yet</button>
+  </div>`;
 }
 function rpStatusHtml(H, P, stkDate, stkOld, can){
   const sd = rpDaysOld(H.date), kd = P && P.last ? rpAgo(P.last) : null, std = rpDaysOld(stkDate), bb = window.REP_BB;
@@ -1157,11 +1294,29 @@ function renderRepTool(){
       const t = RP.data[h.asin].checked_at; if (!o.last || t > o.last) o.last = t; } };
   if (RP.mode === 'age') all.forEach(h => { const B = RP_BANDS.find(b => h.age != null && h.age >= b[1] && h.age <= b[2]); if (B) add(B[0], h, h.skus); });
   else all.forEach(h => [...h.providers].forEach(p => add(p, h, h.skus.filter(s => s.provider === p))));
-  const plist = RP.mode === 'age' ? RP_BANDS.map(b => groups[b[0]]).filter(Boolean) : Object.values(groups).sort((a, b) => b.value - a.value);
+  const plist0 = RP.mode === 'age' ? RP_BANDS.map(b => groups[b[0]]).filter(Boolean) : Object.values(groups).sort((a, b) => b.value - a.value);
+  all.forEach(h => add(RP_ALL, h, h.skus));
+  const plist = [groups[RP_ALL], ...plist0].filter(Boolean);
   const key = RP.mode === 'age' ? 'band' : 'prov';
-  if ((!RP[key] || !groups[RP[key]]) && plist.length) RP[key] = RP.mode === 'age' ? (plist.slice().reverse().find(o => o.value > 0) || plist[0]).name : plist[0].name;
-  const sel = RP[key], P = groups[sel];
-  const mine = all.filter(h => RP.mode === 'age' ? rpInBand(h, sel) : h.providers.has(sel));
+  if ((!RP[key] || !groups[RP[key]]) && plist0.length) RP[key] = RP.mode === 'age' ? (plist0.slice().reverse().find(o => o.value > 0) || plist0[0]).name : plist0[0].name;
+  const sel = RP[key];
+  let P = groups[sel];
+  const mine0 = sel === RP_ALL ? all : all.filter(h => RP.mode === 'age' ? rpInBand(h, sel) : h.providers.has(sel));
+  // Jack, 14 Nov: "I might only audit certain stock ages and/or certain providers" — chips narrow the list AND the Check button
+  const bandOf = h => (RP_BANDS.find(b => h.age != null && h.age >= b[1] && h.age <= b[2]) || [null])[0];
+  const provNames = [...new Set(all.flatMap(h => [...h.providers]))];
+  const nset = RP.mode === 'prov' ? RP.nb : RP.np;
+  [...nset].forEach(k => { if (!(RP.mode === 'prov' ? RP_BANDS.some(b => b[0] === k) : provNames.includes(k))) nset.delete(k); });
+  const mine = nset.size ? mine0.filter(h => RP.mode === 'prov' ? nset.has(bandOf(h)) : [...h.providers].some(p => nset.has(p))) : mine0;
+  const nOpts = RP.mode === 'prov' ? RP_BANDS.map(b => ({ k:b[0], l:b[0].replace(' days', ''), n:mine0.filter(h => bandOf(h) === b[0]).length }))
+    : provNames.map(k => ({ k, l:k, n:mine0.filter(h => h.providers.has(k)).length })).filter(o => o.n).sort((a, b) => b.n - a.n);
+  if (P && nset.size) {   // the tiles add up the narrowed list (a provider's own SKUs only, as in the rail)
+    const own = h => RP.mode === 'prov' && sel !== RP_ALL ? h.skus.filter(x => x.provider === sel) : h.skus;
+    const o = { name:P.name, asins:0, units:0, value:0, checked:0, need:0, last:null, buys:{} };
+    mine.forEach(h => { const sk = own(h); o.asins++; o.units += sk.reduce((t, x) => t + x.units, 0); o.value += sk.reduce((t, x) => t + x.value, 0);
+      if (h._r) { o.checked++; if (NEED.includes(K_(h))) o.need++; o.buys[h._r.buy.v] = (o.buys[h._r.buy.v] || 0) + 1; const t = RP.data[h.asin].checked_at; if (!o.last || t > o.last) o.last = t; } });
+    P = o;
+  }
   const order = { out:0, drop:1, raise:2, hold:3, wait:4, none:5 };
   const filt = { need: h => NEED.includes(K_(h)), all: () => true, out: h => K_(h) === 'out', drop: h => K_(h) === 'drop', raise: h => K_(h) === 'raise',
     hold: h => K_(h) === 'hold', wait: h => K_(h) === 'wait', todo: h => K_(h) === 'todo', chg: h => !!(h._r && rpChanges(RP.data[h.asin], h._r)) };
@@ -1178,15 +1333,19 @@ function renderRepTool(){
   RP.order = cards.map(h => h.asin);
   const needAll = mine.filter(h => NEED.includes(K_(h))), needDone = needAll.filter(h => rpDoneInfo(h, RP.data[h.asin])).length;
   const doneN = cards0.filter(h => h._done).length, firstTodo = cards.find(h => !h._done);
-  const youngOK = RP.mode === 'age' && sel === RP_BANDS[0][0];
+  const youngOK = RP.mode === 'age' ? sel === RP_BANDS[0][0] : RP.nb.has(RP_BANDS[0][0]);
   const fresh = mine.filter(h => rpFresh(h.asin)).length, fineN = 0;   // selling fine is a label now, not a skip
   const youngN = youngOK ? 0 : mine.filter(h => !rpFresh(h.asin) && rpYoung(h)).length, stale = mine.length - fresh - youngN;
+  const lookN = mine.filter(h => !rpFresh(h.asin) && !(!youngOK && rpYoung(h)) && rpLookable(h.asin)).length, stTok = lookN + (stale - lookN) * rpTok();   // a quick look is 1 token (full check only if something moved)
   const todo = P && (RP.filter === 'all' || RP.filter === 'todo' || !P.checked) ? mine.filter(h => !RP.data[h.asin]).sort((a, b) => ((rpYoung(a) ? 1 : 0) - (rpYoung(b) ? 1 : 0)) || cmp(a, b)) : [];
   const counts = k => mine.filter(filt[k]).length;
+  const nLab = nset.size ? [...nset].map(k => k.replace(' days', '')).join(', ') : '';
+  RP.view = P ? { label: P.name + (nLab ? ` · ${nLab}` : ''), asins: mine.map(h => h.asin), youngOK, n: stale } : null;
   const late = mine.filter(h => h.day90 && rpMs(h.day90) < Date.now()).length;
   const kinds = mine.reduce((o, h) => { const k = K_(h); o[k] = (o[k] || 0) + 1; return o; }, {});
   const backOut = mine.filter(h => K_(h) === 'out').reduce((t, h) => t + (h._r.call.back || 0), 0);
-  const lateVal = mine.filter(h => h.day90 && rpMs(h.day90) < Date.now()).reduce((t, h) => t + h.value, 0);
+  const ownVal = h => RP.mode === 'prov' && sel !== RP_ALL ? h.skus.filter(x => x.provider === sel).reduce((t, x) => t + x.value, 0) : h.value;   // this provider's own SKUs, as in the rail
+  const lateVal = mine.filter(h => h.day90 && rpMs(h.day90) < Date.now()).reduce((t, h) => t + ownVal(h), 0);
   const seg = [['out','Get out',RP_KIND.out[1]],['drop','Drop',RP_KIND.drop[1]],['raise','Raise',RP_KIND.raise[1]],['hold','Hold',RP_KIND.hold[1]],['wait','Wait',RP_KIND.wait[1]],['todo','Not checked','#3a4556']];
   const pq = n => n.replace(/'/g, "\\'");
   const buys = P ? Object.entries(P.buys).sort((a, b) => b[1] - a[1]).map(([v, n]) => `<span style="color:${RP_BUY[v][1]}">${n} ${RP_BUY[v][0].toLowerCase()}</span>`).join(' · ') : '';
@@ -1196,6 +1355,7 @@ function renderRepTool(){
         <div class="rp-lead">Every ASIN you hold, checked against Keepa and called by your rules, SKU by SKU. Sell-by = 90 days after it landed at Amazon.</div></div>
       <label class="cmp-chip rp-file${stkOld ? ' rp-stale' : ''}" title="SellerToolKit → Reports → Repricer Settings — drop the file here (Sarah normally adds it in Add Snapshot)">${stkDate ? 'New STK file' : 'Drop STK Repricer Settings'}<input type="file" accept=".txt,.csv,.tsv" onchange="this.files[0]&&rpImportSettings(this.files[0])"></label>
     </div>
+    ${rpBFHtml(all, NEED, K_, key)}
     ${rpStatusHtml(H, P, stkDate, stkOld, can)}
     <div class="rp-unlock" id="rpUnlock" style="display:none"><span>Unlock this laptop to check Keepa and record calls:</span><input type="password" placeholder="word" onkeydown="if(event.key==='Enter')rpUnlockTry(this.value)"><button class="cmp-chip" onclick="rpUnlockTry(this.previousElementSibling.value)">Unlock</button><span id="rpUnlockMsg" class="rp-dim"></span></div>
     ${RP.noTables && !window.OA_TEST ? `<div class="rp-note">The repricer's tables aren't in Supabase yet — run <b>OA-Overview - RUN IN SUPABASE - repricer tool 2026-10-23.sql</b>. Until then checks last until you reload.</div>` : ''}
@@ -1203,23 +1363,24 @@ function renderRepTool(){
     <div class="rp-grid">
       <div class="rp-rail">
         <div class="rp-mode"><button class="${RP.mode === 'prov' ? 'on' : ''}" onclick="RP.mode='prov';RP.open=null;RP.lim=10;renderRepTool()">Providers</button><button class="${RP.mode === 'age' ? 'on' : ''}" onclick="RP.mode='age';RP.open=null;RP.lim=10;renderRepTool()">Stock age</button></div>
-        ${plist.map(o => `<button class="rp-pv ${o.name === sel && !RP.showLeft ? 'on' : ''}" onclick="RP['${key}']='${pq(o.name)}';RP.open=null;RP.lim=10;RP.showLeft=false;renderRepTool()">
-          <span class="rp-pvn">${rpEsc(o.name)}${RP.mode === 'prov' && rpProvInfo(o.name) ? `<small>${rpProvInfo(o.name)}</small>` : ''}</span><span class="rp-pvv">${rpGBP0(o.value)}</span>
-          <span class="rp-pvs">${o.asins} ASINs · ${o.checked ? `checked ${rpAgo(o.last)}` : 'not checked'}</span>${o.need ? `<span class="rp-pvneed">● ${o.need} need${o.need === 1 ? 's' : ''} you</span>` : ''}
+        ${plist.map(o => `<button class="rp-pv${o.name === RP_ALL ? ' rp-pvall' : ''} ${o.name === sel && !RP.showLeft ? 'on' : ''}" onclick="RP['${key}']='${pq(o.name)}';RP.open=null;RP.lim=10;RP.showLeft=false;renderRepTool()">
+          <span class="rp-pvn">${rpEsc(o.name)}${o.name === RP_ALL ? `<small>${RP.mode === 'age' ? 'every age' : 'all providers'}</small>` : RP.mode === 'prov' && rpProvInfo(o.name) ? `<small>${rpProvInfo(o.name)}</small>` : ''}</span><span class="rp-pvv">${rpGBP0(o.value)}</span>
+          <span class="rp-pvs">${o.asins} ASIN${o.asins !== 1 ? 's' : ''} · ${!o.checked ? 'not checked' : o.checked >= o.asins ? `all checked ${rpAgo(o.last)}` : `${o.checked} of ${o.asins} checked · ${rpAgo(o.last)}`}</span>${o.need ? `<span class="rp-pvneed">● ${o.need} need${o.need === 1 ? 's' : ''} you</span>` : ''}
           </button>`).join('')}
-        ${leftL.length ? `<button class="rp-pv rp-pvleft ${RP.showLeft ? 'on' : ''}" onclick="RP.showLeft=!RP.showLeft;renderRepTool()"><span class="rp-pvn">Left out<small>Lavarion + your own bundles</small></span><span class="rp-pvv">${rpGBP0(leftL.reduce((t, x) => t + x.value, 0))}</span><span class="rp-pvs">${leftL.length} ASINs · not repriced</span></button>` : ''}</div>
+        ${leftL.length ? `<button class="rp-pv rp-pvleft ${RP.showLeft ? 'on' : ''}" onclick="RP.showLeft=!RP.showLeft;renderRepTool()"><span class="rp-pvn">Left out<small>Lavarion + your own bundles</small></span><span class="rp-pvv">${rpGBP0(leftL.reduce((t, x) => t + x.value, 0))}</span><span class="rp-pvs">${leftL.length} ASIN${leftL.length !== 1 ? 's' : ''} · not repriced</span></button>` : ''}</div>
       <div class="rp-main">${RP.showLeft ? rpLeftHtml(leftL, can) : P ? `
         <div class="rp-phead">
-          <div><div class="rp-pt">${rpEsc(P.name)}${RP.mode === 'prov' && rpProvInfo(P.name) ? ` <span class="rp-pinfo">${rpProvInfo(P.name)}</span>` : ''}</div>
+          <div><div class="rp-pt">${rpEsc(P.name)}${P.name === RP_ALL ? ` <span class="rp-pinfo">${RP.mode === 'age' ? 'every age band' : 'every provider'} — Lavarion + your bundles left out</span>` : RP.mode === 'prov' && rpProvInfo(P.name) ? ` <span class="rp-pinfo">${rpProvInfo(P.name)}</span>` : ''}</div>
             ${buys ? `<div class="rp-ps">Their buys: ${buys}</div>` : ''}</div>
-          <div id="rpRunLine" class="rp-run">${RP.run ? rpRunText() : can ? (stale ? `<div class="rp-gowrap"><button class="btn-g rp-go" onclick="rpCheckProvider('${pq(P.name)}')">Check ${stale} ${rpEsc(P.name)} product${stale !== 1 ? 's' : ''} · about ${(stale * RP_TOK).toLocaleString()} tokens</button><span class="rp-gosub">${[fresh ? `${fresh} checked in the last day` : '', fineN ? `${fineN} selling fine` : '', youngN ? `${youngN} under 30 days` : ''].filter(Boolean).join(' · ') || 'nothing to skip'}${fresh || fineN || youngN ? ' — skipped, free' : ''}</span></div>`
-            : `<div class="rp-gowrap"><span class="rp-allfresh">✓ Nothing to pull${fineN ? ` · ${fineN} selling fine` : ''}${youngN ? ` · ${youngN} under 30 days` : ''}${fresh ? ` · ${fresh} checked in the last day` : ''}</span><button class="rp-again" onclick="rpCheckProvider('${pq(P.name)}',true)">Re-check all · about ${(P.asins * RP_TOK).toLocaleString()} tokens</button></div>`) : '<span class="rp-dim">Jack runs the Keepa check</span>'}</div>
+          <div id="rpRunLine" class="rp-run">${RP.run ? rpRunText() : can ? (stale ? `<div class="rp-gowrap"><button class="btn-g rp-go" onclick="rpCheckView()">${P.name === RP_ALL && !nLab ? `Check everything · ${stale} product${stale !== 1 ? 's' : ''}` : RP.mode === 'age' || P.name === RP_ALL ? `Check ${stale} product${stale !== 1 ? 's' : ''} · ${P.name === RP_ALL ? '' : rpEsc(P.name)}${P.name !== RP_ALL && nLab ? ' · ' : ''}${rpEsc(nLab)}` : `Check ${stale} ${rpEsc(P.name)} product${stale !== 1 ? 's' : ''}${nLab ? ` · ${rpEsc(nLab)}` : ''}`} · about ${stTok.toLocaleString()} tokens</button><span class="rp-gosub">${[fresh ? `${fresh} checked in the last day` : '', fineN ? `${fineN} selling fine` : '', youngN ? `${youngN} under 30 days` : ''].filter(Boolean).join(' · ') || 'nothing to skip'}${fresh || fineN || youngN ? ' — skipped, free' : ''}${lookN ? `<br>${lookN} quick look${lookN !== 1 ? 's' : ''} at 1 token — a full check only if something moved` : ''}<br>${rpEtaTxt(stTok)}</span></div>`
+            : `<div class="rp-gowrap"><span class="rp-allfresh">✓ Nothing to pull${fineN ? ` · ${fineN} selling fine` : ''}${youngN ? ` · ${youngN} under 30 days` : ''}${fresh ? ` · ${fresh} checked in the last day` : ''}</span><button class="rp-again" onclick="rpCheckView(true)">Re-check all · about ${(P.asins * rpTok()).toLocaleString()} tokens</button></div>`) : '<span class="rp-dim">Jack runs the Keepa check</span>'}</div>${RP.run && can && stale && !(RP.view && RP.queue.some(q => q.prov === RP.view.label)) ? `<button class="rp-again rp-qadd" onclick="rpCheckView()" title="Starts by itself when the one running now finishes">+ Queue ${stale} ${P.name === RP_ALL ? 'products' : rpEsc(P.name)}${nLab ? ` · ${rpEsc(nLab)}` : ''} next · about ${stTok.toLocaleString()} tokens</button>` : ''}
         </div>
+        ${nOpts.filter(o => o.n).length > 1 ? `<div class="rp-narrow"><span class="rp-nl">${RP.mode === 'prov' ? 'Stock age' : 'Providers'}</span><button class="${!nset.size ? 'on' : ''}" onclick="rpNarrow()">All <b>${mine0.length}</b></button>${nOpts.map(o => `<button class="${nset.has(o.k) ? 'on' : ''}${!o.n ? ' zero' : ''}" onclick="rpNarrow('${pq(o.k)}')">${rpEsc(o.l)} <b>${o.n}</b></button>`).join('')}<span class="rp-nh">pick one or more — the list and the Check button follow</span></div>` : ''}
         <div class="rp-tiles rpk-tiles">
-          <div class="rp-tile" style="--tc:#3d9eff"><div class="rp-k">Tied up</div><div class="rp-v" style="color:#3d9eff">${rpGBP0(P.value)}</div><div class="rp-s">${P.asins} ASINs · ${P.units.toLocaleString()} units</div></div>
-          <div class="rp-tile" style="--tc:#ff8c42"><div class="rp-k">Past day 90</div><div class="rp-v" style="color:#ff8c42">${rpGBP0(lateVal)}</div><div class="rp-s">${late} of ${P.asins} ASINs${P.value ? ` · ${Math.round(lateVal / P.value * 100)}% of the £` : ''}</div></div>
+          <div class="rp-tile" style="--tc:#3d9eff"><div class="rp-k">Tied up</div><div class="rp-v" style="color:#3d9eff">${rpGBP0(P.value)}</div><div class="rp-s">${P.asins} ASIN${P.asins !== 1 ? 's' : ''} · ${P.units.toLocaleString()} unit${P.units !== 1 ? 's' : ''}</div></div>
+          <div class="rp-tile" style="--tc:#ff8c42"><div class="rp-k">Past day 90</div><div class="rp-v" style="color:#ff8c42">${rpGBP0(lateVal)}</div><div class="rp-s">${late} of ${P.asins} ASIN${P.asins !== 1 ? 's' : ''}${P.value ? ` · ${Math.round(lateVal / P.value * 100)}% of the £` : ''}</div></div>
           <div class="rp-tile" style="--tc:#ff4d6d"><div class="rp-k">Price to change</div><div class="rp-v" style="color:#ff4d6d">${counts('need')}</div><div class="rp-s">${needAll.length ? `<b style="color:${needDone === needAll.length ? 'var(--g)' : 'var(--text)'}">${needDone} of ${needAll.length} done</b> · ` : ''}${[['out','get out'],['drop','drop'],['raise','raise']].map(([k, l]) => `${kinds[k] || 0} ${l}`).join(' · ')}${backOut ? ` · get-outs free up ${rpGBP0(backOut)}` : ''}</div></div>
-          <div class="rp-tile" style="--tc:#00f5a0"><div class="rp-k">Checked</div><div class="rp-v" style="color:#00f5a0">${P.checked} <small style="font-size:15px;color:var(--muted2)">of ${P.asins}</small></div><div class="rp-s">${P.checked ? `last ${rpAgo(P.last)}` : 'not checked yet'}${fresh ? ` · ${fresh} fresh (last day)` : ''}${fineN ? ` · ${fineN} selling fine (free)` : ''}${youngN ? ` · ${youngN} under 30 days (skipped)` : ''}${stale ? ` · ${stale} to pull, about ${(stale * RP_TOK).toLocaleString()} tokens` : ''}</div></div>
+          <div class="rp-tile" style="--tc:#00f5a0"><div class="rp-k">Checked</div><div class="rp-v" style="color:#00f5a0">${P.checked} <small style="font-size:15px;color:var(--muted2)">of ${P.asins}</small></div><div class="rp-s">${P.checked ? `last ${rpAgo(P.last)}` : 'not checked yet'}${fresh ? ` · ${fresh} fresh (last day)` : ''}${fineN ? ` · ${fineN} selling fine (free)` : ''}${youngN ? ` · ${youngN} under 30 days (skipped)` : ''}${stale ? ` · ${stale} to pull, about ${stTok.toLocaleString()} tokens` : ''}</div></div>
         </div>
         <div class="rp-filters">
           ${[['need','Needs you',null],['chg','⚡ Changed',null]].concat(seg).concat([['all','All',null]]).map(([k, l, col]) => {
