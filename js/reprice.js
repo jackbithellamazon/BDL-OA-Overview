@@ -26,8 +26,9 @@ const rpTok = () => { try { const m = JSON.parse(localStorage.getItem('oaRepTok'
 function rpTokSave(t, n){ if (!(t > 0) || !(n > 0)) return; try { const m = JSON.parse(localStorage.getItem('oaRepTok') || '{"t":0,"n":0}'); m.t += t; m.n += n;
   if (m.n > 300) { m.t = m.t * 300 / m.n; m.n = 300; } localStorage.setItem('oaRepTok', JSON.stringify(m)); } catch(e) {} }   // the last ~300 full checks
 const RP_TOK_MAX = 14;                   // the worst case, used to keep the bank above RP_KEEP
-const RP_KEEP = 630;                     // Jack, 13 Nov: "over 1,200 tokens would empty my bucket — drip feed it". A check never takes the bank
-                                         // under HALF (630): it spends down to here, then goes at the refill speed (21 a minute ≈ 2 products a minute)
+const RP_KEEP = 400;                     // Jack, 13 Nov: "over 1,200 tokens would empty my bucket — drip feed it". 18 Nov: "it should be able to go down to
+                                         // around 500 … maybe 400 actually" — a check spends down to 400, then goes at the refill speed (21 a minute ≈ 2 products a minute),
+                                         // so 400 always stays free for the Discord cards, the VAs and the 9pm run
 const RP_LOOK_D = 14;                    // Jack, 13 Nov: "anything we can cache to save tokens". A re-check within 14 days of the last FULL check starts with a
                                          // 1-token look (Amazon, lowest price, seller counts); nothing moved = the full check is kept, something moved = full check
 const RP_FLOOR = 250;                    // never take the shared token bank below this — the VAs and the Discord trackers need it (agreed with the Keepa Discord chat, 6 Nov)
@@ -45,7 +46,7 @@ function rpSellingFine(h){
   return clears <= limit ? { clears:Math.max(1, Math.round(clears)), sold:os.sold, days:os.days } : null;
 }
 // Under 30 days at Amazon: Jack doesn't audit those (10 Nov: "under 30 days i don't really audit… or i might ask to do it on certain ones")
-const RP_YOUNG_D = 30;
+const RP_YOUNG_D = 25;   // Jack 18 Nov: "under 25 days pls, so I wanna see 30 days now" (was 30)
 const rpYoung = h => h.age != null && h.age < RP_YOUNG_D;
 const rpFresh = a => { const x = RP.data[a]; return !!(x && x.checked_at && Date.now() - Date.parse(x.checked_at) < RP_FRESH_H * 36e5); };
 const rpLookable = a => { const x = RP.data[a]; return !!(x && x.data && x.data.sig && x.data.checked && Date.now() - Date.parse(x.data.checked) < RP_LOOK_D * 864e5); };
@@ -53,21 +54,21 @@ const rpFullAt = rec => Date.parse((rec.data && rec.data.checked) || rec.checked
 const RP_WORD = 'lavarion';
 function rpPref(k, d){ try { return localStorage.getItem(k) || d; } catch(e) { return d; } }
 function rpPrefSet(k, v){ try { localStorage.setItem(k, v); } catch(e) {} }
-const RP = { queue:[], nb:new Set(), np:new Set(), data:{}, settings:{}, decisions:[], hist:null, loaded:false, loading:false, prov:null, band:null, mode:'prov', filter:rpPref('oaRepFilter', 'all'), sort:rpPref('oaRepSort', 'new'), run:null, zoom:{}, noTables:false, mem:false, open:null, lim:10, openDone:{}, order:[] };
+const RP = { plain:{}, queue:[], nb:new Set(), np:new Set(), data:{}, settings:{}, decisions:[], hist:null, loaded:false, loading:false, prov:null, band:null, mode:'prov', filter:rpPref('oaRepFilter', 'all'), sort:rpPref('oaRepSort', 'new'), run:null, zoom:{}, noTables:false, mem:false, open:null, lim:10, openDone:{}, order:[] };
 const rpCanAct = () => { try { return localStorage.getItem(RP_UNLOCK) === '1'; } catch(e) { return false; } };
 const RP_DAY = 864e5;
 const rpDay = ms => new Date(ms).toISOString().slice(0, 10);
 const rpMs = d => Date.parse(d + 'T12:00:00Z');
 const rpToday = () => new Date().toLocaleDateString('en-CA');
 const rpKt = m => (m + 21564000) * 60000;              // Keepa minutes → ms
-const rpGBP = v => v == null || !isFinite(v) ? '—' : (v < 0 ? '−£' : '£') + Math.abs(v).toFixed(2);
+const rpGBP = v => v == null || !isFinite(v) ? '—' : (v < 0 ? '−£' : '£') + Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits:2, maximumFractionDigits:2 });   // £1,185.29
 const rpGBP0 = v => v == null || !isFinite(v) ? '—' : (v < 0 ? '−' : '') + fmtGBP(Math.abs(v));
 const rpEsc = t => kfEsc(t);
 const RP_EVENTS = [
   ['Prime Day', '2025-07-08', '2025-07-11'], ['Prime Big Deal Days', '2025-10-07', '2025-10-08'], ['Black Friday', '2025-11-20', '2025-12-01'],
   ['Boxing Day / January sales', '2025-12-26', '2026-01-10'], ['Spring Deal Days', '2026-03-20', '2026-03-31'], ['Prime Day', '2026-07-07', '2026-07-12'],
-  ['Prime Big Deal Days', '2026-10-06', '2026-10-09'], ['Black Friday', '2026-11-20', '2026-12-01'], ['Boxing Day / January sales', '2026-12-26', '2027-01-10'] ];
-const RP_BF = { start:'2026-11-20', end:'2026-12-01', lastStart:'2025-11-20', lastEnd:'2025-12-01' };
+  ['Prime Big Deal Days', '2026-10-06', '2026-10-09'], ['Black Friday', '2026-11-19', '2026-11-30'], ['Boxing Day / January sales', '2026-12-26', '2027-01-10'] ];
+const RP_BF = { start:'2026-11-19', end:'2026-11-30', lastStart:'2025-11-20', lastEnd:'2025-12-01' };   // Jack 18 Nov: Black Friday starts the 19th this year (amazon.co.uk/blackfriday: Black Friday Week runs from 19 Nov to 30 Nov)
 const RP_BF_PREV = { from:'2025-10-20', n:104 };   // 20 Oct 2025 → 31 Jan 2026: the run-up, Black Friday, December, January
 
 // ── The few numbers a 1-token look also returns, kept with every full check so next week's look can say "nothing moved" ──
@@ -92,23 +93,182 @@ function rpMoved(a, b){
   if (ks.includes('fba') && Math.abs(a.fba - b.fba) >= 2) out.push('FBA sellers');
   return out.length ? out.join(', ') : null;
 }
-async function rpWaitBank(need){   // drip: spend down to half the bank, then wait for the refill
-  let blind = 0;
+async function rpWaitBank(need){   // drip: spend down to RP_KEEP, then wait for the refill
+  let blind = 0, seen = null;
+  RP.run.need = need; const ph = RP.run.phase;
   for (;;) {
     if (RP.run.stop) break;
     let left = null, rate = 21;
     const hl = await fetch(`${RP_WORKER}/health`, { cache:'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
-    if (hl && hl.tokensLeft != null) { left = hl.tokensLeft; rate = hl.refillRate || 21; }
+    if (hl && hl.tokensLeft != null) { left = hl.tokensLeft; rate = hl.refillRate || 21; rpBankSet(hl.tokensLeft, hl.refillRate, hl.refillIn, 'live'); }
     else { const row = window._bankLogRead ? await window._bankLogRead().catch(() => null) : null;   // the free 5-minute log, less a safety margin
       if (row && row.tokens_left != null && Date.now() - Date.parse(row.at) < 10 * 60000) left = row.tokens_left - 150; }
     if (left == null) { if (++blind > 10) { RP.run.stop = true; RP.run.why = "couldn't read the Keepa bank — stopped so nothing is spent blind"; break; }
-      RP.run.wait = 1; renderRepRun(); await new Promise(r => setTimeout(r, 30000)); continue; }
-    if (left - need >= RP_KEEP) break;
-    RP.run.wait = Math.ceil((need + RP_KEEP - left) / rate);
+      RP.run.wait = 1; RP.run.phase = 'blind'; renderRepRun(); await new Promise(r => setTimeout(r, 30000)); continue; }
+    if (rp9pm()) { RP.run.phase = 'pause9'; RP.run.wait = 1; renderRepRun(); await new Promise(r => setTimeout(r, 60000)); continue; }   // the competitor run owns the bank then
+    if (left - need >= RP_KEEP) { seen = left; break; }
+    RP.run.wait = Math.ceil((need + RP_KEEP - left) / rate); RP.run.phase = 'wait';
     renderRepRun();
-    await new Promise(r => setTimeout(r, 30000));
+    // sleep until Keepa should have added enough (it adds `rate` once a minute), not a blind 30 s
+    const ms = rpBankWaitMs(need + RP_KEEP);
+    await new Promise(r => setTimeout(r, Math.max(3000, Math.min(60000, ms == null ? 30000 : ms + 1500))));
   }
-  RP.run.wait = 0;
+  RP.run.wait = 0; RP.run.need = 0; RP.run.phase = ph;
+  return seen;
+}
+// Sun / Tue / Thu 21:00–22:00 UK: the 9pm competitor run uses the bank — a check waits it out (Keepa chat: "times to avoid")
+function rp9pm(t){
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/London', weekday:'short', hour:'2-digit', hour12:false }).formatToParts(new Date(t || Date.now()));
+  const wd = (p.find(x => x.type === 'weekday') || {}).value, hr = +((p.find(x => x.type === 'hour') || {}).value);
+  return ['Sun', 'Tue', 'Thu'].includes(wd) && hr === 21;
+}
+// ── The Keepa bank, live: Keepa says how many are left and when the next refill lands (/health, and every check reply) ──
+function rpBankSet(left, rate, refillIn, src){
+  if (left == null || !isFinite(left)) return;
+  rate = rate || 21; const now = Date.now();
+  RP.bank = { left, rate, max:rate * 60, at:now, refillAt: refillIn != null && refillIn >= 0 ? now + refillIn : null, src };
+  if (typeof rpBankPaint === 'function') rpBankPaint();   // the status box shows Keepa's own figure the moment it arrives
+}
+const rpRefills = (b, t) => b.refillAt ? (t < b.refillAt ? 0 : 1 + Math.floor((t - b.refillAt) / 60000)) : Math.floor((t - b.at) / 60000);
+function rpNextRefillMs(){ const b = RP.bank, t = Date.now(); if (!b || b.err || !b.refillAt) return null; return t < b.refillAt ? b.refillAt - t : 60000 - ((t - b.refillAt) % 60000); }
+// how long until the bank holds `target` — refills land once a minute
+function rpBankWaitMs(target){
+  const b = RP.bank, now = rpBankNow(); if (now == null) return null;
+  if (now >= target) return 0;
+  const n = Math.ceil((target - now) / b.rate), nx = rpNextRefillMs();
+  return (nx == null ? 60000 : nx) + (n - 1) * 60000;
+}
+const rpMMSS = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s >= 3600 ? `${Math.floor(s / 3600)}h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}m` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+// ── Amazon deals (Jack 18 Nov: "if any of these ASINs Amazon is on a sale / ltd … I wanna know, and the date it ends") ──
+// Free: Keepa's `deals` + `coupon` come back in the same reply the check already pays for. Keepa gives the badge as
+// Amazon shows it ("Early Black Friday", "Limited time deal", "Ends in 06:25:51"); an end date only on countdown
+// badges (or when Keepa has endTime) — the 17 Nov 9pm run had 73 deals, 0 with an end date, 2 countdowns.
+const RP_AMZ_ID = 'A3P5ROKL5A1OLE';
+function rpDeal(p, asOf){
+  const st = p.stats || {}, now = asOf || Date.now();
+  const ds = (Array.isArray(p.deals) ? p.deals : []).filter(d => d && (d.badge || d.dealType));
+  const cp = Array.isArray(p.coupon) ? p.coupon : null;
+  const coupon = cp && (cp[0] || cp[1]) ? { one: cp[0] || 0, sns: cp[1] || 0 } : null;
+  if (!ds.length && !coupon) return null;
+  const items = ds.map(d => {
+    let end = d.endTime ? rpKt(d.endTime) : null, left = false;
+    const m = !end && /ends in\s*(?:(\d+)\s*d(?:ays?)?\s*,?\s*)?(\d+):(\d\d)(?::(\d\d))?/i.exec(d.badge || '');
+    if (m) { end = now + (((+m[1] || 0) * 24 + (+m[2])) * 3600 + (+m[3]) * 60 + (+m[4] || 0)) * 1000; left = true; }
+    return { badge: left ? 'Countdown deal' : String(d.badge || d.dealType || 'Deal').slice(0, 60), type: d.dealType || null, prime: /PRIME/.test(d.accessType || ''),
+      end: end ? new Date(end).toISOString() : null, fromCountdown: left, start: d.startTime ? new Date(rpKt(d.startTime)).toISOString() : null,
+      claimed: d.percentClaimed != null ? d.percentClaimed : null };
+  });
+  const avg = st.avg90 && st.avg90[0] > 0 ? st.avg90[0] / 100 : null;
+  return { amz: (st.buyBoxSellerId || null) === RP_AMZ_ID, bb: st.buyBoxSellerId || null, items, coupon, amzAvg90: avg, seen: new Date(now).toISOString() };
+}
+// checks saved before deals were kept (v67ag): fill the deal from the shared cache's copy of that same check — free
+async function rpDealBackfill(){
+  if (!window._cacheDeals) return;
+  const need = Object.entries(RP.data).filter(([a, x]) => x && x.data && !('deal' in x.data) && Date.now() - rpFullAt(x) < 3 * 864e5).map(([a]) => a);
+  if (!need.length) return;
+  const got = await window._cacheDeals(need).catch(() => ({}));
+  let n = 0;
+  need.forEach(a => { const c = got[a], x = RP.data[a]; if (!c || !x) return;
+    if (Math.abs(Date.parse(c.fetched_at) - rpFullAt(x)) > 6 * 36e5) return;   // only the copy from that same check
+    x.data.deal = rpDeal({ deals: c.deals, coupon: c.coupon, stats: { buyBoxSellerId: c.bb, avg90: c.avg90 } }, Date.parse(c.fetched_at)); n++; });
+  if (n && !RP.run) rpRender();   // during a check the page stays still — they show with the results
+}
+// what each kind of deal is, in plain words (Keepa's dealType; new ones fall back to the badge)
+const RP_DEAL_KIND = { SPECIAL_EVENT_SALE:'an event price for Black Friday: the price drops for the event and usually goes back after it',
+  LIMITED_TIME_DEAL:'a Limited time deal: a cut price for a set spell, and Amazon only shows a countdown near the end',
+  COUNTDOWN_ENDS_IN:'a deal in its last hours: Amazon is showing the countdown',
+  PRIME_EXCLUSIVE:'a Prime-only price', PRIME_DAY:'a Prime Day deal', PRIME_DAY_EARLY:'an early Prime Day deal', EARLY_ACCESS_WITH_PRIME:'an early-access price for Prime members',
+  SELLING_FAST:'a deal that is selling fast', PRIME_SELLING_FAST:'a Prime deal that is selling fast', CLEARANCE_NO_RETURNS:'a clearance price (no returns)',
+  APP_ONLY:'an app-only price', GENERIC_OFFER_PROMO:'a promotion on the offer' };
+const rpDealKind = x => RP_DEAL_KIND[x.type] || (x.claimed != null ? 'a Lightning deal: limited stock' : 'a deal');
+const rpDealEndWords = x => x.end ? (Date.parse(x.end) > Date.now() ? `It ends about ${rpWhen(x.end)}.` : '') : rpEventEnd(x) ? `${rpEventEnd(x).replace(/ \(Amazon's date\)$/, '')} (Amazon's date, not this product's).` : 'No end date yet: Amazon shows a countdown near the end.';
+// one line for "why it hasn't sold": the drop is a deal, and whose
+function rpDealWhy(rec){
+  const dl = rpDealOn(rec); if (!dl) return '';
+  const x = dl.items[0], sn = rpAmzSince(rec.data);
+  return ` <span class="rpk-dwhy">That's ${dl.amz ? "Amazon's own" : "the Buy Box seller's"} <b>${rpEsc(x.badge)}</b> deal${sn && sn.was > sn.now && dl.amz ? `: Amazon went ${rpGBP(sn.was)} → ${rpGBP(sn.now)} on ${fmtShort(sn.at)}` : ''}. ${rpDealEndWords(x)}</span>`;
+}
+// the deal on a saved record, if it's still running (no end date = as of the check)
+function rpDealOn(rec){
+  const dl = rec && rec.data && rec.data.deal; if (!dl || !dl.items || !dl.items.length) return null;
+  const live = dl.items.filter(x => !x.end || Date.parse(x.end) > Date.now());
+  return live.length ? { ...dl, items: live } : null;
+}
+const rpCouponTxt = c => !c ? '' : [c.one ? (c.one > 0 ? `${rpGBP(c.one / 100)} off` : `${-c.one}% off`) : '', c.sns ? `S&S ${c.sns > 0 ? rpGBP(c.sns / 100) + ' off' : -c.sns + '% off'}` : ''].filter(Boolean).join(' · ') + ' coupon';
+const rpWhen = iso => new Date(iso).toLocaleString('en-GB', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+function rpDealHtml(h, rec){
+  const d = rec.data, dl = d.deal; if (!dl) return '';
+  const on = rpDealOn(rec), ended = dl.items.length && !on;
+  const who = dl.amz ? 'Amazon' : 'Buy Box';
+  const amz = d.amzNow, pc = amz != null && dl.amzAvg90 ? Math.round((1 - amz / dl.amzAvg90) * 100) : null;
+  const parts = [];
+  (on ? on.items : dl.items).forEach(x => {
+    const bits = [`<b>${rpEsc(x.badge)}</b>`];
+    if (x.prime) bits.push('Prime members only');
+    if (x.claimed != null) bits.push(`${x.claimed}% claimed`);
+    if (x.end) bits.push(Date.parse(x.end) > Date.now() ? `ends about <b>${rpWhen(x.end)}</b>${x.fromCountdown ? ' (from the countdown at the check)' : ''}` : `ended ${rpWhen(x.end)}`);
+    else bits.push(rpEventEnd(x) ? `no date for this product — ${rpEventEnd(x)}` : 'no end date — Amazon only shows a countdown near the end');
+    parts.push(bits.join(' · '));
+  });
+  const sn = rpAmzSince(d);
+  const price = dl.amz && amz != null ? `Amazon ${rpGBP(amz)}${pc != null && pc >= 3 ? ` — <b>${pc}% under</b> its 90-day ${rpGBP(dl.amzAvg90)}` : ''}${sn && sn.was > sn.now ? ` · down from ${rpGBP(sn.was)} on ${fmtShort(sn.at)}` : ''}` : !dl.amz && dl.items.length ? 'the deal is on the Buy Box offer, not Amazon' : '';
+  const kind = (on ? on.items : dl.items)[0] ? `<span class="rpk-dkind">${dl.amz ? 'Amazon is selling it itself at' : 'The Buy Box seller has'} ${rpDealKind((on ? on.items : dl.items)[0])}.</span>` : '';
+  const cpn = dl.coupon ? rpCouponTxt(dl.coupon) : '';
+  return `<div class="rpk-deal rpk-pad${ended ? ' off' : ''}" title="From Keepa at the check — the badge as Amazon shows it. Deals change fast: re-check to see if it's still on.">
+    <span class="rpk-dtag">${ended ? 'Deal ended' : dl.items.length ? `${who} deal` : 'Coupon'}</span>
+    <span>${parts.join('<br>')}${parts.length && (price || cpn) ? '<br>' : ''}${[price, cpn].filter(Boolean).join(' · ')}<em> · seen at the check ${rpAgo(dl.seen)}</em>${kind && !ended ? `<br>${kind}` : ''}</span></div>`;
+}
+
+// Black Friday badges carry no date per product — checked 18 Nov on the Amazon pages themselves (a Limited time deal and an
+// Early Black Friday deal: no end date anywhere) and in Keepa's lightning-deal list (12 tokens, 0 of 12 in it).
+// The only dates are Amazon's own event dates: the site banner counts down to 18 Nov 23:00 ("Black Friday Week starts in"),
+// and amazon.co.uk/blackfriday says "Black Friday Week runs from 19 Nov to 30 Nov".
+const RP_AMZ_BFW = { start:'2026-11-18T23:00:00Z', end:'2026-11-30T23:59:00Z' };
+const rpEventEnd = x => {
+  const b = x.badge || '', early = /early\s*black\s*friday/i.test(b);
+  if (early && Date.now() < Date.parse(RP_AMZ_BFW.start)) return `Early Black Friday ends when Black Friday Week starts, ${rpWhen(RP_AMZ_BFW.start)} (Amazon's date)`;
+  if (/black\s*friday|cyber\s*monday/i.test(b)) return `Black Friday Week runs to Mon 30 Nov (Amazon's date)`;
+  return '';
+};
+// when Amazon's price last changed before the check (from the daily Amazon line) — "Amazon £199 since 14 Nov, was £306"
+function rpAmzSince(d){
+  const a = d.amz || [], n = a.length, now = a[n - 1]; if (!n || !(now > 0)) return null;
+  let k = n - 1; while (k > 0 && a[k - 1] > 0 && Math.abs(a[k - 1] - now) / now <= 0.02) k--;   // pennies either way aren't a move
+  if (k === 0 || !(a[k - 1] > now)) return null;                                                  // only a drop counts
+  return { at: rpDay(rpMs(d.start) + k * RP_DAY), was: a[k - 1] / 100, now: now / 100 };
+}
+// Jack 18 Nov: "ASINs I bought are back on an offer or deal until x date" — one list at the top of the Repricer page
+function rpDealsPanel(all, key){
+  const rows = all.map(h => ({ h, on: rpDealOn(RP.data[h.asin]) })).filter(x => x.on);
+  if (!rows.length) return '';
+  const endOf = x => { const e = x.on.items.map(i => i.end).filter(Boolean).sort()[0]; if (e) return Date.parse(e);
+    const ev = rpEventEnd(x.on.items[0]); return ev ? (/^Early/.test(ev) ? Date.parse(RP_AMZ_BFW.start) : Date.parse(RP_AMZ_BFW.end)) + 1 : Infinity; };   // a real end first, then the event's
+  rows.sort((a, b) => endOf(a) - endOf(b) || b.h.value - a.h.value);
+  const checked = all.filter(h => RP.data[h.asin]).length, val = rows.reduce((t, x) => t + x.h.value, 0);
+  const lim = RP.dealsAll ? rows.length : 6;
+  const go = a => `RP['${key}']='${RP_ALL}';RP.nb.clear();RP.np.clear();RP.showLeft=false;RP.open=null;RP.lim=500;RP.filter='deal';renderRepTool();setTimeout(()=>document.getElementById('rp_${a}')?.scrollIntoView({behavior:'smooth',block:'start'}),60)`;
+  const line = ({ h, on }) => {
+    const rec = RP.data[h.asin], d = rec.data, it = on.items[0], sn = rpAmzSince(d);
+    const end = on.items.map(i => i.end).filter(Boolean).sort()[0];
+    const ev = rpEventEnd(it);
+    const until = end ? `until <b>${rpWhen(end)}</b>` : ev ? `<span class="rp-ev">${/^Early/.test(ev) ? `about <b>${rpWhen(RP_AMZ_BFW.start)}</b><small>Black Friday Week starts (Amazon)</small>` : `to <b>Mon 30 Nov</b><small>Black Friday Week ends (Amazon)</small>`}</span>` : '<span class="rp-dim">no date yet<small>countdown shows near the end</small></span>';
+    const pc = d.amzNow != null && on.amzAvg90 ? Math.round((1 - d.amzNow / on.amzAvg90) * 100) : null;
+    const amz = on.amz && d.amzNow != null ? `Amazon <b>${rpGBP(d.amzNow)}</b>${pc != null && pc >= 3 ? ` <span class="rp-dn">−${pc}%</span>` : ''}${sn && sn.was && sn.was > sn.now ? `<small>since ${fmtShort(sn.at)}, was ${rpGBP(sn.was)}</small>` : ''}` : on.amz ? 'Amazon' : '<span class="rp-dim">Buy Box seller, not Amazon</span>';
+    return `<button class="rp-dl" onclick="${go(h.asin)}" title="${rpEsc((d.title || h.title || h.asin) + ' — open the card')}">
+      <span class="n">${rpEsc(d.title || h.title || h.asin)}<small>${[...h.providers].map(rpEsc).join(' · ')} · ${h.units} unit${h.units !== 1 ? 's' : ''}</small></span>
+      <span class="b">${rpEsc(it.badge)}${on.items.length > 1 ? ` +${on.items.length - 1}` : ''}${it.prime ? ' · Prime' : ''}${it.claimed != null ? ` · ${it.claimed}% claimed` : ''}</span>
+      <span class="u">${until}</span><span class="m">${amz}</span><span class="v">${rpGBP0(h.value)}</span><span class="s">${rpAgo(on.seen)}</span></button>`;
+  };
+  const min = rpPref('oaRepDealsMin', '') === '1';
+  return `<div class="rp-deals${min ? ' min' : ''}">
+    <div class="rp-dh"><span class="rpk-dtag">On a deal now</span><b>${rows.length}</b> of what you hold · <b>${rpGBP0(val)}</b> tied up
+      <span class="rp-dim">— from each product's last Keepa check (${checked} of ${all.length} checked; the rest aren't known until checked). Soonest to end first. Click one for its card.</span>
+      <button class="rp-dtog" onclick="rpPrefSet('oaRepDealsMin','${min ? '' : '1'}');rpRender()">${min ? 'Show the list' : 'Hide the list'}</button></div>
+    <div class="rp-dlh"><span>Product</span><span>Deal</span><span>Until</span><span>Amazon now</span><span>Tied up</span><span>Seen</span></div>
+    ${rows.slice(0, lim).map(line).join('')}
+    ${rows.length > 6 ? `<button class="rp-dmore" onclick="RP.dealsAll=!RP.dealsAll;renderRepTool()">${RP.dealsAll ? 'Show fewer' : `Show all ${rows.length}`}</button>` : ''}
+  </div>`;
 }
 
 // ── Keepa product → the compact record saved per ASIN ─────────────────────────────────────────
@@ -138,6 +298,9 @@ function rpCompact(p){
     for (let i = 0; i < arr.length; i += step) { let v = arr[i + 1]; if (step === 3 && v >= 0 && arr[i + 2] > 0) v += arr[i + 2]; pts.push([rpKt(arr[i]), v]); }
     let j = 0; for (let k = 0; k < n; k++) { const t = from + k * RP_DAY; while (j + 1 < pts.length && pts[j + 1][0] <= t) j++; out[k] = pts[j][0] <= t ? pts[j][1] : -1; } return out; };
   const bfFrom = rpMs(RP_BF_PREV.from);
+  // Jack 18 Nov: "I wanna see a year and a half too" — the 182 days before the year, kept apart so every rule still reads one year
+  const x18from = start - 182 * RP_DAY;
+  const x18 = { start: rpDay(x18from), bb: dailyFrom(csv[18], 3, x18from, 182), amz: dailyFrom(csv[0], 2, x18from, 182), fba: dailyFrom(csv[10], 2, x18from, 182), oc: dailyFrom(csv[11], 2, x18from, 182), rank: dailyFrom(csv[3], 2, x18from, 182) };
   const cnt = csv[11] || [];
   const cntAt = t => { let v = null; for (let i = 0; i < cnt.length; i += 2) { if (rpKt(cnt[i]) <= t) v = cnt[i + 1]; else break; } return v; };
   const LO = p.liveOffersOrder || [], OF = p.offers || [];
@@ -153,12 +316,12 @@ function rpCompact(p){
   const cur = (p.stats && p.stats.current) || [];
   const img = p.images && p.images[0] ? (p.images[0].m || p.images[0].l) : (p.imagesCSV ? p.imagesCSV.split(',')[0] : null);
   const amzOffer = offers.find(o => o.amz);
-  return { v:2, sig:rpSig(p), asin:p.asin, title:p.title || '', image: img ? 'https://m.media-amazon.com/images/I/' + img : null, checked:new Date().toISOString(),
+  return { v:2, sig:rpSig(p), deal:rpDeal(p), asin:p.asin, title:p.title || '', image: img ? 'https://m.media-amazon.com/images/I/' + img : null, checked:new Date().toISOString(),
     ref:(p.referralFeePercent || p.referralFeePercentage || 15) / 100, pp:((p.fbaFees || {}).pickAndPackFee || 0) / 100,
     bbNow: cur[18] > 0 ? cur[18] / 100 : null, amzNow: cur[0] > 0 ? cur[0] / 100 : null, amzStock: amzOffer ? amzOffer.s : null,
     monthlySold: p.monthlySold > 0 ? p.monthlySold : null, rank: cur[3] > 0 ? cur[3] : null,
     offerCnt: { now: cur[11] > 0 ? cur[11] : cntAt(now), d14: cntAt(now - 14 * RP_DAY), d30: cntAt(now - 30 * RP_DAY) },
-    start: rpDay(start), bb: daily(csv[18], 3), amz: daily(csv[0], 2), fba: daily(csv[10], 2), oc: daily(csv[11], 2), rank: daily(csv[3], 2), bfPrev: { from:RP_BF_PREV.from, bb: dailyFrom(csv[18], 3, bfFrom, RP_BF_PREV.n), amz: dailyFrom(csv[0], 2, bfFrom, RP_BF_PREV.n) }, offers, sold };
+    start: rpDay(start), bb: daily(csv[18], 3), amz: daily(csv[0], 2), fba: daily(csv[10], 2), oc: daily(csv[11], 2), rank: daily(csv[3], 2), bfPrev: { from:RP_BF_PREV.from, bb: dailyFrom(csv[18], 3, bfFrom, RP_BF_PREV.n), amz: dailyFrom(csv[0], 2, bfFrom, RP_BF_PREV.n) }, x18, offers, sold };
 }
 // FBA sellers only (Jack: "FBA only") — Amazon and you not counted
 function rpFbaStats(d){
@@ -618,6 +781,7 @@ async function rpLoad(force){
   RP.decisions = decisions || rpMemDecisions();
   RP.loaded = true; RP.loading = false;
   renderRepTool();
+  rpDealBackfill();
   if (document.getElementById('tab-stockhealth')?.classList.contains('active') && typeof renderStockHealth === 'function') renderStockHealth();
 }
 // What the Repricer checks say, rolled up for Stock Health: each provider's good/bad-buy tally and worst
@@ -678,12 +842,13 @@ async function rpCheckProvider(prov, all, only, asins, youngOK0, nHint){
   const fine = 0;
   const young = youngOK ? 0 : every.filter(a => !rpFresh(a) && rpYoung(H.by[a])).length;
   const list = only ? only : all ? every : every.filter(a => !skip(a));   // checked in the last day or under 30 days = costs nothing
-  if (!list.length) { if (typeof showToast === 'function') showToast(`Nothing to pull in ${prov} — everything was checked in the last ${RP_FRESH_H} hours or is under 30 days`); rpNextQueued(); return; }
+  if (!list.length) { if (typeof showToast === 'function') showToast(`Nothing to pull in ${prov} — everything was checked in the last ${RP_FRESH_H} hours or is under ${RP_YOUNG_D} days`); rpNextQueued(); return; }
   // a full check in the last 14 days → a 1-token look first; "Check this one" and "Re-check all" always do the full check
   const look = only || all ? [] : list.filter(rpLookable), full = list.filter(a => !look.includes(a));
   RP.run = only ? { prov: H.by[only[0]] ? (H.by[only[0]].title || only[0]).slice(0, 40) : only[0], done:0, total:list.length, kept:0, fine:0, young:0, wait:0, err:0, stop:false, look:0, same:0, moved:0, spent:0, fullTok:0, fullN:0 }
     : { prov, done:0, total:list.length, kept:every.length - list.length - fine - young, fine, young, wait:0, err:0, stop:false, look:look.length, same:0, moved:0, spent:0, fullTok:0, fullN:0 };
-  renderRepTool();
+  Object.assign(RP.run, { started:Date.now(), phase:'start', fullLeft:full.length, lookLeft:look.length });
+  rpRender(); rpTickOn();
   const fromFixtures = batch => Promise.all(batch.map(a => fetch(`fixtures/keepa/${a}.json`).then(r => r.ok ? r.json() : null).catch(() => null))).then(x => x.filter(Boolean));
   const save = async (asin, rec) => {
     RP.data[asin] = rec;
@@ -693,6 +858,7 @@ async function rpCheckProvider(prov, all, only, asins, youngOK0, nHint){
   // 1. quick looks, up to 100 an ask, 1 token each (free when another app pulled it today — cache=read)
   for (let i = 0; i < look.length && !RP.run.stop; i += 100) {
     const batch = look.slice(i, i + 100);
+    RP.run.phase = 'look'; RP.run.inBatch = batch.length;
     try {
       let prods;
       if (window.OA_TEST) prods = await fromFixtures(batch);   // test mode: Keepa is never called
@@ -701,7 +867,8 @@ async function rpCheckProvider(prov, all, only, asins, youngOK0, nHint){
         if (RP.run.stop) break;
         const j = await fetch(`${RP_WORKER}/keepa?path=product&domain=2&asin=${batch.join(',')}&stats=90&history=0&app=oa-reprice-look&cache=read&maxHours=24`, { cache:'no-store' }).then(r => r.json());
         if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
-        RP.run.spent += j.tokensConsumed || 0;
+        RP.run.spent += j.tokensConsumed || 0; rpBankSet(j.tokensLeft, j.refillRate, j.refillIn, 'live');
+        RP.run.last = { n:batch.length, tok:j.tokensConsumed || 0, at:Date.now(), look:true };
         prods = j.products || [];
       }
       const got = new Map(prods.map(p => [p.asin, p]));
@@ -712,22 +879,32 @@ async function rpCheckProvider(prov, all, only, asins, youngOK0, nHint){
         await save(a, { checked_at:at, data:{ ...old.data, look:{ at, n:((old.data.look && old.data.look.n) || 0) + 1 } } });
         RP.run.same++; RP.run.done++;
       }
-    } catch(e) { RP.run.err++; RP.run.done += batch.length; console.warn('Repricer quick look failed for', batch, e); }
-    renderRepTool();
+      RP.run.lookLeft = Math.max(0, RP.run.lookLeft - batch.length); RP.run.fullLeft = full.length;
+    } catch(e) { RP.run.err++; RP.run.done += batch.length; RP.run.lastErr = { msg: String(e && e.message || e).slice(0, 140), at: Date.now(), n: batch.length }; console.warn('Repricer quick look failed for', batch, e); }
+    rpRunStep(batch.length);
   }
-  // 2. full checks, 5 at a time — never takes the bank under half
-  for (let i = 0; i < full.length && !RP.run.stop; i += 5) {
-    const batch = full.slice(i, i + 5);
+  // 2. full checks — up to 5 at a time while there's room above RP_KEEP; at the line, as many as each refill pays for
+  //    (Jack 18 Nov: "make it smoother … better drip fed") — same speed overall, but a product every ~30 s instead of 5 every 2½ min
+  for (let i = 0; i < full.length && !RP.run.stop; ) {
+    let n = Math.min(5, full.length - i);
+    RP.run.phase = 'full'; RP.run.fullLeft = full.length - i;
+    if (!window.OA_TEST) {
+      const left = await rpWaitBank(RP_TOK_MAX);   // room for at least one
+      if (RP.run.stop) break;
+      if (left != null) n = Math.max(1, Math.min(n, Math.floor((left - RP_KEEP) / RP_TOK_MAX)));
+    }
+    const batch = full.slice(i, i + n);
+    RP.run.inBatch = batch.length; RP.run.from = i + 1;
     try {
       let prods;
       if (window.OA_TEST) prods = await fromFixtures(batch);   // test mode: saved copies of real responses only
       else {
-        await rpWaitBank(batch.length * RP_TOK_MAX);
-        if (RP.run.stop) break;
-        const j = await fetch(`${RP_WORKER}/keepa?path=product&domain=2&asin=${batch.join(',')}&offers=20&stock=1&history=1&days=420&stats=90&buybox=1&only-live-offers=1&app=oa-reprice&cache=write`, { cache:'no-store' }).then(r => r.json());   // cache=write: the Worker saves a slim copy to the shared keepa_cache so other apps get Jack's ASINs free (reply untouched)
+        const j = await fetch(`${RP_WORKER}/keepa?path=product&domain=2&asin=${batch.join(',')}&offers=20&stock=1&history=1&days=560&stats=90&buybox=1&only-live-offers=1&app=oa-reprice&cache=write`, { cache:'no-store' }).then(r => r.json());   // cache=write: the Worker saves a slim copy to the shared keepa_cache so other apps get Jack's ASINs free (reply untouched)
         if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));
         prods = (j.products || []).map(p => (p._onlyLive = true, p));
         RP.run.spent += j.tokensConsumed || 0; if (j.tokensConsumed > 0 && prods.length) { RP.run.fullTok += j.tokensConsumed; RP.run.fullN += prods.length; }
+        rpBankSet(j.tokensLeft, j.refillRate, j.refillIn, 'live');
+        RP.run.last = { n:prods.length, tok:j.tokensConsumed || 0, at:Date.now() };
       }
       for (const p of prods) {
         const d = rpCompact(p), old = RP.data[p.asin];
@@ -735,16 +912,18 @@ async function rpCheckProvider(prov, all, only, asins, youngOK0, nHint){
         if (old && old.data) d.prev = Date.now() - rpFullAt(old) < 12 * 36e5 && old.data.prev ? old.data.prev : rpPrevOf(H.by[p.asin], old);
         await save(p.asin, { checked_at: d.checked, data: d });
       }
-    } catch(e) { RP.run.err++; console.warn('Repricer check failed for', batch, e); }
-    RP.run.done = Math.min(RP.run.total, RP.run.done + batch.length);
-    renderRepTool();
+    } catch(e) { RP.run.err++; RP.run.lastErr = { msg: String(e && e.message || e).slice(0, 140), at: Date.now(), n: batch.length }; console.warn('Repricer check failed for', batch, e); }
+    RP.run.done = Math.min(RP.run.total, RP.run.done + batch.length); RP.run.fullLeft = full.length - i - batch.length;
+    i += batch.length;
+    rpRunStep(batch.length);
   }
   const r0 = RP.run;
   rpTokSave(r0.fullTok, r0.fullN);
   RP.run = null;
-  renderRepTool();
+  // finished: redraw, keeping whatever card you're on where it is — unless you're typing a price, then wait for you
+  if (rpTyping()) { RP.pending = (RP.pending || 0) || 1; rpPendingPill(); } else rpRender();
   rpBankRead();
-  if (typeof showToast === 'function') showToast(r0.why ? `Stopped: ${r0.why}` : `${r0.stop ? 'Stopped' : '✓'} ${prov}${r0.stop ? ` after ${r0.done} of ${r0.total}` : ' checked'}${r0.spent ? ` · ${r0.spent.toLocaleString()} tokens` : ''}${r0.look ? ` — ${r0.same} unchanged since the last full check (1 token each)` : ''}`);
+  if (typeof showToast === 'function') showToast(r0.why ? `Stopped: ${r0.why}` : `${r0.stop ? 'Stopped' : '✓'} ${prov}${r0.stop ? ` after ${r0.done} of ${r0.total}` : ' checked'}${r0.spent ? ` · ${r0.spent.toLocaleString()} tokens` : ''}${r0.look ? ` — ${r0.same} unchanged since the last full check (1 token each)` : ''}${r0.err ? ` · ${r0.err} batch${r0.err > 1 ? 'es' : ''} failed — press Check again for those` : ''}`);
   if (r0.stop) RP.queue = []; else rpNextQueued();
 }
 function rpNextQueued(){ const nx = RP.queue.shift(); if (nx) setTimeout(() => rpCheckProvider(nx.only ? null : nx.prov, nx.all, nx.only, nx.asins, nx.youngOK0), 300); }
@@ -819,14 +998,19 @@ const RP_KIND = { out:['GET OUT','#ff4d6d'], drop:['DROP','#ff8c42'], raise:['RA
 // left), when it landed and day 90 marked, sellers strip under it. Hover = that day's numbers.
 const RP_CH = {};
 function rpChart(h, d, r, days){
-  const W = 1120, HM = 300, H = 372, PL = 62, PR = 70, PT = 20, PB = 28;
-  const n = Math.min(days, d.bb.length), off = d.bb.length - n;
+  const W = 1120, HM = 300, H = 412, PL = 62, PR = 70, PT = 20, PB = 28, plain = !!RP.plain[h.asin];
+  const x = days > (d.bb || []).length && d.x18 ? d.x18 : null, join = k => x ? (x[k] || []).concat(d[k] || []) : (d[k] || []);
+  const S = { start: x ? x.start : d.start, bb: join('bb'), amz: join('amz'), fba: join('fba'), oc: join('oc'), rank: join('rank') };
+  const n = Math.min(days, S.bb.length), off = S.bb.length - n;
   const cut = a => (a || []).slice(off).map(v => v > 0 ? v / 100 : null);
-  const bb = cut(d.bb), az = cut(d.amz), fb = d.fba ? cut(d.fba) : [];
-  const rk = (d.rank || []).slice(off).map(v => v > 0 ? v : null);
+  const bb = cut(S.bb), az = cut(S.amz), fb = S.fba.length ? cut(S.fba) : [];
+  const rk = (S.rank || []).slice(off).map(v => v > 0 ? v : null);
   const nb = r.pat.normal, sa = r.pat.sales && r.pat.sales.n >= 2 ? r.pat.sales : null;
   const target = h.skus.map(s => s.target).find(v => v != null) ?? null;
-  const lines = [r.myPrice, r.myMin, r.be, r.call && r.call.price, nb && nb.lo, nb && nb.hi, sa && sa.low, target].filter(v => v != null);
+  // every SKU's own min and break-even (bought at different prices → different lines), grouped when they match
+  const grp = key => { const o = []; (r.skus || []).forEach(x => { const v = x[key]; if (v == null) return; const g0 = o.find(g => Math.abs(g.v - v) < 0.5); if (g0) { g0.u += x.units || 0; g0.n++; } else o.push({ v, u: x.units || 0, n: 1 }); }); return o.sort((a, b) => b.v - a.v); };
+  const minsG = grp('min'), besG = grp('be');
+  const lines = [r.myPrice, r.myMin, r.be, r.call && r.call.price, nb && nb.lo, nb && nb.hi, sa && sa.low, target, ...minsG.map(g => g.v), ...besG.map(g => g.v)].filter(v => v != null);
   const raw = bb.concat(az).filter(v => v != null);
   if (!raw.length) return '<div class="rp-nochart">No price history from Keepa.</div>';
   // a one-off spike (an Amazon £400 for a £60 item) must not flatten everything else
@@ -835,15 +1019,15 @@ function rpChart(h, d, r, days){
   const ax = niceAxis(Math.max(0, Math.min(...all) * 0.95), Math.max(...all) * 1.04);
   const X = k => PL + k / Math.max(1, n - 1) * (W - PL - PR), Y = v => PT + (1 - (Math.min(v, ax.max) - ax.min) / (ax.max - ax.min)) * (HM - PT - PB);
   const bot = HM - PB;
-  const s0 = rpMs(d.start) + off * RP_DAY, dayK = date => Math.round((rpMs(date) - s0) / RP_DAY);
+  const s0 = rpMs(S.start) + off * RP_DAY, dayK = date => Math.round((rpMs(date) - s0) / RP_DAY);
   const dm = date => new Date(date + 'T12:00:00Z').toLocaleDateString('en-GB', { day:'numeric', month:'short' });
   let g = '';
   // grey before it landed
   const kLand = h.landed ? dayK(h.landed) : 0;   // before you had it: faded over the top of the lines further down
   // its normal price (the last 4 months outside sales) as a green band
-  if (nb) { const x0 = X(Math.max(0, n - 120)); g += `<rect x="${x0.toFixed(1)}" y="${Y(nb.hi).toFixed(1)}" width="${(W - PR - x0).toFixed(1)}" height="${Math.max(2, Y(nb.lo) - Y(nb.hi)).toFixed(1)}" fill="#00a86b" opacity=".13"><title>Normal price, last 4 months outside sales: ${rpGBP(nb.lo)}–${rpGBP(nb.hi)}</title></rect>`; }
+  if (nb && !plain) { const x0 = X(Math.max(0, n - 120)); g += `<rect x="${x0.toFixed(1)}" y="${Y(nb.hi).toFixed(1)}" width="${(W - PR - x0).toFixed(1)}" height="${Math.max(2, Y(nb.lo) - Y(nb.hi)).toFixed(1)}" fill="#00a86b" opacity=".13"><title>Normal price, last 4 months outside sales: ${rpGBP(nb.lo)}–${rpGBP(nb.hi)}</title></rect>`; }
   // sale dips
-  r.pat.dips.forEach(x => { const a = dayK(x.start), b = dayK(x.end); if (b < 0) return; g += `<rect x="${X(Math.max(0, a)).toFixed(1)}" y="${PT}" width="${Math.max(2, X(b) - X(Math.max(0, a))).toFixed(1)}" height="${bot - PT}" fill="#ff4d6d" opacity=".08"><title>${fmt(x.start)}–${fmt(x.end)} · −${Math.round(x.depth * 100)}%${x.event ? ' · ' + x.event : ''}</title></rect>`; });
+  if (!plain) r.pat.dips.forEach(x => { const a = dayK(x.start), b = dayK(x.end); if (b < 0) return; g += `<rect x="${X(Math.max(0, a)).toFixed(1)}" y="${PT}" width="${Math.max(2, X(b) - X(Math.max(0, a))).toFixed(1)}" height="${bot - PT}" fill="#ff4d6d" opacity=".08"><title>${fmt(x.start)}–${fmt(x.end)} · −${Math.round(x.depth * 100)}%${x.event ? ' · ' + x.event : ''}</title></rect>`; });
   for (let v = ax.min; v <= ax.max + 1e-9; v += ax.step) g += `<line x1="${PL}" x2="${W - PR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="#e3e7ee"/><text x="${PL - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="rpc-ax">£${Math.round(v).toLocaleString()}</text>`;
   const step = days > 120 ? 30 : 7;
   for (let k = 0; k < n; k++) { const dd = rpDay(s0 + k * RP_DAY); if ((step === 30 && dd.endsWith('-01')) || (step === 7 && new Date(dd).getUTCDay() === 1 && k % 14 < 7)) g += `<text x="${X(k).toFixed(1)}" y="${HM - 8}" text-anchor="middle" class="rpc-ax">${step === 30 ? new Date(dd + 'T12:00:00Z').toLocaleDateString('en-GB', { month:'short' }) : dm(dd)}</text>`; }
@@ -864,41 +1048,56 @@ function rpChart(h, d, r, days){
       if (k0 == null) { k0 = k; path += `M${X(k).toFixed(1)},${bot}V${Y(v).toFixed(1)}`; } else path += `V${Y(v).toFixed(1)}`;
       path += `H${X(Math.min(k + 1, arr.length - 1)).toFixed(1)}`; });
     if (k0 != null) path += `V${bot}H${X(k0).toFixed(1)}Z`;
-    return path ? `<path d="${path}" fill="#f6a623" opacity=".17"/>` : ''; };
+    return path && !plain ? `<path d="${path}" fill="#f6a623" opacity=".17"/>` : ''; };
   g += area(az) + seg(az, '#f08c00', 1.6, .9) + (fb.length ? seg(fb, '#0a9396', 1.8, .95) : '') + seg(bb, '#e91e8c', 2.8);
-  if (kLand > 0) { const xw = Math.max(0, Math.min(X(kLand), W - PR) - PL); g += `<rect x="${PL}" y="${PT}" width="${xw.toFixed(1)}" height="${bot - PT}" fill="#f4f6f9" opacity=".62"/>${xw > 150 ? `<text x="${PL + 8}" y="${PT + 14}" class="rpc-note">before you had it</text>` : ''}`; }
+  if (kLand > 0 && !plain) { const xw = Math.max(0, Math.min(X(kLand), W - PR) - PL); g += `<rect x="${PL}" y="${PT}" width="${xw.toFixed(1)}" height="${bot - PT}" fill="#f4f6f9" opacity=".62"/>${xw > 150 ? `<text x="${PL + 8}" y="${PT + 14}" class="rpc-note">before you had it</text>` : ''}`; }
   // when it landed and its day 90 — the clock everything else runs on
   const vmark = (date, col, lab) => { const k = dayK(date); if (k < 0 || k >= n) return ''; const x = X(k), end = x + 6 + lab.length * 7.2 > W - PR; return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${PT}" y2="${bot}" stroke="${col}" stroke-width="1.8" stroke-dasharray="6 4"/><text x="${(end ? x - 6 : x + 6).toFixed(1)}" y="${PT + 13}"${end ? ' text-anchor="end"' : ''} class="rpc-lab" fill="${col}" paint-order="stroke" stroke="#fff" stroke-width="4">${lab}</text>`; };
   if (h.landed) g += vmark(h.landed, '#334155', `landed ${dm(h.landed)} · ${h.age} days ago`);
   if (h.day90) g += vmark(h.day90, '#e8590c', 'day 90');
   // your lines — labels on two sides, spaced so they never sit on each other
   const labs = { L:[], R:[] };
-  const hl = (v, col, dash, lab, side, w) => { if (v == null) return ''; labs[side].push({ y: Y(v) - 5, col, t: `${lab} ${rpGBP(v)}` });
+  const hl = (v, col, dash, lab, side, w) => { if (v == null) return ''; const [a0, a1] = String(lab).split('§'); labs[side].push({ y: Y(v) - 5, col, t: `${a0} ${rpGBP(v)}${a1 || ''}` });
     return `<line x1="${PL}" x2="${W - PR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="${col}" stroke-width="${w || 2}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`; };
   const labDraw = side => { const G = 18, top = PT + 32, low = bot - 4, L = labs[side].map(l => ({ ...l, y:Math.max(top, Math.min(low, l.y)) })).sort((a, b) => a.y - b.y);
     for (let i = 1; i < L.length; i++) if (L[i].y - L[i - 1].y < G) L[i].y = L[i - 1].y + G;
     if (L.length && L[L.length - 1].y > low) { L[L.length - 1].y = low; for (let i = L.length - 2; i >= 0; i--) if (L[i + 1].y - L[i].y < G) L[i].y = L[i + 1].y - G; }
     return L.map(l => `<text x="${side === 'R' ? W - PR - 6 : PL + 6}" y="${l.y.toFixed(1)}" text-anchor="${side === 'R' ? 'end' : 'start'}" class="rpc-lab" fill="${l.col}" paint-order="stroke" stroke="#fff" stroke-width="4">${l.t}</text>`).join(''); };
-  const sameMin = r.myMin != null && r.myPrice != null && Math.abs(r.myMin - r.myPrice) < 0.5;
+  const uTxt = (g0, on) => on ? `§ · ${g0.u} unit${g0.u !== 1 ? 's' : ''}${g0.n > 1 ? `, ${g0.n} SKUs` : ''}` : '';
+  const manyM = minsG.length > 1, manyB = besG.length > 1;
+  const sameMin = r.myPrice != null && minsG.some(g0 => Math.abs(g0.v - r.myPrice) < 0.5);
   if (sa) g += hl(sa.low, '#7a8699', '1 4', 'usual sale', 'L', 1.6);
   if (nb) labs.L.push({ y: Y(nb.hi) - 5, col:'#00875a', t:`normal ${rpGBP(nb.lo)}–${rpGBP(nb.hi).replace('£', '')}` });
-  g += hl(r.be, '#d32f2f', '6 4', 'break-even', 'L') + (sameMin ? '' : hl(r.myMin, '#b8860b', '2 3', 'your min', 'L'));
+  if (besG.length) besG.forEach(g0 => { g += hl(g0.v, '#d32f2f', '6 4', `break-even${uTxt(g0, manyB)}`, 'L'); }); else g += hl(r.be, '#d32f2f', '6 4', 'break-even', 'L');
+  if (minsG.length) minsG.forEach(g0 => { if (!(r.myPrice != null && Math.abs(g0.v - r.myPrice) < 0.5)) g += hl(g0.v, '#b8860b', '2 3', `${manyM ? 'min' : 'your min'}${uTxt(g0, manyM)}`, 'L'); });
+  else if (r.myMin != null && !(r.myPrice != null && Math.abs(r.myMin - r.myPrice) < 0.5)) g += hl(r.myMin, '#b8860b', '2 3', 'your min', 'L');
   if (target != null) g += hl(target, '#2e9e5b', '9 5', 'your target', 'R', 1.8);
-  g += hl(r.myPrice, '#1565c0', '', sameMin ? 'you = your min' : 'you now', 'R', 2.4);
+  const meMin = minsG.find(g0 => r.myPrice != null && Math.abs(g0.v - r.myPrice) < 0.5);
+  g += hl(r.myPrice, '#1565c0', '', sameMin ? (manyM ? `you = min${uTxt(meMin, true)}` : 'you = your min') : 'you now', 'R', 2.4);
   if (r.call && r.call.price != null && Math.abs(r.call.price - (r.myPrice || 0)) > 0.5 && (r.be == null || Math.abs(r.call.price - r.be) > 0.5)) g += hl(r.call.price, RP_KIND[r.call.kind][1], '10 4', 'suggested', 'R', 2.2);
   g += labDraw('L') + labDraw('R');
   // sellers on the listing (Keepa's new-offer count — FBA and FBM together; Keepa has no FBA-only history)
-  const oc = (d.oc || []).slice(off).map(v => v >= 0 ? v : null), ocv = oc.filter(v => v != null);
+  const oc = (S.oc || []).slice(off).map(v => v >= 0 ? v : null), ocv = oc.filter(v => v != null);
+  let SL = null;
   if (ocv.length > 1) {
-    const top = HM + 20, sb = H - 4, hi = Math.max(...ocv, 1), Ys = v => sb - v / hi * (sb - top);
-    let p = '', pen = false; oc.forEach((v, k) => { if (v == null) { pen = false; return; } p += `${pen ? 'L' : 'M'}${X(k).toFixed(1)},${Ys(v).toFixed(1)}`; if (k + 1 < oc.length && oc[k + 1] != null) p += `H${X(k + 1).toFixed(1)}`; pen = true; });
-    g += `<line x1="${PL}" x2="${W - PR}" y1="${sb}" y2="${sb}" stroke="#cfd5de"/><path d="${p}" fill="none" stroke="#5b6b82" stroke-width="1.8"/>
-      <text x="${PL - 8}" y="${(top + 10).toFixed(1)}" text-anchor="end" class="rpc-ax">${hi}</text><text x="${PL - 8}" y="${sb}" text-anchor="end" class="rpc-ax">0</text>
-      <text x="${PL + 6}" y="${top - 5}" class="rpc-note">sellers on the listing · ${ocv[0]} → ${ocv[ocv.length - 1]}</text>`;
+    const top = HM + 26, sb = H - 8, ax2 = niceAxis(0, Math.max(...ocv, 4)), hi = ax2.max, Ys = v => sb - v / hi * (sb - top);
+    let p = '', pen = false, k0 = null, fill = '';
+    oc.forEach((v, k) => { if (v == null) { if (k0 != null) { fill += `V${sb}H${X(k0).toFixed(1)}Z`; k0 = null; } pen = false; return; }
+      if (k0 == null) { k0 = k; fill += `M${X(k).toFixed(1)},${sb}V${Ys(v).toFixed(1)}`; } else fill += `V${Ys(v).toFixed(1)}`;
+      p += `${pen ? 'L' : 'M'}${X(k).toFixed(1)},${Ys(v).toFixed(1)}`; if (k + 1 < oc.length && oc[k + 1] != null) { p += `H${X(k + 1).toFixed(1)}`; fill += `H${X(k + 1).toFixed(1)}`; } pen = true; });
+    if (k0 != null) fill += `V${sb}H${X(k0).toFixed(1)}Z`;
+    for (let v = 0; v <= hi + 1e-9; v += ax2.step) g += `<line x1="${PL}" x2="${W - PR}" y1="${Ys(v).toFixed(1)}" y2="${Ys(v).toFixed(1)}" stroke="${v === 0 ? '#cfd5de' : '#eef1f5'}"/><text x="${PL - 8}" y="${(Ys(v) + 4).toFixed(1)}" text-anchor="end" class="rpc-ax">${Math.round(v)}</text>`;
+    const last = ocv[ocv.length - 1], lo = Math.min(...ocv), pk = Math.max(...ocv);
+    g += `${plain ? '' : `<path d="${fill}" fill="#5b6b82" opacity=".12"/>`}<path d="${p}" fill="none" stroke="#475569" stroke-width="2"/>
+      <text x="${PL + 6}" y="${top - 8}" class="rpc-note">sellers on the listing (FBA + FBM) · ${ocv[0]} → <tspan font-weight="700" fill="#334155">${last} now</tspan> · fewest ${lo} · most ${pk}</text>
+      <circle cx="${X(n - 1).toFixed(1)}" cy="${Ys(last).toFixed(1)}" r="3.5" fill="#475569"/><text x="${(W - PR + 8).toFixed(1)}" y="${(Ys(last) + 4).toFixed(1)}" class="rpc-ax" font-weight="700" fill="#334155">${last}</text>
+      <circle class="rpc-sdot" r="4.5" fill="#fff" stroke="#475569" stroke-width="2" opacity="0"/><text class="rpc-stxt" font-size="12.5" font-weight="700" fill="#0f172a" paint-order="stroke" stroke="#fff" stroke-width="4" opacity="0"></text>`;
+    SL = { top, sb, hi };
   }
+  g += `<circle class="rpc-bdot" r="4.5" fill="#fff" stroke="#e91e8c" stroke-width="2.4" opacity="0"/>`;
   // the hover line and readout
-  const id = `${h.asin}_${days}`;
-  RP_CH[id] = { n, s0, W, PL, PR, bb, az, fb, oc, rk, me: r.myPrice };
+  const id = `${h.asin}_${days}${plain ? 'p' : ''}`;
+  RP_CH[id] = { n, s0, W, PL, PR, bb, az, fb, oc, rk, me: r.myPrice, SL, Y, axMax: ax.max };
   g += `<line class="rpc-x" x1="0" x2="0" y1="${PT}" y2="${ocv.length > 1 ? H - 6 : bot}" stroke="#0f172a" stroke-width="1" opacity="0"/>`;
   return `<svg viewBox="0 0 ${W} ${ocv.length > 1 ? H : HM}" class="rp-chart" data-ch="${id}" onmousemove="rpHover(event,this)" onmouseleave="rpHoverOff(this)" role="img" aria-label="Buy Box, Amazon and lowest FBA price, last ${days} days, sales rank, and the seller count under it">${g}</svg><div class="rpc-tip"></div>`;
 }
@@ -908,17 +1107,24 @@ function rpHover(ev, svg){
   const k = Math.max(0, Math.min(c.n - 1, Math.round((x - c.PL) / (c.W - c.PL - c.PR) * (c.n - 1))));
   const xs = c.PL + k / Math.max(1, c.n - 1) * (c.W - c.PL - c.PR);
   const ln = svg.querySelector('.rpc-x'); if (ln) { ln.setAttribute('x1', xs); ln.setAttribute('x2', xs); ln.setAttribute('opacity', '.55'); }
+  const bd = svg.querySelector('.rpc-bdot'); if (bd) { if (c.bb[k] != null) { bd.setAttribute('cx', xs); bd.setAttribute('cy', c.Y(c.bb[k])); bd.setAttribute('opacity', '1'); } else bd.setAttribute('opacity', '0'); }
+  const sd = svg.querySelector('.rpc-sdot'), st = svg.querySelector('.rpc-stxt');
+  if (sd && st && c.SL) { const v = c.oc[k];
+    if (v != null) { const yy = c.SL.sb - v / c.SL.hi * (c.SL.sb - c.SL.top), right = xs > c.W - c.PR - 120;
+      sd.setAttribute('cx', xs); sd.setAttribute('cy', yy); sd.setAttribute('opacity', '1');
+      st.setAttribute('x', right ? xs - 9 : xs + 9); st.setAttribute('y', Math.max(c.SL.top + 10, yy - 7)); st.setAttribute('text-anchor', right ? 'end' : 'start'); st.textContent = `${v} seller${v !== 1 ? 's' : ''}`; st.setAttribute('opacity', '1');
+    } else { sd.setAttribute('opacity', '0'); st.setAttribute('opacity', '0'); } }
   const tip = svg.nextElementSibling; if (!tip) return;
   const day = new Date(c.s0 + k * RP_DAY).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
   const row = (col, lab, v) => v == null ? '' : `<div><i style="background:${col}"></i>${lab}<b>${v}</b></div>`;
-  tip.innerHTML = `<div class="d">${day}</div>${row('#e91e8c', 'Buy Box', c.bb[k] != null ? rpGBP(c.bb[k]) : 'none')}${row('#f6a623', 'Amazon', c.az[k] != null ? rpGBP(c.az[k]) : 'not selling')}${row('#0a9396', 'Lowest FBA', c.fb[k] != null ? rpGBP(c.fb[k]) : null)}${row('#5b6b82', 'Sellers', c.oc[k] != null ? c.oc[k] : null)}${row('#3fa34d', 'Sales rank', c.rk[k] != null ? '#' + c.rk[k].toLocaleString() : null)}`;
+  tip.innerHTML = `<div class="d">${day}</div>${row('#e91e8c', 'Buy Box', c.bb[k] != null ? rpGBP(c.bb[k]) : 'none')}${row('#f6a623', 'Amazon', c.az[k] != null ? rpGBP(c.az[k]) : 'not selling')}${row('#0a9396', 'Lowest FBA', c.fb[k] != null ? rpGBP(c.fb[k]) : null)}${row('#475569', 'Sellers on it', c.oc[k] != null ? c.oc[k] : null)}${row('#3fa34d', 'Sales rank', c.rk[k] != null ? '#' + c.rk[k].toLocaleString() : null)}`;
   const px = (xs / c.W) * b.width, wrap = svg.parentElement.getBoundingClientRect();
   tip.style.display = 'block';
   const left = b.left - wrap.left + px + 14, tw = tip.offsetWidth;
   tip.style.left = (left + tw > wrap.width - 8 ? left - tw - 28 : left) + 'px';
   tip.style.top = (b.top - wrap.top + 40) + 'px';
 }
-function rpHoverOff(svg){ const ln = svg.querySelector('.rpc-x'); if (ln) ln.setAttribute('opacity', '0'); const tip = svg.nextElementSibling; if (tip) tip.style.display = 'none'; }
+function rpHoverOff(svg){ const ln = svg.querySelector('.rpc-x'); if (ln) ln.setAttribute('opacity', '0'); svg.querySelectorAll('.rpc-bdot,.rpc-sdot,.rpc-stxt').forEach(e => e.setAttribute('opacity', '0')); const tip = svg.nextElementSibling; if (tip) tip.style.display = 'none'; }
 window.rpHover = rpHover; window.rpHoverOff = rpHoverOff;
 function rpQueueHtml(h, r){
   const q = r.q, rows = [];
@@ -1040,7 +1246,7 @@ function rpCard(h, rec){
   const d = rec.data, r = rpCall(h, rec), story = rpStory(h, d, r), can = rpCanAct();
   const c = r.call || { kind:'none' }, K = RP_KIND[c.kind], days = RP.zoom[h.asin] || 365;
   const late = h.day90 && rpMs(h.day90) < Date.now();
-  const ch = rpChanges(rec, r), own = rpOwnSales(), shape = rpShape(r), B = RP_BUY[r.buy.v];
+  const ch = rpChanges(rec, r), own = rpOwnSales(), shape = rpShape(r, rec), B = RP_BUY[r.buy.v];
   const dec = RP.decisions.find(x => x.asin === h.asin && !x.sku && x.action === 'wait') || null;
   const sugs = [...new Set(r.skus.filter(x => x.sug != null).map(x => x.sug.toFixed(2)))].map(Number).sort((a, b) => a - b);
   const priceTxt = c.price == null ? '' : sugs.length > 1 ? `${rpGBP(sugs[0])}–${rpGBP(sugs[sugs.length - 1]).replace('£', '')}` : rpGBP(sugs[0] ?? c.price);
@@ -1057,7 +1263,7 @@ function rpCard(h, rec){
       <div class="rpk-img">${d.image ? `<img src="${rpEsc(d.image)}" alt="" loading="lazy">` : ''}</div>
       <div style="min-width:0">
         <div class="rpk-name" title="${rpEsc(d.title || h.title || h.asin)}">${rpEsc(d.title || h.title || h.asin)}</div>
-        <div class="rpk-meta"><span class="rpk-asin">${h.asin}</span>${[...h.providers].map(p => `<span class="rpk-prov" title="${rpEsc(rpProvInfo(p))}">${rpEsc(p)}</span>`).join('')}
+        <div class="rpk-meta"><button class="rpk-asin rp-copy" onclick="rpCopy('${h.asin}','the ASIN ${h.asin}')" title="Copy the ASIN">${h.asin} ⧉</button>${[...h.providers].map(p => `<span class="rpk-prov" title="${rpEsc(rpProvInfo(p))}">${rpEsc(p)}</span>`).join('')}
           <span class="rpk-age ${late ? 'late' : 'ok'}">${ageTxt}</span>${(sfC => sfC ? `<span class="rpk-fine" title="At your own pace from Sarah's uploads">selling fine · ${sfC.sold} sold in ${sfC.days} days, gone in ~${sfC.clears}d</span>` : '')(rpSellingFine(h))}
           <span><b style="color:var(--text)">${rpGBP0(h.value)}</b> tied up · ${h.units} unit${h.units !== 1 ? 's' : ''}${h.skus.length > 1 ? ` · ${h.skus.length} SKUs` : ''}</span></div>
         <div class="rpk-links"><a href="https://www.amazon.co.uk/dp/${h.asin}" target="_blank" rel="noopener">Amazon ↗</a><a href="https://keepa.com/#!product/2-${h.asin}" target="_blank" rel="noopener">Keepa ↗</a><a href="https://sas.selleramp.com/sas/lookup?SasLookup%5Bsearch_term%5D=${h.asin}${h.cost != null ? `&SasLookup%5Bcost_price%5D=${h.cost.toFixed(2)}` : ''}" target="_blank" rel="noopener">SellerAmp ↗</a><span class="rpk-checked">Keepa checked ${rpAgo(rec.checked_at)}</span></div>
@@ -1069,12 +1275,13 @@ function rpCard(h, rec){
         ${done ? `<div class="rpk-done">✓ ${done} of ${r.skus.length} SKU${r.skus.length > 1 ? 's' : ''} done in STK</div>` : ''}
       </div>
     </div>
+    ${rpDealHtml(h, rec)}
     ${rpPlanHtml(rpPlan(h, d, r))}
     ${d.look ? `<div class="rpk-look rpk-pad"><b>Quick look ${fmtShort(String(d.look.at).slice(0, 10))} · 1 token:</b> Amazon, the lowest price and the sellers haven't moved since the full check on ${fmtShort(String(d.checked).slice(0, 10))}, so that check is kept — the graph and the queue are from then. The next check after ${fmtShort(rpDay(Date.parse(d.checked) + RP_LOOK_D * RP_DAY))} is a full one anyway, or sooner if something moves.</div>` : ''}
     ${ch ? `<div class="rp-chg rpk-pad"><b>⚡ Since the check on ${fmtShort(String(ch.since).slice(0, 10))}:</b> ${ch.items.join(' · ')}</div>` : ''}
     ${r.why.length || r.warn.length ? `<div class="rpk-reasons">${r.why.length ? `<ul>${r.why.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}${r.warn.length ? `<ul class="w">${r.warn.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}</div>` : ''}
     <div class="rpk-graph">
-      <div class="rp-zoom"><button class="${days === 365 ? 'on' : ''}" onclick="RP.zoom['${h.asin}']=365;renderRepTool()">1 year</button><button class="${days === 90 ? 'on' : ''}" onclick="RP.zoom['${h.asin}']=90;renderRepTool()">90 days</button>
+      <div class="rp-zoom"><button class="${days === 548 ? 'on' : ''}" onclick="RP.zoom['${h.asin}']=548;rpRender()" title="${d.x18 ? 'The last 18 months — costs no extra tokens' : 'Comes with this product\'s next check (no extra tokens) — until then it shows the year'}">1½ years${d.x18 ? '' : ' <small>next check</small>'}</button><button class="${days === 365 ? 'on' : ''}" onclick="RP.zoom['${h.asin}']=365;rpRender()">1 year</button><button class="${days === 90 ? 'on' : ''}" onclick="RP.zoom['${h.asin}']=90;rpRender()">90 days</button><button class="rp-plain ${RP.plain[h.asin] ? 'on' : ''}" onclick="RP.plain['${h.asin}']=!RP.plain['${h.asin}'];rpRender()" title="Turn the shading off (the grey before you had it, the sale and normal-price bands, the Amazon fill) to see the lines clearly">${RP.plain[h.asin] ? 'Shading off' : 'Shading on'}</button>
         <span class="rp-leg"><i style="background:#e91e8c"></i>Buy Box <i style="background:#f6a623"></i>Amazon <i style="background:#0a9396"></i>lowest FBA <i style="background:#1565c0"></i>you <i style="background:#b8860b"></i>your min <i style="background:#2e9e5b"></i>your target <i style="background:#d32f2f"></i>break-even <i style="background:#3fa34d;opacity:.7"></i>sales rank (right) <i class="nb"></i>normal price <i class="dip"></i>sale · grey = before you had it · hover for any day</span></div>
       ${rpChart(h, d, r, days)}
     </div>
@@ -1086,7 +1293,7 @@ function rpCard(h, rec){
       <div class="rpk-col"><div class="rp-h">The buy</div>
         ${target != null ? f('Your target', rpGBP(target)) : ''}
         ${f('Peak since it landed', rpGBP(peak))}
-        ${f('Buy Box now', rpGBP(d.bbNow) + (r.amzHasBB ? ' <small>Amazon</small>' : ''))}
+        ${f('Buy Box now', rpGBP(d.bbNow) + (rpDealOn(rec) ? ` <small class="rpk-dsm">${r.amzHasBB ? 'Amazon deal' : 'deal'}</small>` : r.amzHasBB ? ' <small>Amazon</small>' : ''))}
         ${f('You now', rpGBP(r.myPrice), 'you')}
         ${f('Your min in STK', rpGBP(r.myMin))}
         ${f('Break-even', rpGBP(r.be))}
@@ -1097,8 +1304,8 @@ function rpCard(h, rec){
       </div>
       <div class="rpk-col"><div class="rp-h">Why it hasn’t sold</div>
         <span class="rpk-verdict" style="--bv:${B[1]}">${B[0]}</span>
-        <div class="rpk-story" style="margin-bottom:8px">${r.buy.t.replace(/^[^—]+— /, '').replace(/^./, m => m.toUpperCase())}</div>
-        <div class="rpk-story">${story.join(' ') || '—'}</div>
+        <div class="rpk-story rpk-lead">${r.buy.t.replace(/^[^—]+— /, '').replace(/^./, m => m.toUpperCase())}${rpDealWhy(rec)}</div>
+        ${story.length ? `<ul class="rpk-sl">${story.map(x => `<li>${x}</li>`).join('')}</ul>` : '<div class="rpk-story">—</div>'}
       </div>
       <div class="rpk-col"><div class="rp-h">The queue up to your price</div>${rpQueueHtml(h, r)}</div>
     </div>
@@ -1106,12 +1313,12 @@ function rpCard(h, rec){
       <table class="rp-skut"><thead><tr><th>SKU</th><th>Provider</th><th class="n">Left / bought</th><th class="n" title="Since ${own.from ? fmtShort(own.from) : 'the first upload with SKUs'}">Sold</th><th class="n">Cost</th><th class="n">Break-even</th><th class="n">Your min</th><th class="n">Set min to</th><th class="n">Each</th><th></th></tr></thead><tbody>
       ${r.skus.map(x => { const id = x.sku.replace(/[^A-Za-z0-9]/g, '_'), dd = rpLastDecision(h.asin, x.sku);
         return `<tr class="${x.change ? 'chg' : ''}">
-          <td><button class="rp-copy" onclick="rpCopy('${sq(x.sku)}','the SKU')" title="Copy the SKU to paste into STK">${rpEsc(x.sku)} ⧉</button></td>
+          <td><button class="rp-copy" onclick="rpCopy('${sq(x.sku)}','the SKU')" title="${rpEsc(x.sku)} — copy it to paste into STK">${rpEsc(x.sku)} ⧉</button></td>
           <td>${rpEsc(x.provider)}${rpProvInfo(x.provider) ? `<small class="rp-pi">${rpProvInfo(x.provider)}</small>` : ''}</td><td class="n">${x.units}${x.bought ? ` / ${x.bought}` : ''}</td><td class="n">${own.sku[x.sku] ? `${own.sku[x.sku].sold}<small class="rp-dim"> /${own.sku[x.sku].days}d</small>` : '<span class="rp-dim">—</span>'}</td><td class="n">${rpGBP(x.cost)}</td><td class="n">${rpGBP(x.be)}</td>
           <td class="n">${x.min != null ? rpGBP(x.min) : '<span class="rp-dim">—</span>'}</td>
           <td class="n">${can ? `<input id="rpPrice_${id}" type="number" step="0.01" value="${x.sug != null ? x.sug.toFixed(2) : ''}">` : `<b>${rpGBP(x.sug)}</b>`}</td>
           <td class="n ${x.each != null && x.each < 0 ? 'neg' : 'pos'}">${rpGBP(x.each)}</td>
-          <td class="rp-skua">${x.sug != null ? `<button class="rp-copy" onclick="rpCopy(document.getElementById('rpPrice_${id}') ? document.getElementById('rpPrice_${id}').value : '${x.sug.toFixed(2)}','the price')" title="Copy the price">£ ⧉</button>` : ''}
+          <td class="rp-skua">${x.sug != null ? `<button class="rp-copy" onclick="rpCopy(document.getElementById('rpPrice_${id}') ? document.getElementById('rpPrice_${id}').value : '${x.sug.toFixed(2)}','the price')" title="Copy this price to paste into STK">Copy £</button>` : ''}
             ${can ? `<button class="rp-done" onclick="rpDecide2('${h.asin}','set','${sq(x.sku)}')">✓ Done in STK</button>` : ''}
             ${dd ? `<span class="rp-dd">${dd.action === 'set' ? `set ${rpGBP(dd.price)}` : dd.action === 'wait' ? 'left it' : dd.action} ${fmtShort(String(dd.decided_at).slice(0, 10))}${dd.units_then != null ? ` · ${Math.max(0, dd.units_then - x.units)} sold since` : ''}</span>` : ''}</td></tr>`; }).join('')}
       </tbody></table>
@@ -1138,10 +1345,10 @@ function rpDoneRow(h, rec, info){
   return `<div class="rpk rpk-doneRow" style="--k:${K[1]}" id="rp_${h.asin}">
     <div class="rpk-img sm">${d.image ? `<img src="${rpEsc(d.image)}" alt="" loading="lazy">` : ''}</div>
     <div class="rpk-dn">${rpEsc(d.title || h.title || h.asin)}</div>
-    <span class="rpk-dk">${K[0]}</span>
+    <span class="rpk-dk">${K[0]}</span>${rpDealOn(rec) ? `<span class="rpk-dsm" title="${rpEsc(rpDealOn(rec).items.map(x => x.badge).join(' · '))}">${rpDealOn(rec).amz ? 'Amazon deal' : 'Deal'}</span>` : ''}
     <span class="rpk-dh">✓ ${rpEsc(info.how)} · ${fmtShort(String(info.at).slice(0, 10))}</span>
     <span class="rpk-dv">${rpGBP0(h.value)}</span>
-    <button class="rpk-back" onclick="RP.openDone['${h.asin}']=1;renderRepTool()">Open</button>
+    <button class="rpk-back" onclick="RP.openDone['${h.asin}']=1;rpRender()">Open</button>
   </div>`;
 }
 // J / K = next / back through the cards (not while typing a price)
@@ -1162,7 +1369,7 @@ function rpTodoHtml(list, P, can){
   const v = list.reduce((t, h) => t + h.value, 0), today = rpToday(), in30 = rpDay(rpMs(today) + 30 * RP_DAY);
   const band = h => rpYoung(h) ? 'young' : !h.day90 ? 'later' : h.day90 < today ? 'late' : h.day90 <= in30 ? 'soon' : 'later';
   const SEC = { late:['Past day 90', 'var(--o)'], soon:['Day 90 in the next 30 days', 'var(--y)'], later:['Day 90 later', 'var(--g)'],
-    young:['Under 30 days at Amazon — not checked unless you press Check', '#c4b5fd'] };
+    young:[`Under ${RP_YOUNG_D} days at Amazon — not checked unless you press Check`, '#c4b5fd'] };
   // Jack, 10 Nov: like STK — oldest at the bottom (or the top, with Oldest → newest). Under 30 days always last.
   const order = RP.sort === 'old' ? ['late', 'soon', 'later', 'young'] : RP.sort === 'new' ? ['later', 'soon', 'late', 'young'] : null;
   const row = h => { const late = h.day90 && rpMs(h.day90) < Date.now(), sf = rpSellingFine(h);
@@ -1175,8 +1382,8 @@ function rpTodoHtml(list, P, can){
     ${secs.map(([k, xs]) => `${k ? `<div class="rpk-tsec" style="--c:${SEC[k][1]}">${SEC[k][0]} <b>${xs.length}</b> · ${rpGBP0(xs.reduce((t, h) => t + h.value, 0))}</div>` : ''}<div class="rpk-todol">${xs.map(row).join('')}</div>`).join('')}</div>`;
 }
 // The listing's shape in one line — what Jack reads off the graph first
-function rpShape(r){
-  const p = r.pat, nb = p.normal, sa = p.sales, out = [];
+function rpShape(r, rec){
+  const p = r.pat, nb = p.normal, sa = p.sales, out = [], dl = rec ? rpDealOn(rec) : null, dn = dl ? `${dl.amz ? "Amazon's" : "the Buy Box seller's"} ${rpEsc(dl.items[0].badge)} deal` : '';
   if (p.straight) out.push(`Same price nearly all year, about ${rpGBP(p.straight.p)}.`);
   else {
     if (nb) out.push(`Normally ${rpGBP(nb.lo)}–${rpGBP(nb.hi).replace('£', '')}.`);
@@ -1184,7 +1391,8 @@ function rpShape(r){
     else if (sa && sa.n === 1) out.push(`One sale in the year, to ${rpGBP(sa.low)}.`);
     else if (!p.dips.length) out.push('No sales in the last year.');
   }
-  if (p.sale) out.push(`<b>In a sale now</b>: day ${p.sale.days}, −${Math.round(p.sale.depth * 100)}%${p.sale.biggest ? ', the deepest in a year' : ''}.`);
+  if (p.sale) out.push(`<b>In a sale now</b>: day ${p.sale.days}, −${Math.round(p.sale.depth * 100)}%${p.sale.biggest ? ', the deepest in a year' : ''}${dn ? ` — it's ${dn}` : ''}.`);
+  else if (dn) out.push(`<b>On a deal now</b>: ${dn}.`);
   else if (p.reset) out.push(`<b>Reset lower</b>: about ${rpGBP(p.reset.from)} → ${rpGBP(p.reset.to)}.`);
   else if (p.lowest) out.push(`<b>Lowest Buy Box in a year</b> right now.`);
   if (p.lowsFalling) out.push(`Each month's low is lower than the last.`);
@@ -1192,8 +1400,85 @@ function rpShape(r){
   return out.join(' ');
 }
 const rpAgo = iso => { if (!iso) return '—'; const n = Math.round((Date.now() - Date.parse(iso)) / 36e5); return n < 1 ? 'just now' : n < 24 ? `${n}h ago` : `${Math.round(n / 24)} days ago`; };
-function renderRepRun(){ const el = document.getElementById('rpRunLine'); if (el && RP.run) el.innerHTML = rpRunText(); }
-const rpRunText = () => `Checking ${RP.run.prov}: <b>${RP.run.done} of ${RP.run.total}</b>${RP.run.kept ? ` · ${RP.run.kept} kept from the last day` : ''}${RP.run.fine ? ` · ${RP.run.fine} selling fine, skipped` : ''}${RP.run.young ? ` · ${RP.run.young} under 30 days, skipped` : ''}${RP.run.look ? ` · quick look at ${RP.run.look} (1 token each): ${RP.run.same} unchanged${RP.run.moved ? `, ${RP.run.moved} moved → full check` : ''}` : ''}${RP.run.wait ? ` · pausing so half the bank stays free for everyone else — about ${RP.run.wait} min` : ''}${RP.run.err ? ` · ${RP.run.err} batch${RP.run.err > 1 ? 'es' : ''} failed` : ''}${RP.run.spent ? ` · ${RP.run.spent.toLocaleString()} tokens so far` : ''} <button class="cmp-chip" title="Everything checked so far is kept — press Check again later to carry on" onclick="RP.run.stop=true">Stop${RP.queue.length ? ' all' : ''}</button>${RP.queue.length ? `<div class="rp-qnext">Next: ${RP.queue.map((q, i) => `<span>${rpEsc(q.prov)}${q.n != null ? ` (${q.n})` : ''} <a title="Take it out of the queue" onclick="rpUnqueue(${i})">×</a></span>`).join('')}</div>` : ''}`;
+// Jack 18 Nov: "I can't work while it does it, it keeps jumping" — during a check nothing redraws under you:
+// results are saved and wait behind "Show N new results"; any redraw keeps the card you're looking at in place
+const rpTyping = () => { const a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.closest('#repTool')); };
+function rpRender(){
+  const sc = document.querySelector('.content'), top0 = sc ? sc.getBoundingClientRect().top : 0;
+  const anchor = [...document.querySelectorAll('#repTool .rpk[id], #repTool .rp-dl, #repTool .rpk-ti')].find(e => e.getBoundingClientRect().bottom > top0 + 80);
+  const key = anchor ? (anchor.id || anchor.getAttribute('onclick') || anchor.textContent.slice(0, 60)) : null, y0 = anchor ? anchor.getBoundingClientRect().top : 0;
+  RP.pending = 0; rpPendingPill();
+  renderRepTool();
+  if (!anchor || !sc) return;
+  const again = anchor.id ? document.getElementById(anchor.id) : [...document.querySelectorAll('#repTool .rp-dl, #repTool .rpk-ti')].find(e => (e.getAttribute('onclick') || e.textContent.slice(0, 60)) === key);
+  if (again) sc.scrollTop += again.getBoundingClientRect().top - y0;
+}
+window.rpRender = rpRender;
+function rpRunStep(n){ RP.pending = (RP.pending || 0) + n; renderRepRun(); rpPendingPill(); }
+function rpPendingPill(){
+  const n = RP.pending || 0; let p = document.getElementById('rpPending');
+  if (!n) { if (p) p.remove(); return; }
+  if (!p) { p = document.createElement('button'); p.id = 'rpPending'; p.className = 'rp-pend'; p.onclick = () => rpRender(); document.body.appendChild(p); }
+  p.innerHTML = `↻ <b>${n}</b> new result${n !== 1 ? 's' : ''} saved — <u>show them</u>`;
+  p.style.display = document.getElementById('tab-repricer')?.classList.contains('active') ? '' : 'none';
+}
+function renderRepRun(){ const el = document.getElementById('rpRunBody'); if (el && RP.run) el.innerHTML = rpRunBody(); const q = document.getElementById('rpRunQ'); if (q && RP.run) q.innerHTML = rpRunQ(); }
+// Jack 18 Nov: "more info, what's happening — how much the token bucket is, countdown of 1 min until it refills 21" — a live panel while a check runs
+function rpRunEta(){
+  const r = RP.run, avg = r.fullN >= 5 ? r.fullTok / r.fullN : rpTok();
+  const tokLeft = Math.round((r.lookLeft || 0) + (r.fullLeft || 0) * avg);
+  const now = rpBankNow(), rate = (RP.bank && RP.bank.rate) || 21;
+  const spare = now == null ? 0 : Math.max(0, now - RP_KEEP);
+  const refillMs = Math.max(0, tokLeft - spare) / rate * 60000;
+  const callMs = Math.ceil((r.fullLeft || 0) / 5) * 11000 + Math.ceil((r.lookLeft || 0) / 100) * 4000;   // about 11 s a batch of 5 (measured 18 Nov)
+  return { avg, tokLeft, ms: Math.max(refillMs, callMs) };
+}
+function rpRunBody(){
+  const r = RP.run; if (!r) return '';
+  const pc = r.total ? Math.round(r.done / r.total * 100) : 0, e = rpRunEta();
+  const b = RP.bank, left = rpBankNow(), max = b && !b.err ? b.max : 1260, nx = rpNextRefillMs();
+  const bcol = left == null ? 'var(--muted2)' : left < 300 ? 'var(--r)' : left < 700 ? 'var(--o)' : 'var(--g)';
+  const waitMs = r.phase === 'wait' && r.need ? rpBankWaitMs(r.need + RP_KEEP) : null;
+  const now = r.phase === 'wait' ? `<b class="w">Waiting for Keepa to refill</b><em>the next product needs ${(r.need + RP_KEEP).toLocaleString()} in the bank (${RP_KEEP} kept free + ${r.need})${waitMs != null ? ` · goes in about <b data-rp-wait>${rpMMSS(waitMs)}</b>` : ''}. Not stuck: Keepa adds ${(RP.bank && RP.bank.rate) || 21} a minute, so from here it's about ${(((RP.bank && RP.bank.rate) || 21) / e.avg).toFixed(1).replace(/\.0$/, '')} products a minute</em>`
+    : r.phase === 'blind' ? `<b class="w">Can't read the Keepa bank</b><em>trying again every 30 s — nothing is spent blind</em>`
+    : r.phase === 'look' ? `<b>Quick look at ${r.inBatch} product${r.inBatch !== 1 ? 's' : ''}</b><em>1 token each — a full check only for the ones that moved</em>`
+    : r.phase === 'pause9' ? `<b class="w">Paused for the 9pm competitor run</b><em>Sun, Tue and Thu 21:00–22:00 the competitor run needs the bank — this carries on by itself at 22:00</em>`
+    : r.phase === 'full' ? `<b>Checking ${r.inBatch} product${r.inBatch !== 1 ? 's' : ''}${r.from ? ` · ${r.from}${r.inBatch > 1 ? `–${r.from + r.inBatch - 1}` : ''} of ${r.total - r.look}` : ''}</b><em>${r.last ? `last: ${r.last.n} for ${r.last.tok} tokens, ${rpSecAgo(r.last.at)}` : 'asking Keepa…'}${left != null && left - RP_KEEP < 5 * RP_TOK_MAX ? ` · at the ${RP_KEEP} line, so it goes as each refill lands` : ''}</em>`
+    : `<b>Starting</b><em>asking Keepa how full the bank is</em>`;
+  const fin = new Date(Date.now() + e.ms).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  return `<div class="rp-rtop"><span class="rp-rn"><b>${r.done}</b> of ${r.total} checked</span><i class="rp-rbar"><i style="width:${pc}%"></i></i><span class="rp-rpc">${pc}%</span></div>
+    <div class="rp-rgrid">
+      <div class="rp-rc rp-rnow"><span>Now</span>${now}</div>
+      <div class="rp-rc"><span>Keepa bank</span><b style="color:${bcol}">${left == null ? '—' : left.toLocaleString()} <small>of ${max.toLocaleString()}</small></b><i class="rps-bar rps-bank-bar"><i style="width:${left == null ? 0 : Math.round(left / max * 100)}%;background:${bcol}"></i><u style="left:${Math.round(RP_KEEP / max * 100)}%"></u></i><em>${b && b.src === 'live' ? `live from Keepa ${rpSecAgo(b.at)}` : 'from the 5-min log'} · line = ${RP_KEEP} kept free</em></div>
+      <div class="rp-rc"><span>Next refill</span><b class="rp-rtick" data-rp-next>${nx == null ? '—' : left != null && left >= max ? 'full' : `+${(b && b.rate) || 21} in ${rpMMSS(nx)}`}</b><em>Keepa adds ${(b && b.rate) || 21} once a minute</em></div>
+      <div class="rp-rc"><span>Tokens</span><b>${r.spent.toLocaleString()} <small>spent</small></b><em>${r.fullN ? `${e.avg.toFixed(1)} a product this run` : `about ${rpTok()} a product`} · about ${e.tokLeft.toLocaleString()} more</em></div>
+      <div class="rp-rc"><span>Done by</span><b>${r.done >= r.total ? 'now' : `about ${fin}`}</b><em>${r.done >= r.total ? '' : `${rpDur(e.ms)} to go · `}keep this page open</em></div>
+    </div>
+    ${r.lastErr ? `<div class="rp-rerr"><b>Batch of ${r.lastErr.n} failed ${rpSecAgo(r.lastErr.at)}:</b> ${rpEsc(r.lastErr.msg)} — those weren't saved; it carries on with the next ones (press Check again later for the missed ones).</div>` : ''}
+    <div class="rp-rfoot">${[`started ${new Date(r.started).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`, r.young ? `${r.young} under ${RP_YOUNG_D} days skipped` : '', r.kept ? `${r.kept} checked in the last day, kept` : '', r.look ? `quick look ${r.same} unchanged${r.moved ? `, ${r.moved} moved → full check` : ''}` : '', r.err ? `<b class="w">${r.err} batch${r.err > 1 ? 'es' : ''} failed</b>` : '0 failed'].filter(Boolean).join(' · ')} · every product is saved the moment it's checked — Stop keeps what's done</div>`;
+}
+const rpDur = ms => { const m = Math.round(ms / 60000); return m < 1 ? 'under a minute' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`; };
+const rpRunQ = () => RP.queue.length ? `<div class="rp-qnext">Next: ${RP.queue.map((q, i) => `<span>${rpEsc(q.prov)}${q.n != null ? ` (${q.n})` : ''} <a title="Take it out of the queue" onclick="rpUnqueue(${i})">×</a></span>`).join('')}</div>` : '';
+function rpRunPanel(){
+  const r = RP.run; if (!r) return '';
+  return `<div class="rp-runp" id="rpRunPanel">
+    <div class="rp-rhead"><span class="rp-rdot"></span><span class="rp-rt">Checking <b>${rpEsc(r.prov)}</b></span><span id="rpRunQ">${rpRunQ()}</span><span class="rp-rhint">the page stays still while this runs — results wait for you</span>
+      <button class="rp-rstop" title="Everything checked so far is kept — press Check again later to carry on" onclick="RP.run.stop=true;this.textContent='Stopping…'"${r.stop ? ' disabled' : ''}>${r.stop ? 'Stopping…' : RP.queue.length ? 'Stop all' : 'Stop'}</button></div>
+    <div id="rpRunBody">${rpRunBody()}</div></div>`;
+}
+const rpRunText = () => `<span class="rp-dim">Checking ${rpEsc(RP.run.prov)} — <b style="color:var(--text)">${RP.run.done} of ${RP.run.total}</b> · details below</span>`;
+// one ticker: the countdowns move every second; the panel's numbers redraw every second while a check runs
+function rpTickOn(){
+  if (window._rpTick1) return;
+  window._rpTick1 = setInterval(() => {
+    if (!document.getElementById('tab-repricer')?.classList.contains('active') || document.hidden) return;
+    if (RP.run) renderRepRun();
+    const nx = rpNextRefillMs(), b = RP.bank, left = rpBankNow();
+    if (b && !b.err && left != null && left < b.max && nx != null && nx < 1200) { setTimeout(rpBankPaint, 1300); }   // a refill just landed: redraw the bank box
+    document.querySelectorAll('#rpBank [data-rp-next]').forEach(el => { el.textContent = left != null && b && left >= b.max ? 'full' : nx == null ? '' : `+${b.rate} in ${rpMMSS(nx)}`; });
+  }, 1000);
+}
+rpTickOn();
 
 // ── How fresh is everything, and how many Keepa tokens are in the bank right now ───────────────
 // The bank comes from the keepa Worker's own 5-minute log (bdl_keepa.bank_log — a Supabase read, never a
@@ -1204,55 +1489,64 @@ const rpDaysOld = dt => dt ? Math.max(0, Math.round((rpMs(rpToday()) - rpMs(Stri
 async function rpBankRead(){
   try {
     const row = window._bankLogRead ? await window._bankLogRead() : null, at = row ? Date.parse(row.at) : NaN;
-    if (row && row.tokens_left != null && Date.now() - at < 20 * 60000) {   // a log older than 20 min = the logger stopped; ask Keepa instead
+    if (RP.bank && !RP.bank.err && RP.bank.src === 'live' && RP.bank.at >= at - 1000 && Date.now() - RP.bank.at < 20 * 60000) { rpBankPaint(); return; }   // Keepa's own figure from a check is newer — keep it
+    if (row && row.tokens_left != null && Date.now() - at < 20 * 60000 && !RP.run) {   // a log older than 20 min = the logger stopped; during a check, ask Keepa itself
       const rate = row.refill_rate || 21;
-      RP.bank = { left:row.tokens_left, rate, max:rate * 60, at, src:'log' };
-      const el = document.getElementById('rpBank'); if (el) el.outerHTML = rpBankHtml();
+      RP.bank = { left:row.tokens_left, rate, max:rate * 60, at, refillAt: row.refill_in != null ? at + row.refill_in : null, src:'log' };
+      rpBankPaint();
       return;
     }
   } catch(e) {}
   try {
     const j = await fetch(`${RP_WORKER}/health`, { cache:'no-store' }).then(r => r.ok ? r.json() : null);
-    RP.bank = j && j.tokensLeft != null ? { left:j.tokensLeft, rate:j.refillRate || 21, max:(j.refillRate || 21) * 60, at:Date.now() } : { err:true, at:Date.now() };
+    if (j && j.tokensLeft != null) rpBankSet(j.tokensLeft, j.refillRate, j.refillIn, 'live'); else RP.bank = { err:true, at:Date.now() };
   } catch(e) { RP.bank = { err:true, at:Date.now() }; }
-  const el = document.getElementById('rpBank'); if (el) el.outerHTML = rpBankHtml();
+  rpBankPaint();
 }
+function rpBankPaint(){ const el = document.getElementById('rpBank'); if (el) el.outerHTML = rpBankHtml(); }
 function rpBankHtml(){
   const b = RP.bank;
   if (!b) return `<div class="rps-i" id="rpBank"><span>Keepa tokens</span><b>…</b><em>reading the bank</em></div>`;
   if (b.err && window.OA_TEST) return `<div class="rps-i" id="rpBank" title="The keepa Worker only answers your live github.io address, so this test copy on your laptop can't read the bank. It shows on the live site."><span>Keepa tokens now</span><b>—</b><em>shows on the live site</em></div>`;
   if (b.err) return `<div class="rps-i warn" id="rpBank" title="The free token check on the keepa Worker didn't answer"><span>Keepa tokens</span><b>—</b><em>couldn't read the bank · <a onclick="rpBankRead()">try again</a></em></div>`;
-  const left = Math.min(b.max, b.left + Math.floor((Date.now() - b.at) / 60000) * b.rate), pc = Math.round(left / b.max * 100);
-  const full = left >= b.max ? 'full' : `full in ${Math.ceil((b.max - left) / b.rate)} min`;
+  const left = rpBankNow(), pc = Math.round(left / b.max * 100), nx = rpNextRefillMs();
+  const fullIn = left >= b.max ? 'full — anything more expires' : `full in ${Math.ceil((b.max - left) / b.rate)} min`;
   const col = left < 300 ? 'var(--r)' : left < 700 ? 'var(--o)' : 'var(--g)';
-  return `<div class="rps-i" id="rpBank" title="Keepa's own count${b.src === 'log' ? ' from the keepa Worker\'s 5-minute log (free — no Keepa call)' : ' (free check)'}. One bank for everything — the VAs, the 9pm competitor run, the Discord trackers and this page. Refills ${b.rate} a minute, holds ${b.max.toLocaleString()}; unused tokens expire after an hour. A check here never takes it under half (630): it spends down to there, then goes at the refill speed."><span>Keepa tokens now</span><b style="color:${col}">${left.toLocaleString()} <small>of ${b.max.toLocaleString()}</small></b><i class="rps-bar"><i style="width:${pc}%;background:${col}"></i></i><em>+${b.rate}/min · ${full} · ${b.src === 'log' ? 'logged' : 'read'} ${rpAgo(new Date(b.at).toISOString())} · <a onclick="rpBankRead()">refresh</a></em></div>`;
+  const est = Date.now() - b.at > 65000;   // between readings it counts Keepa's +21 a minute on; other apps' spending shows at the next reading
+  const src = `${b.src === 'live' ? 'live' : b.src === 'log' ? 'log' : 'read'} ${rpSecAgo(b.at)}`;
+  return `<div class="rps-i rps-bank" id="rpBank" title="Keepa's own count — ${b.src === 'live' ? 'straight from Keepa (every check batch and the free /health check)' : 'from the keepa Worker\'s 5-minute log (free — no Keepa call)'}${est ? `, read ${rpSecAgo(b.at)} and counted on since (+${b.rate} a minute — other apps' spending shows at the next reading)` : ''}. One bank for everything — the VAs, the 9pm competitor run, the Discord trackers and this page. Keepa adds ${b.rate} once a minute and it holds ${b.max.toLocaleString()}; unused tokens expire after an hour. A check here never takes it under ${RP_KEEP} (the white line on the bar): it spends down to there, then goes at the refill speed."><span>Keepa tokens now</span><b style="color:${col}">${left.toLocaleString()} <small>of ${b.max.toLocaleString()}</small></b><i class="rps-bar rps-bank-bar"><i style="width:${pc}%;background:${col}"></i><u style="left:${Math.round(RP_KEEP / b.max * 100)}%"></u></i><em>${left < b.max && nx != null ? `<b class="rps-tick" data-rp-next>+${b.rate} in ${rpMMSS(nx)}</b> · ` : `+${b.rate}/min · `}${fullIn} · ${src} · <a onclick="rpBankRead()">refresh</a></em></div>`;
 }
 // The season, across everything held: days to Black Friday (then to the Christmas cut-off), what's past day 90, what's waiting
 window.rpNarrow = k => { const set = RP.mode === 'prov' ? RP.nb : RP.np; if (k == null) set.clear(); else if (set.has(k)) set.delete(k); else set.add(k); RP.open = null; RP.lim = 10; renderRepTool(); };
-// How long a check takes: what's above half the bank goes now, the rest at the refill speed
-function rpBankNow(){ const b = RP.bank; if (!b || b.err || b.left == null) return null; return Math.min(b.max, b.left + Math.floor((Date.now() - b.at) / 60000) * b.rate); }
+// How long a check takes: what's above RP_KEEP goes now, the rest at the refill speed
+function rpBankNow(){ const b = RP.bank; if (!b || b.err || b.left == null) return null; return Math.min(b.max, b.left + rpRefills(b, Date.now()) * b.rate); }
+const rpSecAgo = t => { const s = Math.round((Date.now() - t) / 1000); return s < 10 ? 'just now' : s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : rpAgo(new Date(t).toISOString()); };
 function rpEtaTxt(tok){
   const now = rpBankNow(), rate = (RP.bank && RP.bank.rate) || 21, avail = now == null ? 0 : Math.max(0, now - RP_KEEP);
   const m = Math.ceil(Math.max(0, tok - avail) / rate);
-  if (m < 2) return 'goes straight through · half the bank stays free for everyone else';
-  return `about ${m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`} at the refill speed · half the bank stays free · keep this page open`;
+  if (m < 2) return `goes straight through · ${RP_KEEP} always stays free for everything else`;
+  const by = new Date(Date.now() + m * 60000).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  return `about ${m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`}, done by about <b>${by}</b> — fast down to ${RP_KEEP}, then at the refill speed · ${RP_KEEP} always stays free · you can keep working`;
 }
+const rpDM = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day:'numeric', month:'short' });
 function rpBFHtml(all, NEED, K_, key){
   const today = rpToday(), dTo = d => Math.round((rpMs(d) - rpMs(today)) / RP_DAY);
   let head, tone;
-  if (today < RP_BF.start) { const n = dTo(RP_BF.start); head = `<b>${n} day${n !== 1 ? 's' : ''}</b> to Black Friday <span>20 Nov – 1 Dec</span>`; tone = n <= 7 ? 'hot' : ''; }
-  else if (today <= RP_BF.end) { const n = dTo(RP_BF.end); head = `<b>Black Friday now</b> <span>ends 1 Dec${n ? ` · ${n} day${n !== 1 ? 's' : ''} left` : ''}</span>`; tone = 'hot'; }
+  if (today < RP_BF.start) { const n = dTo(RP_BF.start); head = `<b>${n} day${n !== 1 ? 's' : ''}</b> to Black Friday <span>${rpDM(RP_BF.start)} – ${rpDM(RP_BF.end)}</span>`; tone = n <= 7 ? 'hot' : ''; }
+  else if (today <= RP_BF.end) { const n = dTo(RP_BF.end); head = `<b>Black Friday now</b> <span>ends ${rpDM(RP_BF.end)}${n ? ` · ${n} day${n !== 1 ? 's' : ''} left` : ' · last day'}</span>`; tone = 'hot'; }
   else if (today <= RP_XMAS) { const n = dTo(RP_XMAS); head = `<b>${n} day${n !== 1 ? 's' : ''}</b> to the Christmas cut-off <span>20 Dec</span>`; tone = ''; }
   else return '';
   const late = all.filter(h => h.day90 && h.day90 < today), lateV = late.reduce((t, h) => t + h.value, 0);
   const wait = all.filter(h => NEED.includes(K_(h)) && !rpDoneInfo(h, RP.data[h.asin])), waitV = wait.reduce((t, h) => t + h.value, 0);
   const todo = all.filter(h => !RP.data[h.asin] && !rpYoung(h)).length;
+  const deals = all.filter(h => rpDealOn(RP.data[h.asin])), dealsV = deals.reduce((t, h) => t + h.value, 0);
   const go = `RP['${key}']='${RP_ALL}';RP.nb.clear();RP.np.clear();RP.showLeft=false;RP.open=null;RP.lim=10;`;
   return `<div class="rp-bf ${tone}">
     <div class="rp-bfh">${head}</div>
     <div class="rp-bfi"><b style="color:#ff8c42">${late.length}</b> past day 90 <span>${rpGBP0(lateV)}</span></div>
     <button class="rp-bfi" onclick="${go}RP.filter='need';rpPrefSet('oaRepFilter','need');renderRepTool()" title="Every provider's price changes you haven't done yet"><b style="color:#ff4d6d">${wait.length}</b> price change${wait.length !== 1 ? 's' : ''} waiting <span>${rpGBP0(waitV)}</span></button>
-    <button class="rp-bfi" onclick="${go}RP.filter='all';rpPrefSet('oaRepFilter','all');renderRepTool()" title="Products over 30 days that Keepa hasn't checked yet"><b style="color:${todo ? '#ffd166' : '#00f5a0'}">${todo}</b> over 30 days not checked yet</button>
+    <button class="rp-bfi" onclick="${go}RP.filter='all';rpPrefSet('oaRepFilter','all');renderRepTool()" title="Products over ${RP_YOUNG_D} days that Keepa hasn't checked yet"><b style="color:${todo ? '#ffd166' : '#00f5a0'}">${todo}</b> over ${RP_YOUNG_D} days not checked yet</button>
+    ${deals.length ? `<button class="rp-bfi" onclick="${go}RP.filter='deal';RP.lim=500;rpPrefSet('oaRepFilter','deal');renderRepTool()" title="Products where Keepa saw a deal badge at the last check (Early Black Friday, Limited time deal …), mostly Amazon's own — each card says whose. Only checked products are known."><b style="color:#ff3d8b">${deals.length}</b> on a deal now <span>${rpGBP0(dealsV)}</span></button>` : ''}
   </div>`;
 }
 function rpStatusHtml(H, P, stkDate, stkOld, can){
@@ -1319,7 +1613,7 @@ function renderRepTool(){
   }
   const order = { out:0, drop:1, raise:2, hold:3, wait:4, none:5 };
   const filt = { need: h => NEED.includes(K_(h)), all: () => true, out: h => K_(h) === 'out', drop: h => K_(h) === 'drop', raise: h => K_(h) === 'raise',
-    hold: h => K_(h) === 'hold', wait: h => K_(h) === 'wait', todo: h => K_(h) === 'todo', chg: h => !!(h._r && rpChanges(RP.data[h.asin], h._r)) };
+    hold: h => K_(h) === 'hold', wait: h => K_(h) === 'wait', todo: h => K_(h) === 'todo', chg: h => !!(h._r && rpChanges(RP.data[h.asin], h._r)), deal: h => !!rpDealOn(RP.data[h.asin]) };
   let shown = mine.filter(filt[RP.filter] || filt.all);
   // like STK: newest at the top, oldest at the bottom of the bucket — or flipped, calls first, or biggest £ first
   const ageOf = h => h.age ?? -1;
@@ -1356,6 +1650,7 @@ function renderRepTool(){
       <label class="cmp-chip rp-file${stkOld ? ' rp-stale' : ''}" title="SellerToolKit → Reports → Repricer Settings — drop the file here (Sarah normally adds it in Add Snapshot)">${stkDate ? 'New STK file' : 'Drop STK Repricer Settings'}<input type="file" accept=".txt,.csv,.tsv" onchange="this.files[0]&&rpImportSettings(this.files[0])"></label>
     </div>
     ${rpBFHtml(all, NEED, K_, key)}
+    ${rpDealsPanel(all, key)}
     ${rpStatusHtml(H, P, stkDate, stkOld, can)}
     <div class="rp-unlock" id="rpUnlock" style="display:none"><span>Unlock this laptop to check Keepa and record calls:</span><input type="password" placeholder="word" onkeydown="if(event.key==='Enter')rpUnlockTry(this.value)"><button class="cmp-chip" onclick="rpUnlockTry(this.previousElementSibling.value)">Unlock</button><span id="rpUnlockMsg" class="rp-dim"></span></div>
     ${RP.noTables && !window.OA_TEST ? `<div class="rp-note">The repricer's tables aren't in Supabase yet — run <b>OA-Overview - RUN IN SUPABASE - repricer tool 2026-10-23.sql</b>. Until then checks last until you reload.</div>` : ''}
@@ -1372,20 +1667,21 @@ function renderRepTool(){
         <div class="rp-phead">
           <div><div class="rp-pt">${rpEsc(P.name)}${P.name === RP_ALL ? ` <span class="rp-pinfo">${RP.mode === 'age' ? 'every age band' : 'every provider'} — Lavarion + your bundles left out</span>` : RP.mode === 'prov' && rpProvInfo(P.name) ? ` <span class="rp-pinfo">${rpProvInfo(P.name)}</span>` : ''}</div>
             ${buys ? `<div class="rp-ps">Their buys: ${buys}</div>` : ''}</div>
-          <div id="rpRunLine" class="rp-run">${RP.run ? rpRunText() : can ? (stale ? `<div class="rp-gowrap"><button class="btn-g rp-go" onclick="rpCheckView()">${P.name === RP_ALL && !nLab ? `Check everything · ${stale} product${stale !== 1 ? 's' : ''}` : RP.mode === 'age' || P.name === RP_ALL ? `Check ${stale} product${stale !== 1 ? 's' : ''} · ${P.name === RP_ALL ? '' : rpEsc(P.name)}${P.name !== RP_ALL && nLab ? ' · ' : ''}${rpEsc(nLab)}` : `Check ${stale} ${rpEsc(P.name)} product${stale !== 1 ? 's' : ''}${nLab ? ` · ${rpEsc(nLab)}` : ''}`} · about ${stTok.toLocaleString()} tokens</button><span class="rp-gosub">${[fresh ? `${fresh} checked in the last day` : '', fineN ? `${fineN} selling fine` : '', youngN ? `${youngN} under 30 days` : ''].filter(Boolean).join(' · ') || 'nothing to skip'}${fresh || fineN || youngN ? ' — skipped, free' : ''}${lookN ? `<br>${lookN} quick look${lookN !== 1 ? 's' : ''} at 1 token — a full check only if something moved` : ''}<br>${rpEtaTxt(stTok)}</span></div>`
-            : `<div class="rp-gowrap"><span class="rp-allfresh">✓ Nothing to pull${fineN ? ` · ${fineN} selling fine` : ''}${youngN ? ` · ${youngN} under 30 days` : ''}${fresh ? ` · ${fresh} checked in the last day` : ''}</span><button class="rp-again" onclick="rpCheckView(true)">Re-check all · about ${(P.asins * rpTok()).toLocaleString()} tokens</button></div>`) : '<span class="rp-dim">Jack runs the Keepa check</span>'}</div>${RP.run && can && stale && !(RP.view && RP.queue.some(q => q.prov === RP.view.label)) ? `<button class="rp-again rp-qadd" onclick="rpCheckView()" title="Starts by itself when the one running now finishes">+ Queue ${stale} ${P.name === RP_ALL ? 'products' : rpEsc(P.name)}${nLab ? ` · ${rpEsc(nLab)}` : ''} next · about ${stTok.toLocaleString()} tokens</button>` : ''}
+          <div id="rpRunLine" class="rp-run">${RP.run ? rpRunText() : can ? (stale ? `<div class="rp-gowrap"><button class="btn-g rp-go" onclick="rpCheckView()">${P.name === RP_ALL && !nLab ? `Check everything · ${stale} product${stale !== 1 ? 's' : ''}` : RP.mode === 'age' || P.name === RP_ALL ? `Check ${stale} product${stale !== 1 ? 's' : ''} · ${P.name === RP_ALL ? '' : rpEsc(P.name)}${P.name !== RP_ALL && nLab ? ' · ' : ''}${rpEsc(nLab)}` : `Check ${stale} ${rpEsc(P.name)} product${stale !== 1 ? 's' : ''}${nLab ? ` · ${rpEsc(nLab)}` : ''}`} · about ${stTok.toLocaleString()} tokens</button><span class="rp-gosub">${[fresh ? `${fresh} checked in the last day` : '', fineN ? `${fineN} selling fine` : '', youngN ? `${youngN} under ${RP_YOUNG_D} days` : ''].filter(Boolean).join(' · ') || 'nothing to skip'}${fresh || fineN || youngN ? ' — skipped, free' : ''}${lookN ? `<br>${lookN} quick look${lookN !== 1 ? 's' : ''} at 1 token — a full check only if something moved` : ''}<br>${rpEtaTxt(stTok)}</span></div>`
+            : `<div class="rp-gowrap"><span class="rp-allfresh">✓ Nothing to pull${fineN ? ` · ${fineN} selling fine` : ''}${youngN ? ` · ${youngN} under ${RP_YOUNG_D} days` : ''}${fresh ? ` · ${fresh} checked in the last day` : ''}</span><button class="rp-again" onclick="rpCheckView(true)">Re-check all · about ${(P.asins * rpTok()).toLocaleString()} tokens</button></div>`) : '<span class="rp-dim">Jack runs the Keepa check</span>'}</div>${RP.run && can && stale && !(RP.view && (RP.run.prov === RP.view.label || RP.queue.some(q => q.prov === RP.view.label))) ? `<button class="rp-again rp-qadd" onclick="rpCheckView()" title="Starts by itself when the one running now finishes">+ Queue ${stale} ${P.name === RP_ALL ? 'products' : rpEsc(P.name)}${nLab ? ` · ${rpEsc(nLab)}` : ''} next · about ${stTok.toLocaleString()} tokens</button>` : ''}
         </div>
+        ${RP.run ? rpRunPanel() : ''}
         ${nOpts.filter(o => o.n).length > 1 ? `<div class="rp-narrow"><span class="rp-nl">${RP.mode === 'prov' ? 'Stock age' : 'Providers'}</span><button class="${!nset.size ? 'on' : ''}" onclick="rpNarrow()">All <b>${mine0.length}</b></button>${nOpts.map(o => `<button class="${nset.has(o.k) ? 'on' : ''}${!o.n ? ' zero' : ''}" onclick="rpNarrow('${pq(o.k)}')">${rpEsc(o.l)} <b>${o.n}</b></button>`).join('')}<span class="rp-nh">pick one or more — the list and the Check button follow</span></div>` : ''}
         <div class="rp-tiles rpk-tiles">
           <div class="rp-tile" style="--tc:#3d9eff"><div class="rp-k">Tied up</div><div class="rp-v" style="color:#3d9eff">${rpGBP0(P.value)}</div><div class="rp-s">${P.asins} ASIN${P.asins !== 1 ? 's' : ''} · ${P.units.toLocaleString()} unit${P.units !== 1 ? 's' : ''}</div></div>
           <div class="rp-tile" style="--tc:#ff8c42"><div class="rp-k">Past day 90</div><div class="rp-v" style="color:#ff8c42">${rpGBP0(lateVal)}</div><div class="rp-s">${late} of ${P.asins} ASIN${P.asins !== 1 ? 's' : ''}${P.value ? ` · ${Math.round(lateVal / P.value * 100)}% of the £` : ''}</div></div>
           <div class="rp-tile" style="--tc:#ff4d6d"><div class="rp-k">Price to change</div><div class="rp-v" style="color:#ff4d6d">${counts('need')}</div><div class="rp-s">${needAll.length ? `<b style="color:${needDone === needAll.length ? 'var(--g)' : 'var(--text)'}">${needDone} of ${needAll.length} done</b> · ` : ''}${[['out','get out'],['drop','drop'],['raise','raise']].map(([k, l]) => `${kinds[k] || 0} ${l}`).join(' · ')}${backOut ? ` · get-outs free up ${rpGBP0(backOut)}` : ''}</div></div>
-          <div class="rp-tile" style="--tc:#00f5a0"><div class="rp-k">Checked</div><div class="rp-v" style="color:#00f5a0">${P.checked} <small style="font-size:15px;color:var(--muted2)">of ${P.asins}</small></div><div class="rp-s">${P.checked ? `last ${rpAgo(P.last)}` : 'not checked yet'}${fresh ? ` · ${fresh} fresh (last day)` : ''}${fineN ? ` · ${fineN} selling fine (free)` : ''}${youngN ? ` · ${youngN} under 30 days (skipped)` : ''}${stale ? ` · ${stale} to pull, about ${stTok.toLocaleString()} tokens` : ''}</div></div>
+          <div class="rp-tile" style="--tc:#00f5a0"><div class="rp-k">Checked</div><div class="rp-v" style="color:#00f5a0">${P.checked} <small style="font-size:15px;color:var(--muted2)">of ${P.asins}</small></div><div class="rp-s">${P.checked ? `last ${rpAgo(P.last)}` : 'not checked yet'}${fresh ? ` · ${fresh} fresh (last day)` : ''}${fineN ? ` · ${fineN} selling fine (free)` : ''}${youngN ? ` · ${youngN} under ${RP_YOUNG_D} days (skipped)` : ''}${stale ? ` · ${stale} to pull, about ${stTok.toLocaleString()} tokens` : ''}</div></div>
         </div>
         <div class="rp-filters">
-          ${[['need','Needs you',null],['chg','⚡ Changed',null]].concat(seg).concat([['all','All',null]]).map(([k, l, col]) => {
-            const n = k === 'need' || k === 'chg' ? counts(k) : k === 'all' ? mine.length : kinds[k] || 0;
-            if (k === 'chg' && !n) return '';
+          ${[['need','Needs you',null],['chg','⚡ Changed',null],['deal','On a deal','#ff3d8b']].concat(seg).concat([['all','All',null]]).map(([k, l, col]) => {
+            const n = k === 'need' || k === 'chg' || k === 'deal' ? counts(k) : k === 'all' ? mine.length : kinds[k] || 0;
+            if ((k === 'chg' || k === 'deal') && !n && RP.filter !== k) return '';
             return `<button class="rp-f ${RP.filter === k ? 'on' : ''}${!n && RP.filter !== k ? ' zero' : ''}" onclick="RP.filter='${k}';rpPrefSet('oaRepFilter','${k}');RP.open=null;RP.lim=10;renderRepTool()">${col ? `<i style="background:${col}"></i>` : ''}${l} <b>${n}</b></button>`; }).join('')}
 
           <span class="rp-sort"><span>Order</span>${[['new','Newest → oldest'],['old','Oldest → newest'],['call','Calls first'],['value','£ tied up']].map(([k, l]) => `<button class="${RP.sort === k ? 'on' : ''}" onclick="RP.sort='${k}';rpPrefSet('oaRepSort','${k}');RP.lim=10;renderRepTool()">${l}</button>`).join('')}</span>
@@ -1414,4 +1710,4 @@ function rpFloat(html){
   f.style.display = html !== '' && f.innerHTML && document.getElementById('tab-repricer')?.classList.contains('active') ? 'flex' : 'none';
 }
 // show / hide it with the page
-['switchTab', 'switchTabMobile'].forEach(n => { const o = window[n]; if (typeof o === 'function' && !o._rp) { const w = function(){ const r = o.apply(this, arguments); rpFloat(); return r; }; w._rp = true; window[n] = w; } });
+['switchTab', 'switchTabMobile'].forEach(n => { const o = window[n]; if (typeof o === 'function' && !o._rp) { const w = function(){ const r = o.apply(this, arguments); rpFloat(); rpPendingPill(); return r; }; w._rp = true; window[n] = w; } });

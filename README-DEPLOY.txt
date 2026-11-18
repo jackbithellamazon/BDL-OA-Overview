@@ -1,5 +1,29 @@
 BDL OA Overview v67 — how to put it live (it is a FOLDER now, not one file)
 
+UPDATED 18 Nov (v67ah) — v67ag IS LIVE; this is a small update on top. NO SQL — just upload index.html, css and js
+  (same way) and commit.
+  New: Amazon deals. When you press Check, each card shows if Amazon (or whoever has the Buy Box) has a deal on it —
+  the badge as Amazon shows it (Early Black Friday, Limited time deal, Prime Exclusive …), how far under its 90-day
+  price Amazon is, any coupon, and the end date/time when Keepa has one. "On a deal" filter + a "N on a deal now" item
+  in the Black Friday strip. Costs NO extra tokens (it's in the reply the check already pays for).
+  Also an "On a deal now" list at the top of the Repricer page: every product you hold that's on a deal, soonest to
+  end first — the deal, until when, Amazon's price (and since when, was £X), £ tied up. Click a line for its card.
+  A live panel while a check runs: how many done, the Keepa bank (Keepa's own figure, not the old 5-minute log),
+  "+21 in 0:42" countdown, tokens spent / per product / still to go, what it's doing right now (or why it's waiting
+  and when the next batch goes), and when it'll be done. The page no longer jumps while it runs — new results wait
+  behind "Show N new results". Checks now keep 400 in the bank (was 630). Black Friday dates = Amazon's 19–30 Nov.
+  Smoother drip: at the 400 line it checks 1–2 products as each refill lands (not 5 every 2½ min); it waits out the
+  9pm competitor run (Sun/Tue/Thu 21:00–22:00) by itself; the Check button says when it'll be done.
+  Graphs: 1½ years (no extra tokens — shows from each product's next check), a "Shading on/off" button per graph,
+  a bigger sellers graph (hover = "27 sellers" on the line + dot on the Buy Box), and every SKU's own min and
+  break-even drawn on the one graph (e.g. "min £49.00 · 13 units, 5 SKUs" and "you = min £48.00 · 6 units, 2 SKUs").
+  Under 25 days is skipped now (was 30).
+  Audit fixes (18 Nov): deals for the products already checked today fill in from the shared Keepa cache (free —
+  45 of them are on a deal right now); each card says what kind of deal it is and that it's Amazon's own (e.g.
+  "Amazon's own Early Black Friday deal: Amazon went £1,185.29 → £799.00 on 16/11"); the ASIN copies with a click;
+  "Why it hasn't sold" is one point per line; the SKU table fits the card; "Copy £"; £ figures have commas;
+  the token box is two short lines; the deal list can be hidden.
+
 UPDATED 14 Nov (v67ag) — includes v67af and v67ae. NO SQL — just upload index.html, css and js (same way) and commit.
   New: Stock age chips (on a provider) / provider chips (on a stock age) — pick one or more and the list AND the Check
   button follow, so you only check what you want. Checks go oldest first. Press Check on another provider while one

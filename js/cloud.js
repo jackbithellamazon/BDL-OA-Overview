@@ -21,8 +21,21 @@ if (window.supabase) {
 
 // The Keepa bank from the keepa Worker's own 5-minute log (bdl_keepa.bank_log, readable with the anon
 // key — Keepa Discord, 10 Nov). A Supabase read, never a Keepa call. The Repricer shows it.
+// Deal badges for products checked before v67ah stored them: the shared keepa_cache already has Keepa's full reply
+// (deals, coupon, Buy Box seller, 90-day average) — read just those fields, newest per ASIN. A Supabase read, 0 tokens.
+window._cacheDeals = async function(asins){
+  const out = {};
+  for (let i = 0; i < asins.length; i += 80) {
+    const part = asins.slice(i, i + 80);
+    const q = `select=asin,fetched_at,deals:product->deals,coupon:product->coupon,bb:product->stats->buyBoxSellerId,avg90:product->stats->avg90&kind=eq.offers&asin=in.(${part.join(',')})&order=fetched_at.desc`;
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/keepa_cache?${q}`, { cache:'no-store', headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}` } });
+    if (!r.ok) continue;
+    (await r.json()).forEach(x => { if (!out[x.asin]) out[x.asin] = x; });
+  }
+  return out;
+};
 window._bankLogRead = async function(){
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/bank_log?select=at,tokens_left,refill_rate&order=at.desc&limit=1`,
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/bank_log?select=at,tokens_left,refill_rate,refill_in&order=at.desc&limit=1`,
     { cache:'no-store', headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}`, 'Accept-Profile':'bdl_keepa' } });
   return r.ok ? ((await r.json())[0] || null) : null;
 };
